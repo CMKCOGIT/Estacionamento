@@ -1,6 +1,6 @@
 # Arquitetura Técnica — Sistema de Estacionamento
 
-> Status: **v0.2: requisitos confirmados**. Nenhum código foi implementado ainda.
+> Status: **v0.3: requisitos, tarifas, retenção e domínio definidos**. Nenhum código foi implementado ainda.
 > Itens marcados com ⚠️ ainda precisam de definição.
 
 ---
@@ -11,6 +11,10 @@
 |------|-------|--------------------------------|
 | Estabelecimentos | 1 estacionamento | Vários (`site_id` em todas as tabelas desde já) |
 | Acesso do cliente | **Sem conta**: link individual ou QR Code com token seguro | Solicitação de cadastro de mensalista |
+| Entrega do QR | **Tela do operador** e/ou **monitor voltado ao cliente**, mais **link para compartilhar pelo WhatsApp**. Sem impressora | Impressora térmica |
+| Tarifas | **Configuráveis no painel**: fração de hora, hora cheia, diária, tolerância, diária máxima, valores por categoria de veículo (§8) | Pernoite, convênios, mensalista |
+| Retenção | Link expira **24h após a saída**; ticket na nuvem por **30 dias**; histórico local por política própria (§9) | — |
+| Domínio | **Subdomínios do provedor** de hospedagem (§10) | Domínio próprio, só por configuração |
 | O que o cliente vê | Disponibilidade geral de vagas, tabela de tarifas, o próprio ticket (placa, entrada, permanência, valor acumulado) | — |
 | Pagamento | **Só presencial**, registrado pelo funcionário: dinheiro, Pix, débito, crédito | Pix online pelo PWA |
 | Entrada e saída | Manual: o funcionário digita a placa e associa a uma vaga | Sensores de ocupação, câmera com leitura de placa (LPR), cancelas, impressora térmica |
@@ -69,7 +73,11 @@ flowchart LR
 
 ### 2.1 Painel Administrativo (`apps/admin-web`)
 - React SPA servida pelo próprio servidor local (`http://<pc-servidor>:8080`), acessível pelos computadores da rede do estacionamento.
-- **Entrada**: digitar a placa e escolher a vaga. O sistema gera o ticket e **mostra o QR Code e o link** para o cliente.
+- **Entrada**: digitar a placa e escolher a categoria (carro ou moto) e a vaga. O sistema gera o ticket e apresenta o acesso do cliente de três formas:
+  1. **Janela com o QR Code** na tela do operador.
+  2. **Tela do Cliente** (`/tela-cliente`): página aberta num segundo monitor voltado para o cliente. Ela recebe o QR do último ticket daquele posto por *Server-Sent Events* (atualização em tempo real) e volta sozinha para uma tela de espera após 60s.
+  3. Botões **“Copiar link”** e **“Enviar por WhatsApp”**. O segundo abre `https://wa.me/<telefone>?text=<mensagem com link>` no WhatsApp Web ou Desktop. O telefone é digitado só para o envio e **não é guardado**. Essa opção precisa de internet no PC do operador; as outras duas funcionam sem internet.
+- O QR pode ser **mostrado de novo** pelos detalhes do ticket (o cliente perdeu a foto, por exemplo), ou **revogado e gerado novamente**.
 - **Saída**: buscar por placa ou ticket, ver o valor calculado, registrar **um ou mais pagamentos** (dinheiro, Pix, débito, crédito; é possível dividir entre formas) e calcular o troco.
 - Também: caixa (abertura, fechamento e sangria), cadastro de vagas e tipos, tabela de tarifas, usuários e perfis, relatórios e **status da sincronização**.
 
@@ -150,7 +158,7 @@ sequenceDiagram
 1. O operador busca o ticket e o servidor local calcula o valor final com a função compartilhada.
 2. O operador registra um ou mais pagamentos. Quando a soma cobre o valor, o ticket é fechado e a vaga liberada.
 3. Eventos gerados: `pagamento.registrado` (×N), `ticket.fechado` e `vaga.liberada`.
-4. O PWA passa a mostrar “Pago / Encerrado”. O token **expira 24h após a saída** (⚠️ ajustável).
+4. O PWA passa a mostrar “Pago / Encerrado”. O link **expira 24h após a saída**. O histórico continua guardado (§9).
 
 ### 3.3 Quando a internet cai
 1. A operação continua normalmente e os eventos se acumulam na outbox.
@@ -186,15 +194,18 @@ sequenceDiagram
 
 ### 4.2 Hospedagem na nuvem (custo-benefício)
 
-O volume é pequeno: um estacionamento, poucas requisições por minuto. Por isso o custo de uma VPS pequena compensa mais que serviços gerenciados.
+O volume é pequeno: um estacionamento, poucas requisições por minuto. Como **ainda não há domínio próprio**, a hospedagem precisa fornecer **subdomínio com HTTPS**. Por isso a recomendação muda conforme a fase.
 
 | Opção | Como fica | Prós | Contras |
 |-------|-----------|------|---------|
-| **A. VPS com Docker** (ex.: Hostinger VPS, Vultr ou Magalu Cloud, com região no Brasil) | API + MySQL + Caddy numa VPS de 1–2 vCPU / 2–4 GB | **Menor custo**, baixa latência no Brasil, controle total | Backup e atualizações por nossa conta (automatizados com scripts) |
-| B. VPS + MySQL gerenciado (ex.: DigitalOcean, Aiven) | API na VPS, banco gerenciado | Backup automático, alta disponibilidade do banco | Custo maior, sem região no Brasil em alguns provedores |
-| C. PaaS (Railway, Render) | Deploy pelo Git | Mais simples de operar | Custo cresce rápido; MySQL nem sempre oferecido |
+| **A. Separado por função, com subdomínios do provedor** (PWA em **Cloudflare Pages** ou Netlify; API em **Render** ou Railway; MySQL em **Aiven** ou Railway) | `estacionamento.pages.dev` + `estacionamento-api.onrender.com` | Subdomínio e HTTPS **automáticos**, deploy pelo Git, custo zero ou muito baixo no início | Planos gratuitos “dormem” quando não usados (a primeira requisição demora) e têm limites; servidores fora do Brasil |
+| B. VPS com Docker (ex.: Hostinger, Vultr ou Magalu Cloud, com região no Brasil) | API + MySQL + Caddy numa VPS | Menor custo por recurso, latência baixa, controle total | Precisa de domínio (ou de um DNS gratuito como DuckDNS) para ter HTTPS; backups por nossa conta |
+| C. VPS + MySQL gerenciado | API na VPS, banco gerenciado | Backup automático e alta disponibilidade | Custo maior |
 
-**Recomendação:** começar pela **opção A**, com backup diário do MySQL enviado para um armazenamento de objetos externo (ex.: Backblaze B2 ou Cloudflare R2) e monitoramento de disponibilidade (ex.: UptimeRobot). Como tudo roda em Docker, migrar para a opção B depois é simples.
+**Recomendação:**
+- **Agora (protótipo, estacionamento fictício): opção A.** Atende o pedido de usar subdomínios do provedor, sem comprar domínio e quase sem custo. O PWA, por ser só arquivos estáticos, fica numa CDN gratuita.
+- **Implantação real: opção B ou C**, com domínio próprio, backup diário do MySQL num armazenamento externo (ex.: Backblaze B2 ou Cloudflare R2) e monitoramento de disponibilidade (ex.: UptimeRobot).
+- A API é empacotada em **Docker** desde o início, então trocar de provedor é só uma nova implantação mais o snapshot (§6.3, regra 7).
 
 A perda temporária da nuvem **não afeta a operação**: o servidor local continua sendo a fonte da verdade e pode reenviar tudo (§6.3, regra 7).
 
@@ -227,7 +238,7 @@ Estacionamento/
 │   │   │   ├── app.ts
 │   │   │   └── server.ts
 │   │   └── tests/
-│   ├── admin-web/src/{pages,components,services,hooks}
+│   ├── admin-web/src/{pages,components,services,hooks}   # pages/tela-cliente = monitor do cliente
 │   ├── cloud-api/
 │   │   ├── src/
 │   │   │   ├── db/migrations/
@@ -311,7 +322,7 @@ Formato:
 8. **Horários**: sempre vindos do servidor local e gravados em **UTC**. Regras de tarifa (diária, período noturno) usam o fuso `America/Sao_Paulo`.
 9. **Dinheiro**: sempre em **centavos inteiros**, nunca em ponto flutuante.
 10. **Versão do formato**: mudança que quebra compatibilidade cria `version + 1`, e a nuvem aceita as duas versões durante a transição.
-11. **Retenção**: eventos enviados são apagados da outbox local após 30 dias. Tickets públicos são apagados da nuvem 30 dias após a saída (⚠️ ajustável).
+11. **Retenção**: ver §9. Apagar dados na nuvem **nunca** apaga dados no local.
 
 ### 6.4 Endpoints de sincronização
 
@@ -333,7 +344,7 @@ Formato:
 - Login dos funcionários com argon2id, bloqueio após 5 tentativas e sessão que expira após inatividade.
 - **Perfis de acesso (RBAC)**: `admin` (tudo), `operador` (entrada, saída, pagamento, caixa próprio), `financeiro` (relatórios). Cancelamento, estorno e alteração de tarifa só para `admin`, com justificativa.
 - **Auditoria** (`audit_log`, sem permissão de alteração pela aplicação): cancelamentos, estornos, mudanças de tarifa, abertura e fechamento de caixa, logins.
-- **Backup diário** pelo Agendador de Tarefas: guardar 7 diários e 4 semanais, e mandar uma cópia criptografada (AES-256) para fora do PC (pen drive, outro PC ou armazenamento na nuvem).
+- **Backup diário** pelo Agendador de Tarefas: guardar 7 diários, 4 semanais e 12 mensais, e mandar uma cópia criptografada (AES-256) para fora do PC (pen drive, outro PC ou armazenamento na nuvem).
 
 ### 7.2 Canal de sincronização
 - HTTPS (TLS 1.2+) e, por estabelecimento, `site_id` e segredo próprio (guardado no `.env` local, nunca no Git).
@@ -345,7 +356,7 @@ Formato:
 ### 7.3 Token do ticket (acesso do cliente)
 - **32 bytes aleatórios** (`crypto.randomBytes`), em base64url com 43 caracteres. É impossível de adivinhar por tentativa.
 - **Só o hash SHA-256** fica guardado (local e nuvem). Quem copiar o banco não consegue montar links válidos.
-- Vai **depois do `#`** no link (`https://app.exemplo.com.br/t#<token>`). O navegador não envia essa parte ao servidor, então ela não aparece em logs, proxies nem no cabeçalho *Referer*. O PWA manda o token no header `Authorization`.
+- Vai **depois do `#`** no link (`https://estacionamento.pages.dev/t#<token>`). O navegador não envia essa parte ao servidor, então ela não aparece em logs, proxies nem no cabeçalho *Referer*. O PWA manda o token no header `Authorization`.
 - Dá acesso **somente** àquele ticket e apenas para leitura.
 - Expira 24h após a saída. O operador pode **revogar e gerar um QR novo** se o cliente perder ou compartilhar o link.
 - Limite de requisições por IP no `/v1/ticket`, e resposta idêntica para token inválido ou expirado.
@@ -367,9 +378,94 @@ Formato:
 
 ---
 
-## 8. Pontos em aberto ⚠️
+## 8. Modelo de tarifas
 
-1. **Como o QR chega ao cliente na v1**, já que não há impressora: (a) o cliente escaneia na tela do operador ou num monitor voltado para ele; (b) o operador envia o link por WhatsApp, manualmente; (c) as duas opções.
-2. **Regras da tabela de tarifas**: fração inicial, valor por hora, tolerância, diária máxima, pernoite, preço diferente por tipo de veículo (carro, moto)? Vão definir o modelo de `tarifas` e a função de cálculo.
-3. **Prazos**: o token expira 24h após a saída e os tickets ficam 30 dias na nuvem. Esses valores servem?
-4. **Domínio** para o PWA e a API (ex.: `app.seuestacionamento.com.br`).
+### 8.1 Princípios
+- **Tudo configurável pelo painel** (perfil `admin`). Nenhum valor fica no código.
+- **Tabelas versionadas**: editar uma tarifa **cria uma nova versão** com data de início de vigência. Versões publicadas nunca são alteradas.
+- **O ticket guarda a versão vigente na entrada** (`tarifa_versao_id`). Assim, mudar a tabela durante o dia não altera a conta de quem já entrou, e o PWA mostra o mesmo cálculo que o caixa.
+- **Por categoria de veículo**: `categorias_veiculo` (Carro, Moto, cadastráveis). Cada versão da tabela tem uma regra por categoria.
+- Valores em centavos e tempos em minutos inteiros. A permanência é arredondada **para cima**, ao minuto.
+
+### 8.2 Parâmetros por categoria
+
+| Parâmetro | Exemplo | Significado |
+|-----------|---------|-------------|
+| `tolerancia_min` | 10 | Até esse tempo, **não cobra nada** |
+| `primeira_hora_centavos` | 1000 | Valor da 1ª hora (pode ser igual à hora adicional) |
+| `hora_adicional_centavos` | 600 | Valor de cada hora completa depois da 1ª |
+| `fracao_min` / `fracao_centavos` | 15 / 200 | Cobrança do tempo que sobra além das horas completas. **Opcional**: sem fração, o que sobra conta como hora cheia |
+| `diaria_maxima_centavos` | 4000 | Teto cobrado a cada período de 24h no modo avulso. Opcional |
+| `diaria_centavos` | 3500 | Preço fixo do **modo diária** (o operador escolhe na entrada). Opcional |
+| *`pernoite_*` (futuro)* | 20h–08h, 2500 | Campos já previstos, desligados na v1 |
+
+### 8.3 Algoritmo (modo avulso)
+
+```
+m = minutos de permanência (arredondados para cima)
+se m <= tolerancia_min            → 0
+dias  = floor(m / 1440);  resto = m % 1440
+teto  = diaria_maxima ?? ∞
+total = dias × teto(*) + min(custo_horas(resto), teto)
+
+custo_horas(r):
+  se r == 0 → 0
+  valor = primeira_hora
+  r = r - 60;  se r <= 0 → valor
+  valor += floor(r / 60) × hora_adicional
+  sobra = r % 60
+  se sobra > 0:
+     com fração → valor += min(ceil(sobra / fracao_min) × fracao, hora_adicional)
+     sem fração → valor += hora_adicional
+  → valor
+```
+(*) Sem diária máxima, os dias completos são cobrados pelo `custo_horas(1440)`.
+
+**Modo diária:** `ceil(m / 1440) × diaria_centavos`.
+
+**Exemplo** (valores da tabela acima, carro, 2h20): 1ª hora 10,00 + 1 hora adicional 6,00 + sobra de 20 min = 2 frações × 2,00 = 4,00 → **R$ 20,00** (abaixo do teto de 40,00).
+
+- A função fica em `packages/shared/src/tarifa` e terá **testes com uma tabela de casos**: limites da tolerância, virada de hora, teto da diária, mais de 24h.
+- No painel, o admin terá um **simulador** (“quanto custa ficar X horas?”) para conferir a tabela antes de publicar.
+- O PWA mostra a tabela de forma legível, gerada a partir dos mesmos parâmetros.
+
+---
+
+## 9. Retenção de dados
+
+**A expiração do link do cliente não apaga nada.** São três prazos independentes:
+
+| Onde | O quê | Prazo | O que acontece |
+|------|-------|-------|----------------|
+| Nuvem | **Acesso pelo link** | 24h após a saída | `/v1/ticket` responde “acesso expirado”. O registro continua lá |
+| Nuvem | Registro público do ticket | 30 dias após a saída | Apagado por uma rotina diária |
+| Local | Outbox de sincronização (já enviada) | 30 dias | Apagada (é só fila de transporte) |
+| Local | **Tickets, pagamentos, caixa, auditoria** | **Política própria, configurável. Padrão: 5 anos** | Não são apagados automaticamente. Após o prazo podem ser **arquivados** (exportados) ou **anonimizados** (a placa é trocada por um hash), mantendo os valores para os relatórios |
+| Local | Backups | 7 diários + 4 semanais + 12 mensais | Rotação automática |
+
+- O padrão de 5 anos acompanha o prazo usual de guarda de registros fiscais e contábeis. ⚠️ Num estacionamento real, validar com o contador.
+- **Registros financeiros nunca são apagados fisicamente** pela aplicação. Correção é feita por estorno ou cancelamento, que fica registrado na auditoria.
+- A política fica em `configuracoes` (por `site_id`) e é executada por uma tarefa agendada do servidor local, com registro do que foi arquivado ou anonimizado.
+
+---
+
+## 10. Domínios e URLs
+
+- Nenhuma URL fica no código. Tudo vem de configuração:
+
+| Variável | Onde | Exemplo agora (subdomínio do provedor) | Futuro |
+|----------|------|----------------------------------------|--------|
+| `PUBLIC_PWA_URL` | servidor local (para montar o link e o QR) e API (CORS) | `https://estacionamento.pages.dev` | `https://app.meuestacionamento.com.br` |
+| `CLOUD_API_URL` | servidor local (sync) e PWA (build) | `https://estacionamento-api.onrender.com` | `https://api.meuestacionamento.com.br` |
+
+- O **slug do estacionamento** vai na rota do PWA (`/s/<slug>`) e não no domínio. Assim, vários estabelecimentos funcionam sem precisar de um subdomínio por cliente.
+- **Ao trocar de domínio**: só os links de tickets abertos usam a URL antiga, e eles duram no máximo até 24h após a saída. Basta manter um redirecionamento do domínio antigo por alguns dias. Como o token vai depois do `#`, ele é mantido no redirecionamento pelo navegador.
+
+---
+
+## 11. Pontos em aberto ⚠️
+
+Nenhum ponto bloqueia o início da implementação. Itens para decidir mais tarde:
+1. Pernoite: janela de horário e regra de cobrança (os campos já estão previstos).
+2. Política de retenção local definitiva, se o projeto virar um estacionamento real.
+3. Provedor definitivo para a implantação real (§4.2).
