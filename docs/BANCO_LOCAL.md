@@ -450,13 +450,18 @@ Todas as FKs têm índice (o InnoDB exige, e isso evita bloqueios em cascata).
 ## 9. Como executar
 
 ```bash
-# Windows (PowerShell) ou Linux, com o cliente mysql no PATH:
+# Funciona no PowerShell, no Prompt de Comando e no Linux (cliente mysql no PATH).
+# Execute a partir da pasta raiz do projeto:
 mysql -uroot -p -e "CREATE DATABASE estacionamento CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;"
-mysql -uroot -p estacionamento < database/local/001_schema.sql
-mysql -uroot -p estacionamento < database/local/002_triggers.sql
-mysql -uroot -p estacionamento < database/local/003_views.sql
-mysql -uroot -p estacionamento < database/local/004_seed.sql
+mysql -uroot -p estacionamento -e "source database/local/001_schema.sql"
+mysql -uroot -p estacionamento -e "source database/local/002_triggers.sql"
+mysql -uroot -p estacionamento -e "source database/local/003_views.sql"
+mysql -uroot -p estacionamento -e "source database/local/004_seed.sql"
 ```
+
+> Não use `mysql ... < arquivo.sql` no PowerShell: o PowerShell não aceita `<` para redirecionar entrada.
+>
+> Alternativa visual: no **MySQL Workbench**, abra cada arquivo em *File → Open SQL Script* e execute-os em ordem (001 → 004) com o banco `estacionamento` selecionado. O Workbench entende o `DELIMITER` dos triggers.
 
 Testes de integridade (criam e apagam o banco `est_test`):
 
