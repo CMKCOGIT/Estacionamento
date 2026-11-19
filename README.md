@@ -58,6 +58,22 @@ Estacionamento/
 
 O módulo `formas-pagamento` serve de exemplo completo.
 
+## Uso no dia a dia (Windows) — sem digitar comandos
+
+Na pasta do projeto há três arquivos para abrir com **dois cliques**:
+
+| Arquivo | Quando usar | O que faz |
+|---------|-------------|-----------|
+| **`Atualizar.cmd`** | Sempre que houver uma versão nova | Baixa a versão do GitHub, instala dependências, atualiza o banco (`db:migrar`) e compila o painel |
+| **`Iniciar.cmd`** | Para usar o sistema | Liga o servidor numa janela minimizada e abre o painel em http://localhost:8080. Se o servidor já estiver ligado, só abre o painel |
+| `Criar-Administrador.cmd` | Primeiro acesso | Cria o estacionamento e um usuário administrador |
+
+**Para desligar o servidor**, feche a janela *Servidor do Estacionamento* na barra de tarefas. **Antes de atualizar**, desligue o servidor: o `Atualizar.cmd` avisa se ele estiver ligado.
+
+**Atalho na área de trabalho:** clique com o botão direito em `Iniciar.cmd` → *Mostrar mais opções* → *Enviar para* → *Área de trabalho (criar atalho)*.
+
+Os comandos abaixo continuam disponíveis para desenvolvimento.
+
 ## Pré-requisitos (Windows)
 
 - **Node.js 22 LTS**: https://nodejs.org (instalador `.msi`, opções padrão)

@@ -2,3 +2,6 @@
 *.ps1 text eol=crlf
 *.png binary
 *.ico binary
+# Arquivos de lote do Windows precisam de CRLF para funcionar
+*.cmd text eol=crlf
+*.bat text eol=crlf
