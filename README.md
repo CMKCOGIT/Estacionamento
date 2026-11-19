@@ -10,6 +10,7 @@ Sistema de gerenciamento de estacionamento:
 |-----------|----------|
 | [`docs/ARQUITETURA.md`](docs/ARQUITETURA.md) | Arquitetura, sincronização, segurança, tarifas, retenção |
 | [`docs/BANCO_LOCAL.md`](docs/BANCO_LOCAL.md) | Modelo do banco MySQL local e diagramas ER |
+| [`docs/OPERACAO.md`](docs/OPERACAO.md) | Entrada e saída: ticket, QR do cliente, cálculo, pagamento, caixa e validações |
 | [`docs/VEICULOS.md`](docs/VEICULOS.md) | Cadastro por placa, histórico de estadias e regra de uma estadia aberta |
 | [`docs/VAGAS.md`](docs/VAGAS.md) | Mapa de vagas, bloqueio, exclusão com histórico e capacidade |
 | [`docs/DASHBOARD.md`](docs/DASHBOARD.md) | Como cada indicador, gráfico e alerta do painel é calculado |
@@ -170,6 +171,7 @@ O painel compilado passa a ser servido pelo próprio servidor em **http://localh
 | GET | `/api/v1/atividades` | Histórico de atividades |
 | GET/POST/PATCH/PUT | `/api/v1/vagas...` · `/api/v1/categorias` | Vagas, capacidade e categorias (ver docs/VAGAS.md) |
 | GET/POST/PATCH | `/api/v1/veiculos...` | Veículos, consulta por placa e estadias (ver docs/VEICULOS.md) |
+| GET/POST | `/api/v1/sessoes...` · `/api/v1/caixa...` | Entrada, saída, cancelamento, novo link e caixa do operador (ver docs/OPERACAO.md) |
 | GET | `/api/v1/dashboard` | Indicadores, gráficos, alertas e sincronização do painel |
 
 Todas as rotas, exceto `/health` e `/auth/login`, exigem login. Detalhes em [`docs/AUTENTICACAO.md`](docs/AUTENTICACAO.md).

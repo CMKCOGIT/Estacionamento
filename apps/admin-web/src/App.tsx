@@ -5,6 +5,7 @@ import { Layout } from './components/Layout';
 import { Atividades } from './pages/Atividades';
 import { Dashboard } from './pages/Dashboard';
 import { Login } from './pages/Login';
+import { Operacao } from './pages/Operacao';
 import { TrocarSenha } from './pages/TrocarSenha';
 import { UsuarioForm } from './pages/UsuarioForm';
 import { Vagas } from './pages/Vagas';
@@ -31,6 +32,14 @@ export function App() {
           >
             <Route index element={<Dashboard />} />
             <Route path="trocar-senha" element={<TrocarSenha />} />
+            <Route
+              path="operacao"
+              element={
+                <RotaProtegida permissoes={['sessao.entrada', 'sessao.saida']}>
+                  <Operacao />
+                </RotaProtegida>
+              }
+            />
             <Route
               path="veiculos"
               element={

@@ -65,6 +65,7 @@ const schemaEnv = z.object({
   // Futuro (sincronização)
   SITE_ID: z.string().length(26).optional(),
   CLOUD_API_URL: z.url().optional(),
+  /** Endereço do app do cliente (PWA). Usado no link/QR do ticket. */
   PUBLIC_PWA_URL: z.url().optional(),
 });
 

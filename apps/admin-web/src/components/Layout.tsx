@@ -7,7 +7,7 @@ import { useAuth } from '../auth/contexto';
  */
 const MENU: { rotulo: string; rota: string | null; permissoes: string[] }[] = [
   { rotulo: 'Painel', rota: '/', permissoes: [] },
-  { rotulo: 'Entrada e saída', rota: null, permissoes: ['sessao.entrada', 'sessao.saida'] },
+  { rotulo: 'Entrada e saída', rota: '/operacao', permissoes: ['sessao.entrada', 'sessao.saida'] },
   {
     rotulo: 'Veículos',
     rota: '/veiculos',

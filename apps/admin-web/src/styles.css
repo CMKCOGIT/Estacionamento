@@ -462,6 +462,8 @@ a.botao {
 }
 .tabela-rolagem {
   overflow-x: auto;
+  /* Conteúdo posicionado (ex.: .sr-only) fica preso dentro da rolagem */
+  position: relative;
 }
 .tabela--historico td {
   vertical-align: top;
@@ -1430,4 +1432,247 @@ a:has(> .placa) {
 }
 .linha-cancelada td {
   color: var(--texto-mudo);
+}
+
+/* ---------- Entrada e saída ---------- */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+.campo textarea {
+  width: 100%;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--borda);
+  border-radius: 8px;
+  background: var(--fundo);
+  color: var(--texto);
+  font: inherit;
+  resize: vertical;
+}
+.barra-caixa {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1.25rem;
+  padding: 0.7rem 1rem;
+  border: 1px solid var(--borda);
+  border-left: 4px solid var(--texto-mudo);
+  border-radius: var(--raio);
+  background: var(--superficie);
+  font-size: 0.92rem;
+}
+.barra-caixa--aberto {
+  border-left-color: var(--st-bom);
+}
+.barra-caixa--aberto .situacao__ponto {
+  background: var(--st-bom);
+}
+.barra-caixa__estado {
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.barra-caixa > .botao {
+  margin-left: auto;
+}
+.grade-operacao {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 380px), 1fr));
+  gap: 1.25rem;
+  align-items: start;
+}
+.grade-operacao__saida {
+  scroll-margin-top: 1rem;
+  min-width: 0;
+}
+.painel-op h2 {
+  margin: 0 0 0.85rem;
+  font-size: 1.15rem;
+}
+.painel-op .alerta {
+  margin: 0 0 0.75rem;
+}
+.painel-op .entrada-placa {
+  font-size: 1.35rem;
+  letter-spacing: 0.08em;
+}
+.linha-busca {
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-end;
+}
+.linha-busca .botao {
+  margin-bottom: 0.75rem;
+}
+.lista-dados {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.3rem 1rem;
+  margin: 0.75rem 0;
+  font-size: 0.92rem;
+}
+.lista-dados dt {
+  color: var(--texto-mudo);
+}
+.lista-dados dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+.fechamento {
+  border-top: 1px solid var(--borda);
+  padding-top: 0.9rem;
+}
+.fechamento__topo {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem 1rem;
+}
+.fechamento__total {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin: 0.5rem 0 0.9rem;
+  padding: 0.65rem 0.9rem;
+  border-radius: 8px;
+  background: var(--fundo);
+}
+.fechamento__total strong {
+  font-size: 1.7rem;
+  font-variant-numeric: tabular-nums;
+}
+.fechamento__ajuste {
+  margin-bottom: 0.75rem;
+  font-size: 0.92rem;
+}
+.fechamento__ajuste summary {
+  cursor: pointer;
+  color: var(--primaria);
+  margin-bottom: 0.5rem;
+}
+.pagamentos {
+  border: 1px solid var(--borda);
+  border-radius: 8px;
+  padding: 0.6rem 0.9rem 0.4rem;
+  margin: 0 0 0.75rem;
+  min-width: 0;
+}
+.pagamentos legend {
+  font-weight: 600;
+  padding: 0 0.3rem;
+}
+.pagamento {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 0 0.75rem;
+  align-items: end;
+  padding-bottom: 0.25rem;
+}
+.pagamento + .pagamento {
+  border-top: 1px dashed var(--borda);
+  padding-top: 0.6rem;
+}
+.pagamento__remover {
+  margin-bottom: 1.25rem;
+  justify-self: start;
+}
+.pagamento__aviso {
+  grid-column: 1 / -1;
+  margin: -0.4rem 0 0.5rem;
+}
+.pagamentos__rodape {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+.fechamento__troco,
+.recibo__troco {
+  font-size: 1.15rem;
+  margin: 0.25rem 0 0.6rem;
+}
+.recibo__troco {
+  padding: 0.75rem 1rem;
+  border-radius: 8px;
+  background: var(--fundo);
+  font-size: 1.35rem;
+}
+.cartao__topo {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem 1rem;
+  margin-bottom: 0.75rem;
+}
+.cartao__topo h2 {
+  margin: 0;
+  font-size: 1.15rem;
+}
+.campo--filtro {
+  margin: 0;
+  min-width: min(100%, 260px);
+}
+.acoes--tabela {
+  margin: 0;
+  gap: 0.5rem;
+  align-items: center;
+  flex-wrap: nowrap;
+}
+.linha-selecionada td {
+  background: var(--fundo);
+}
+.dialogo--ticket {
+  width: min(560px, calc(100vw - 32px));
+}
+.ticket {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem 1.5rem;
+  align-items: center;
+  justify-content: space-between;
+}
+.ticket__numero {
+  margin: 0 0 0.5rem;
+  font-size: 1.1rem;
+}
+/* QR sempre em fundo branco (leitura confiável também no tema escuro) */
+.ticket__qr {
+  width: min(220px, 100%);
+  padding: 8px;
+  background: #fff;
+  border-radius: 8px;
+  line-height: 0;
+  margin-inline: auto;
+}
+.ticket__qr svg {
+  width: 100%;
+  height: auto;
+}
+@media (max-width: 520px) {
+  .linha-busca {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .linha-busca .campo--crescer {
+    flex: none;
+  }
+  .barra-caixa > .botao {
+    margin-left: 0;
+  }
+}
+.painel-op .grade-campos {
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+}
+.painel-op > .opcao {
+  margin-bottom: 0.75rem;
 }

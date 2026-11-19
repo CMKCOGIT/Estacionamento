@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   cpfValido,
+  centavosParaCampo,
   formatarCentavos,
+  lerCentavos,
   formatarCpf,
   formatarPlaca,
   normalizarPlaca,
@@ -51,5 +53,20 @@ describe('códigos de vaga', () => {
     const { gerarCodigosVaga, compararCodigos } = await import('../src/index.js');
     expect(gerarCodigosVaga('a-', 9, 3, 2)).toEqual(['A-09', 'A-10', 'A-11']);
     expect(['A-10', 'A-2', 'A-1'].sort(compararCodigos)).toEqual(['A-1', 'A-2', 'A-10']);
+  });
+});
+
+describe('lerCentavos', () => {
+  it('lê os formatos que o operador digita', () => {
+    expect(lerCentavos('18')).toBe(1800);
+    expect(lerCentavos('18,5')).toBe(1850);
+    expect(lerCentavos('R$ 1.234,56')).toBe(123456);
+    expect(lerCentavos('18.50')).toBe(1850);
+    expect(lerCentavos('1.000')).toBe(100000);
+    expect(lerCentavos('0,07')).toBe(7);
+    expect(lerCentavos('')).toBeNull();
+    expect(lerCentavos('abc')).toBeNull();
+    expect(lerCentavos('1,234')).toBeNull();
+    expect(centavosParaCampo(2050)).toBe('20,50');
   });
 });
