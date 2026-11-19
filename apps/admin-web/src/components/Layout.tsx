@@ -9,6 +9,17 @@ const MENU: { rotulo: string; rota: string | null; permissoes: string[] }[] = [
   { rotulo: 'Painel', rota: '/', permissoes: [] },
   { rotulo: 'Entrada e saída', rota: null, permissoes: ['sessao.entrada', 'sessao.saida'] },
   {
+    rotulo: 'Veículos',
+    rota: '/veiculos',
+    permissoes: [
+      'veiculo.gerenciar',
+      'sessao.consultar',
+      'sessao.entrada',
+      'sessao.saida',
+      'relatorio.operacional',
+    ],
+  },
+  {
     rotulo: 'Vagas',
     rota: '/vagas',
     permissoes: [

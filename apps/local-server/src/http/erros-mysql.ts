@@ -13,6 +13,7 @@ const MENSAGENS_UNICIDADE: Record<string, string> = {
   uq_sessoes_vaga_aberta: 'Esta vaga já está ocupada por outro veículo.',
   uq_sessoes_veiculo_aberto: 'Este veículo já está estacionado.',
   uq_vagas_codigo: 'Já existe uma vaga com este código.',
+  uq_veiculos_placa: 'Já existe um veículo cadastrado com esta placa.',
   uq_categorias_codigo: 'Já existe uma categoria com este código.',
   uq_pagamentos_idempotencia: 'Este pagamento já foi registrado.',
   uq_usuarios_login: 'Este login já está em uso.',

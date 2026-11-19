@@ -52,6 +52,27 @@ const LETRAS = 'ABCDEFGHJKLMNPRSTUVWXYZ';
 const placa = () =>
   `${LETRAS[entre(0, 22)]}${LETRAS[entre(0, 22)]}${LETRAS[entre(0, 22)]}${entre(0, 9)}${LETRAS[entre(0, 22)]}${entre(10, 99)}`;
 
+/**
+ * Clientes frequentes: um grupo de placas que volta em vários dias (histórico
+ * de estadias). Cada placa guarda até quando está ocupada, para o mesmo carro
+ * nunca ter duas estadias sobrepostas.
+ */
+const frequentes = {
+  carro: Array.from({ length: 35 }, () => ({ placa: placa(), livreEm: 0 })),
+  moto: Array.from({ length: 8 }, () => ({ placa: placa(), livreEm: 0 })),
+};
+function placaParaEstadia(cat: 'carro' | 'moto', entrada: Date, saida: Date): string {
+  if (aleatorio() < 0.4) {
+    const livres = frequentes[cat].filter((f) => f.livreEm <= entrada.getTime());
+    const f = livres[entre(0, Math.max(0, livres.length - 1))];
+    if (f) {
+      f.livreEm = saida.getTime();
+      return f.placa;
+    }
+  }
+  return placa();
+}
+
 const MIN = 60_000;
 const HORA = 60 * MIN;
 
@@ -210,7 +231,7 @@ for (let d = 6; d >= 0; d--) {
         categoriaId: base.categorias[p.cat],
         regraId,
         vagaId,
-        placa: placa(),
+        placa: placaParaEstadia(p.cat, p.entrada, saidaReal),
         em: p.entrada,
         modalidade: p.modalidade,
       });

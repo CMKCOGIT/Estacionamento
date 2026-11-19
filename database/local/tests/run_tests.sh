@@ -13,7 +13,7 @@ PASS=0; FAIL=0
 run()  { $MYSQL "$DB" 2>&1 | grep -v "Using a password"; }
 
 $MYSQL -e "DROP DATABASE IF EXISTS $DB; CREATE DATABASE $DB CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;" 2>&1 | grep -v "Using a password"
-for f in 001_schema.sql 002_triggers.sql 003_views.sql 004_seed.sql 005_autenticacao.sql 006_usuarios_permissoes.sql 007_vagas.sql; do
+for f in 001_schema.sql 002_triggers.sql 003_views.sql 004_seed.sql 005_autenticacao.sql 006_usuarios_permissoes.sql 007_vagas.sql 008_veiculos.sql; do
   out=$(run < "$f"); [ -n "$out" ] && { echo "ERRO aplicando $f:"; echo "$out"; exit 1; }
 done
 
@@ -201,6 +201,17 @@ fail "liberar mantendo dados do bloqueio" "UPDATE vagas SET situacao='ATIVA' WHE
 ok   "liberar vaga corretamente" "UPDATE vagas SET situacao='ATIVA', motivo_bloqueio=NULL, bloqueada_em=NULL, bloqueada_por=NULL WHERE id='V2';"
 fail "desativar categoria com vagas" "UPDATE categorias_veiculo SET ativo=FALSE WHERE id='CAR';" "Remova ou mude"
 expect "capacidade registrada no histórico geral" "SELECT COUNT(*) FROM historico_atividades WHERE acao='vaga.capacidade_alterada';" "1"
+
+echo "== Veículos (008)"
+fail "ticket com placa diferente da do veículo" "INSERT INTO sessoes_estacionamento (id, site_id, numero, veiculo_id, placa, categoria_id, vaga_id, tarifa_regra_id, entrada_em, operador_entrada_id)
+VALUES ('S90','S1',90,'VE2','ZZZ9Z99','CAR','V4','R1',NOW(3),'U1');" "corresponde"
+ok   "nova entrada atualiza a última visita" "INSERT INTO sessoes_estacionamento (id, site_id, numero, veiculo_id, placa, categoria_id, vaga_id, tarifa_regra_id, entrada_em, operador_entrada_id)
+VALUES ('S91','S1',91,'VE2','ABC1D23','CAR','V4','R1','2026-11-18 09:30:00','U1');"
+expect "primeira e última visita mantidas pelo banco" "SELECT CONCAT(primeira_visita_em, ' / ', ultima_visita_em) FROM veiculos WHERE id='VE2';" "2026-11-18 09:30:00.000 / 2026-11-18 09:30:00.000"
+fail "trocar o ticket para placa de outro veículo" "UPDATE sessoes_estacionamento SET placa='MOT1A11' WHERE id='S91';" "corresponde"
+ok   "corrigir a placa do veículo" "SET @app_motivo='digitação'; UPDATE veiculos SET placa='ABC1D24' WHERE id='VE2';"
+expect "correção de placa registrada" "SELECT dados_anteriores->>'\$.placa' FROM historico_atividades WHERE acao='veiculo.placa_corrigida' AND entidade_id='VE2';" "ABC1D23"
+expect "ticket antigo preserva a placa da época" "SELECT placa FROM sessoes_estacionamento WHERE id='S91';" "ABC1D23"
 
 echo
 echo "Resultado: $PASS passaram, $FAIL falharam"

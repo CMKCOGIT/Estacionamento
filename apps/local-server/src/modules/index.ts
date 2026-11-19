@@ -7,6 +7,7 @@ import { healthRouter } from './health/health.routes.js';
 import { permissoesRouter } from './usuarios/permissoes.routes.js';
 import { usuariosRouter } from './usuarios/usuarios.routes.js';
 import { categoriasRouter, vagasRouter } from './vagas/vagas.routes.js';
+import { veiculosRouter } from './veiculos/veiculos.routes.js';
 
 export interface ModuloApi {
   /** Caminho relativo a /api/v1 */
@@ -26,7 +27,7 @@ export interface ModuloApi {
  *   3. nas rotas, use exigirPermissao('<modulo>.<acao>') para cada nível de acesso.
  *
  * Próximos módulos previstos (docs/ARQUITETURA.md §5):
- *   veiculos, clientes, sessoes,
+ *   clientes, sessoes,
  *   tarifas, pagamentos, caixa, relatorios, sync.
  */
 export const modulos: ModuloApi[] = [
@@ -36,6 +37,7 @@ export const modulos: ModuloApi[] = [
   { caminho: '/formas-pagamento', router: formasPagamentoRouter },
   { caminho: '/vagas', router: vagasRouter },
   { caminho: '/categorias', router: categoriasRouter },
+  { caminho: '/veiculos', router: veiculosRouter },
   { caminho: '/usuarios', router: usuariosRouter },
   { caminho: '/permissoes', router: permissoesRouter },
   { caminho: '/atividades', router: atividadesRouter },

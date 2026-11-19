@@ -8,6 +8,7 @@
 | `002_triggers.sql` | 39 triggers: regras de integridade e histórico automático |
 | `003_views.sql` | 6 views: ocupação, mapa de vagas, sessões abertas, caixa, tarifa vigente, sincronização |
 | `004_seed.sql` | Formas de pagamento, permissões e perfis padrão. Pode ser executado de novo sem duplicar nada |
+| `008_veiculos.sql` | Observações e autor do cadastro de veículo, coerência ticket ↔ veículo (mesma placa e site), primeira/última visita automáticas e histórico de cadastro e correção de placa |
 | `007_vagas.sql` | Registro do bloqueio manual (motivo, quando, quem), formato do código da vaga, proteção de categorias com vagas e histórico de capacidade |
 | `006_usuarios_permissoes.sql` | Níveis Administrador/Funcionário, permissões individuais (`usuario_permissoes`), modelos de permissão, e triggers de histórico para entradas, exclusões, funcionários e permissões |
 | `005_autenticacao.sql` | Tabela `sessoes_acesso` (sessões de login; ver [`AUTENTICACAO.md`](AUTENTICACAO.md)) e a permissão `usuario.sessoes` |

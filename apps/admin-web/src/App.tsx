@@ -8,6 +8,8 @@ import { Login } from './pages/Login';
 import { TrocarSenha } from './pages/TrocarSenha';
 import { UsuarioForm } from './pages/UsuarioForm';
 import { Vagas } from './pages/Vagas';
+import { VeiculoDetalhe } from './pages/VeiculoDetalhe';
+import { Veiculos } from './pages/Veiculos';
 import { Usuarios } from './pages/Usuarios';
 
 /**
@@ -29,6 +31,38 @@ export function App() {
           >
             <Route index element={<Dashboard />} />
             <Route path="trocar-senha" element={<TrocarSenha />} />
+            <Route
+              path="veiculos"
+              element={
+                <RotaProtegida
+                  permissoes={[
+                    'veiculo.gerenciar',
+                    'sessao.consultar',
+                    'sessao.entrada',
+                    'sessao.saida',
+                    'relatorio.operacional',
+                  ]}
+                >
+                  <Veiculos />
+                </RotaProtegida>
+              }
+            />
+            <Route
+              path="veiculos/:id"
+              element={
+                <RotaProtegida
+                  permissoes={[
+                    'veiculo.gerenciar',
+                    'sessao.consultar',
+                    'sessao.entrada',
+                    'sessao.saida',
+                    'relatorio.operacional',
+                  ]}
+                >
+                  <VeiculoDetalhe />
+                </RotaProtegida>
+              }
+            />
             <Route
               path="vagas"
               element={

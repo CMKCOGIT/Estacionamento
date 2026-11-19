@@ -67,6 +67,9 @@ code {
   display: flex;
   flex-direction: column;
   gap: 1.25rem;
+  /* Item de grid não encolhe abaixo do conteúdo por padrão: sem isto, uma
+     tabela larga alarga a página inteira no celular (em vez de rolar sozinha). */
+  min-width: 0;
 }
 
 .marca {
@@ -191,7 +194,12 @@ code {
 
 @media (max-width: 720px) {
   .layout {
-    grid-template-columns: 1fr;
+    /* minmax(0, …): a coluna nunca passa da largura da tela; o menu horizontal
+       rola por dentro em vez de alargar a página. */
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .layout__menu {
+    min-width: 0;
   }
   .layout__conteudo {
     padding: 1rem;
@@ -1328,4 +1336,98 @@ button.chip {
   .mapa__grade {
     grid-template-columns: repeat(auto-fill, minmax(92px, 1fr));
   }
+}
+
+/* ---------- Veículos ---------- */
+.placa {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.1rem 0.5rem;
+  border: 2px solid #1b2333;
+  border-top-width: 5px;
+  border-top-color: #1d4ed8;
+  border-radius: 5px;
+  background: #fff;
+  color: #111;
+  font-family: ui-monospace, Consolas, monospace;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+}
+.placa--grande {
+  font-size: 1.5rem;
+  padding: 0.15rem 0.7rem;
+}
+.placa__ext {
+  font-size: 0.6em;
+  padding: 0 0.25rem;
+  border-radius: 3px;
+  background: #1b2333;
+  color: #fff;
+}
+a:has(> .placa) {
+  text-decoration: none;
+}
+.titulo-veiculo {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 0.25rem 0;
+}
+.entrada-placa {
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 1.15rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.consulta-placa {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: flex-end;
+}
+.consulta-placa .campo {
+  margin-bottom: 0;
+}
+.consulta-placa__resultado {
+  flex-basis: 100%;
+  margin: 0;
+}
+.abas--pagina {
+  margin: 0;
+}
+.situacao-veiculo--dentro {
+  font-size: 0.9rem;
+}
+.situacao-veiculo--dentro > span[aria-hidden] {
+  color: var(--vaga-ocupada);
+}
+.estadia-atual--dentro {
+  border-left: 5px solid var(--vaga-ocupada);
+}
+.estadia-atual h2 span {
+  color: var(--vaga-ocupada);
+}
+.estadia-atual .resumo {
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+}
+.indicador-cartao__valor--texto {
+  font-size: 1.15rem;
+}
+.etiqueta--estadia-aberta {
+  background: var(--vaga-ocupada-fundo);
+  color: var(--texto);
+}
+.etiqueta--estadia-encerrada {
+  background: rgba(21, 128, 61, 0.12);
+  color: var(--ok);
+}
+.etiqueta--estadia-cancelada {
+  background: rgba(127, 127, 127, 0.15);
+  color: var(--texto-mudo);
+}
+.linha-cancelada td {
+  color: var(--texto-mudo);
 }
