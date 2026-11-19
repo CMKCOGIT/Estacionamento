@@ -13,7 +13,7 @@ PASS=0; FAIL=0
 run()  { $MYSQL "$DB" 2>&1 | grep -v "Using a password"; }
 
 $MYSQL -e "DROP DATABASE IF EXISTS $DB; CREATE DATABASE $DB CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;" 2>&1 | grep -v "Using a password"
-for f in 001_schema.sql 002_triggers.sql 003_views.sql 004_seed.sql 005_autenticacao.sql; do
+for f in 001_schema.sql 002_triggers.sql 003_views.sql 004_seed.sql 005_autenticacao.sql 006_usuarios_permissoes.sql; do
   out=$(run < "$f"); [ -n "$out" ] && { echo "ERRO aplicando $f:"; echo "$out"; exit 1; }
 done
 
@@ -178,6 +178,21 @@ VALUES ('E1','S1','ticket.aberto','ticket','S01','{}',NOW(3)),('E2','S1','ticket
 fail "evento duplicado"       "INSERT INTO sync_outbox (event_id, site_id, tipo, agregado_tipo, agregado_id, payload, ocorrido_em) VALUES ('E1','S1','x','t','S01','{}',NOW(3));" "uq_outbox_event"
 fail "enviado sem data"       "UPDATE sync_outbox SET status='ENVIADO' WHERE event_id='E1';" "ck_outbox_envio"
 expect "pendentes no painel"  "SELECT pendentes FROM vw_sync_status WHERE site_id='S1';" "2"
+
+echo "== Usuários e histórico de atividades (006)"
+expect "entrada de veículo registrada no histórico" "SELECT COUNT(*) FROM historico_atividades WHERE acao='sessao.entrada' AND entidade_id='S01' AND usuario_id='U1';" "1"
+ok   "excluir vaga nunca usada" "INSERT INTO vagas (id, site_id, codigo, categoria_id) VALUES ('V9','S1','Z-99','CAR'); DELETE FROM vagas WHERE id='V9';"
+expect "exclusão registrada com os dados anteriores" "SELECT dados_anteriores->>'\$.codigo' FROM historico_atividades WHERE acao='vaga.excluida';" "Z-99"
+fail "excluir vaga com histórico de sessões" "DELETE FROM vagas WHERE id='V1';" "foreign key"
+ok   "funcionário cadastrado" "INSERT INTO funcionarios (id, site_id, usuario_id, nome) VALUES ('F1','S1','U2','João');"
+expect "cadastro de funcionário registrado" "SELECT COUNT(*) FROM historico_atividades WHERE acao='funcionario.cadastrado' AND entidade_id='F1';" "1"
+fail "excluir funcionário"   "DELETE FROM funcionarios WHERE id='F1';" "desligamento"
+fail "excluir usuário"       "DELETE FROM usuarios WHERE id='U2';" "desative"
+fail "atribuir perfil modelo a usuário" "INSERT INTO usuario_perfis (usuario_id, site_id, perfil_id) VALUES ('U2','S1','00000000000000000000000002');" "modelo"
+ok   "conceder permissão individual" "INSERT INTO usuario_perfis (usuario_id, site_id, perfil_id) VALUES ('U2','S1','00000000000000000000000004');
+INSERT INTO usuario_permissoes (usuario_id, site_id, permissao_codigo) VALUES ('U2','S1','sessao.entrada');"
+fail "permissão inexistente" "INSERT INTO usuario_permissoes (usuario_id, site_id, permissao_codigo) VALUES ('U2','S1','nao.existe');" "foreign key"
+expect "concessão registrada" "SELECT COUNT(*) FROM historico_atividades WHERE acao='usuario.permissao_concedida';" "1"
 
 echo
 echo "Resultado: $PASS passaram, $FAIL falharam"

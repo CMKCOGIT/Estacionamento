@@ -10,7 +10,7 @@ Sistema de gerenciamento de estacionamento:
 |-----------|----------|
 | [`docs/ARQUITETURA.md`](docs/ARQUITETURA.md) | Arquitetura, sincronização, segurança, tarifas, retenção |
 | [`docs/BANCO_LOCAL.md`](docs/BANCO_LOCAL.md) | Modelo do banco MySQL local e diagramas ER |
-| [`docs/AUTENTICACAO.md`](docs/AUTENTICACAO.md) | Login, sessões, bloqueio de tentativas e níveis de acesso |
+| [`docs/AUTENTICACAO.md`](docs/AUTENTICACAO.md) | Login, sessões, bloqueio de tentativas, níveis de acesso, gerenciamento de usuários e histórico |
 
 ## Estrutura
 
@@ -36,7 +36,7 @@ Estacionamento/
 ├── packages/
 │   └── shared/              contratos e utilitários usados por backend e frontend
 ├── database/
-│   ├── local/               BANCO DE DADOS: migrations SQL 001–005 + testes
+│   ├── local/               BANCO DE DADOS: migrations SQL 001–006 + testes
 │   └── cloud/               (a modelar) banco da nuvem
 ├── infra/                   (a implementar) instalador Windows, Docker da nuvem
 └── docs/
@@ -160,5 +160,8 @@ O painel compilado passa a ser servido pelo próprio servidor em **http://localh
 | POST | `/api/v1/auth/trocar-senha` | Trocar a própria senha |
 | GET | `/api/v1/formas-pagamento?ativas=true` | Lista formas de pagamento (requer login) |
 | GET | `/api/v1/formas-pagamento/:codigo` | Uma forma de pagamento (requer login) |
+| GET/POST/PATCH/PUT | `/api/v1/usuarios...` | Funcionários, acesso, níveis e permissões |
+| GET | `/api/v1/permissoes` | Catálogo de permissões e modelos |
+| GET | `/api/v1/atividades` | Histórico de atividades |
 
 Todas as rotas, exceto `/health` e `/auth/login`, exigem login. Detalhes em [`docs/AUTENTICACAO.md`](docs/AUTENTICACAO.md).

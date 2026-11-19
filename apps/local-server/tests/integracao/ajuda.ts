@@ -1,4 +1,5 @@
 import type { RowDataPacket } from 'mysql2/promise';
+import request from 'supertest';
 import { ulid } from 'ulid';
 import { pool } from '../../src/db/pool.js';
 import { gerarHashSenha } from '../../src/modules/auth/senha.js';
@@ -19,15 +20,16 @@ export async function garantirAdmin(): Promise<{ siteId: string; usuarioId: stri
 
 const PERFIS = {
   admin: '00000000000000000000000001',
-  operador: '00000000000000000000000002',
-  financeiro: '00000000000000000000000003',
+  funcionario: '00000000000000000000000004',
 } as const;
 
-/** Cria um usuário de teste direto no banco. */
+/** Cria um usuário de teste direto no banco (sem funcionário vinculado). */
 export async function criarUsuario(opcoes: {
   login: string;
   senha: string;
   perfil?: keyof typeof PERFIS | null;
+  /** Nível Funcionário: padrão = permissões do modelo "Operador de caixa". */
+  permissoes?: string[];
   deveTrocarSenha?: boolean;
 }): Promise<string> {
   const { siteId } = await garantirAdmin();
@@ -38,7 +40,7 @@ export async function criarUsuario(opcoes: {
     await gerarHashSenha(opcoes.senha),
     opcoes.deveTrocarSenha ?? false,
   ]);
-  const perfil = opcoes.perfil === undefined ? 'operador' : opcoes.perfil;
+  const perfil = opcoes.perfil === undefined ? 'funcionario' : opcoes.perfil;
   if (perfil) {
     await pool.query('INSERT INTO usuario_perfis (usuario_id, site_id, perfil_id) VALUES (?, ?, ?)', [
       id,
@@ -46,5 +48,28 @@ export async function criarUsuario(opcoes: {
       PERFIS[perfil],
     ]);
   }
+  if (perfil === 'funcionario') {
+    const permissoes =
+      opcoes.permissoes ??
+      (
+        await pool.query<RowDataPacket[]>(
+          "SELECT pp.permissao_codigo AS c FROM perfil_permissoes pp JOIN perfis p ON p.id = pp.perfil_id WHERE p.codigo = 'operador'",
+        )
+      )[0].map((l) => String(l.c));
+    if (permissoes.length) {
+      await pool.query('INSERT INTO usuario_permissoes (usuario_id, site_id, permissao_codigo) VALUES ?', [
+        permissoes.map((p) => [id, siteId, p]),
+      ]);
+    }
+  }
   return id;
+}
+
+/** Faz login e devolve um agente com o cookie de sessão. */
+export async function entrar(app: Parameters<typeof request.agent>[0], login: string, senha: string) {
+  const agente = request.agent(app);
+  const res = await agente.post('/api/v1/auth/login').send({ login, senha });
+  if (res.status !== 200)
+    throw new Error(`Login de ${login} falhou: ${res.status} ${JSON.stringify(res.body)}`);
+  return agente;
 }

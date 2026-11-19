@@ -122,15 +122,29 @@ export const authRepository = {
     return linhas.map((l) => ({ codigo: String(l.codigo), nome: String(l.nome) }));
   },
 
+  /**
+   * Permissões efetivas no site:
+   *   - nível Administrador → TODAS as permissões do catálogo (inclusive as
+   *     criadas por migrations futuras);
+   *   - nível Funcionário   → as marcadas individualmente (usuario_permissoes);
+   *   - mais as de qualquer outro perfil NIVEL vinculado (extensões futuras).
+   */
   async permissoesDoUsuario(usuarioId: string, siteId: string): Promise<string[]> {
     const [linhas] = await pool.query<RowDataPacket[]>(
-      `SELECT DISTINCT pp.permissao_codigo AS codigo
+      `SELECT pe.codigo
+         FROM permissoes pe
+        WHERE EXISTS (SELECT 1 FROM usuario_perfis up JOIN perfis p ON p.id = up.perfil_id
+                       WHERE up.usuario_id = ? AND up.site_id = ? AND p.codigo = 'admin' AND p.ativo = TRUE)
+       UNION
+       SELECT pp.permissao_codigo
          FROM usuario_perfis up
-         JOIN perfis p             ON p.id = up.perfil_id AND p.ativo = TRUE
+         JOIN perfis p             ON p.id = up.perfil_id AND p.ativo = TRUE AND p.uso = 'NIVEL'
          JOIN perfil_permissoes pp ON pp.perfil_id = p.id
         WHERE up.usuario_id = ? AND up.site_id = ?
-        ORDER BY codigo`,
-      [usuarioId, siteId],
+       UNION
+       SELECT permissao_codigo FROM usuario_permissoes WHERE usuario_id = ? AND site_id = ?
+       ORDER BY 1`,
+      [usuarioId, siteId, usuarioId, siteId, usuarioId, siteId],
     );
     return linhas.map((l) => String(l.codigo));
   },

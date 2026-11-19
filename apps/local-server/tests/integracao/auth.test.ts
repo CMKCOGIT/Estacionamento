@@ -65,6 +65,7 @@ describe('login', () => {
     expect(JSON.stringify(res.body)).not.toContain(cookie.split(';')[0]?.split('=')[1]);
     expect(res.body.usuario).toMatchObject({ login: 'admin', nome: ADMIN.nome, deveTrocarSenha: false });
     expect(res.body.usuario.perfis).toEqual([{ codigo: 'admin', nome: 'Administrador' }]);
+    expect(res.body.usuario.permissoes).toContain('usuario.sessoes'); // admin recebe até permissões novas
     expect(res.body.usuario.permissoes).toContain('tarifa.publicar');
     expect(res.body.inatividadeMinutos).toBe(60);
   });
@@ -167,7 +168,7 @@ describe('sessão', () => {
   });
 
   it('níveis de acesso: operador não recebe permissões de admin', async () => {
-    await criarUsuario({ login: 'operador1', senha: 'Senha12345', perfil: 'operador' });
+    await criarUsuario({ login: 'operador1', senha: 'Senha12345' });
     const agente = request.agent(app);
     const res = await agente.post(LOGIN).send({ login: 'operador1', senha: 'Senha12345' }).expect(200);
     expect(res.body.usuario.permissoes).toContain('sessao.entrada');

@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { formatarCentavos, formatarPlaca, normalizarPlaca, placaValida } from '../src/index.js';
+import {
+  cpfValido,
+  formatarCentavos,
+  formatarCpf,
+  formatarPlaca,
+  normalizarPlaca,
+  placaValida,
+} from '../src/index.js';
 
 describe('placa', () => {
   it('normaliza', () => {
@@ -23,5 +30,18 @@ describe('dinheiro', () => {
   });
   it('rejeita valor não inteiro', () => {
     expect(() => formatarCentavos(10.5)).toThrow();
+  });
+});
+
+describe('cpf', () => {
+  it('valida pelos dígitos verificadores', () => {
+    expect(cpfValido('529.982.247-25')).toBe(true);
+    expect(cpfValido('52998224725')).toBe(true);
+    expect(cpfValido('529.982.247-24')).toBe(false);
+    expect(cpfValido('111.111.111-11')).toBe(false);
+    expect(cpfValido('123')).toBe(false);
+  });
+  it('formata', () => {
+    expect(formatarCpf('52998224725')).toBe('529.982.247-25');
   });
 });

@@ -1,7 +1,10 @@
 import type { Router } from 'express';
+import { atividadesRouter } from './atividades/atividades.routes.js';
 import { authRouter } from './auth/auth.routes.js';
 import { formasPagamentoRouter } from './formas-pagamento/formas-pagamento.routes.js';
 import { healthRouter } from './health/health.routes.js';
+import { permissoesRouter } from './usuarios/permissoes.routes.js';
+import { usuariosRouter } from './usuarios/usuarios.routes.js';
 
 export interface ModuloApi {
   /** Caminho relativo a /api/v1 */
@@ -21,11 +24,14 @@ export interface ModuloApi {
  *   3. nas rotas, use exigirPermissao('<modulo>.<acao>') para cada nível de acesso.
  *
  * Próximos módulos previstos (docs/ARQUITETURA.md §5):
- *   usuarios, funcionarios, vagas, veiculos, clientes, sessoes,
+ *   vagas, veiculos, clientes, sessoes,
  *   tarifas, pagamentos, caixa, relatorios, sync.
  */
 export const modulos: ModuloApi[] = [
   { caminho: '/health', router: healthRouter, publico: true },
   { caminho: '/auth', router: authRouter, publico: true },
   { caminho: '/formas-pagamento', router: formasPagamentoRouter },
+  { caminho: '/usuarios', router: usuariosRouter },
+  { caminho: '/permissoes', router: permissoesRouter },
+  { caminho: '/atividades', router: atividadesRouter },
 ];

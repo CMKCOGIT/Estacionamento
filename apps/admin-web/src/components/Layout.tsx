@@ -12,7 +12,8 @@ const MENU: { rotulo: string; rota: string | null; permissoes: string[] }[] = [
   { rotulo: 'Caixa', rota: null, permissoes: ['caixa.operar', 'caixa.supervisionar'] },
   { rotulo: 'Tarifas', rota: null, permissoes: ['tarifa.ver'] },
   { rotulo: 'Relatórios', rota: null, permissoes: ['relatorio.operacional', 'relatorio.financeiro'] },
-  { rotulo: 'Usuários', rota: null, permissoes: ['usuario.gerenciar'] },
+  { rotulo: 'Funcionários', rota: '/usuarios', permissoes: ['usuario.gerenciar', 'funcionario.gerenciar'] },
+  { rotulo: 'Atividades', rota: '/atividades', permissoes: ['auditoria.ver'] },
   { rotulo: 'Configurações', rota: null, permissoes: ['config.gerenciar'] },
 ];
 
@@ -38,7 +39,7 @@ export function Layout() {
               <NavLink
                 key={item.rotulo}
                 to={item.rota}
-                end
+                end={item.rota === '/'}
                 className={({ isActive }) => `menu__item${isActive ? ' menu__item--ativo' : ''}`}
               >
                 {item.rotulo}

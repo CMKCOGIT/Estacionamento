@@ -76,18 +76,69 @@ sequenceDiagram
 | GET | `/api/v1/auth/sessao` | logado | `200` usuário, perfis, permissões e validade · `401` |
 | POST | `/api/v1/auth/trocar-senha` | logado | `204` · `400` senha fraca · `422` senha atual incorreta |
 
-## 6. Níveis de acesso
+## 6. Níveis de acesso e permissões
 
-- **No servidor**, use em qualquer rota:
+Dois níveis (migration `006`):
+
+| Nível | Permissões |
+|-------|-----------|
+| **Administrador** | **Todas**, calculadas na hora a partir do catálogo, inclusive as que forem criadas no futuro |
+| **Funcionário** | **Somente as marcadas** pelo administrador, por funcionalidade, na tela do funcionário (tabela `usuario_permissoes`) |
+
+- Os perfis antigos **Operador de caixa** e **Financeiro** viraram **modelos** (`perfis.uso = MODELO`). Eles preenchem os checkboxes com um clique e não podem ser atribuídos diretamente (o banco recusa).
+- **Mudanças de permissão valem na hora:** as permissões são lidas a cada requisição, então as sessões abertas já seguem as novas regras.
+- **Proteções contra escalada de privilégio:**
+  - ninguém altera o próprio nível nem as próprias permissões, e ninguém desativa o próprio usuário;
+  - só um Administrador concede o nível Administrador ou mexe em dados e acesso de outro Administrador;
+  - quem não é Administrador só concede permissões que ele mesmo possui;
+  - o sistema nunca fica sem um Administrador ativo.
+
+Uso no código:
+
+- **No servidor**, em qualquer rota:
   ```ts
   router.post('/', exigirPermissao('tarifa.publicar'), handler);           // exige esta permissão
   router.get('/', exigirPermissao('caixa.operar', 'caixa.supervisionar'), handler); // basta UMA delas
   ```
 - **No painel:**
-  - `useAuth().temPermissao('...')` decide o que mostrar na tela;
-  - `<RotaProtegida permissoes={[...]}>` protege uma tela inteira;
+  - `useAuth().temPermissao('...')` decide o que mostrar;
+  - `<RotaProtegida permissoes={[...]}>` protege uma tela;
   - o menu (`components/Layout.tsx`) declara as permissões de cada item.
-- **Perfis padrão** (seed): `admin` (todas as permissões), `operador`, `financeiro`. Novas permissões entram por migration (`INSERT` em `permissoes`), como a `usuario.sessoes` da migration `005`.
+- **Permissão nova:** entra por migration (`INSERT` em `permissoes`) e aparece sozinha na tela de permissões.
+
+## 6.1 Gerenciamento de usuários (API)
+
+| Método | Rota | Permissão |
+|--------|------|-----------|
+| GET | `/api/v1/usuarios?busca=&situacao=ativos\|inativos\|todos&nivel=` | `usuario.gerenciar` ou `funcionario.gerenciar` |
+| GET | `/api/v1/usuarios/:id` | idem |
+| POST | `/api/v1/usuarios` (dados + `acesso` opcional) | `funcionario.gerenciar` (+ `usuario.gerenciar` se criar acesso) |
+| PATCH | `/api/v1/usuarios/:id` (dados pessoais) | `funcionario.gerenciar` |
+| PUT | `/api/v1/usuarios/:id/acesso` (login, nível, permissões) | `usuario.gerenciar` |
+| POST | `/api/v1/usuarios/:id/desativar` · `/reativar` (`motivo` obrigatório) | `funcionario.gerenciar` (+ `usuario.gerenciar` se tiver acesso) |
+| POST | `/api/v1/usuarios/:id/redefinir-senha` · `/desbloquear` | `usuario.gerenciar` |
+| GET | `/api/v1/permissoes` (catálogo por módulo + modelos) | `usuario.gerenciar` ou `funcionario.gerenciar` |
+| GET | `/api/v1/atividades?modulo=&usuarioId=&de=&ate=&antesDe=` | `auditoria.ver` |
+
+Regras de cadastro:
+- **Funcionários e usuários nunca são excluídos** (o banco bloqueia), porque aparecem no histórico. Use **Desativar**: o acesso é bloqueado e as sessões abertas são encerradas na hora.
+- Um funcionário pode existir **sem acesso ao sistema** (ex.: manobrista).
+- Ao criar o acesso ou redefinir a senha, o administrador define uma **senha provisória**, e o funcionário troca no primeiro login.
+
+## 6.2 Histórico de atividades
+
+**Registrado pelo banco (triggers),** com quem fez, quando, os dados antes e depois, e o motivo:
+- entrada e saída de veículos, cancelamento e alteração de ticket;
+- tarifas publicadas, arquivadas e excluídas;
+- pagamentos e estornos, abertura e fechamento de caixa;
+- vagas;
+- **exclusões** de vagas, categorias, clientes, veículos e postos;
+- funcionários cadastrados, alterados, desativados e reativados;
+- usuários criados ou alterados, níveis e permissões concedidos ou removidos, senhas, bloqueios, configurações.
+
+**Registrado pela aplicação:** login, logout, falhas de login, senha redefinida pelo administrador e desbloqueio.
+
+**No painel:** menu *Atividades*, com filtros por tipo, usuário e período, e paginação. A tela de cada funcionário tem o atalho *Ver atividades deste usuário*.
 
 ## 7. Primeiro acesso
 
@@ -99,10 +150,6 @@ npm run db:migrar
 npm run usuario:admin
 ```
 
-O segundo comando pergunta o nome do estacionamento (só na primeira vez), o nome, o login e a senha do administrador. A senha não aparece enquanto é digitada.
+Ou, no Windows, dê dois cliques em `Criar-Administrador.cmd`. O comando pergunta o nome do estacionamento (só na primeira vez), o nome, o login e a senha do administrador. A senha não aparece enquanto é digitada.
 
-**Desbloquear uma conta antes de passar o prazo:** ainda não há tela de usuários. Por enquanto, um administrador pode rodar no MySQL Workbench:
-
-```sql
-UPDATE usuarios SET bloqueado_ate = NULL, tentativas_falhas = 0 WHERE login = 'fulano';
-```
+**Desbloquear uma conta antes do prazo:** menu *Funcionários* → abra o funcionário → **Desbloquear conta**.
