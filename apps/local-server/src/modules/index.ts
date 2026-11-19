@@ -5,6 +5,7 @@ import { dashboardRouter } from './dashboard/dashboard.routes.js';
 import { formasPagamentoRouter } from './formas-pagamento/formas-pagamento.routes.js';
 import { healthRouter } from './health/health.routes.js';
 import { caixaRouter, sessoesRouter } from './sessoes/sessoes.routes.js';
+import { tarifasRouter } from './tarifas/tarifas.routes.js';
 import { permissoesRouter } from './usuarios/permissoes.routes.js';
 import { usuariosRouter } from './usuarios/usuarios.routes.js';
 import { categoriasRouter, vagasRouter } from './vagas/vagas.routes.js';
@@ -41,6 +42,7 @@ export const modulos: ModuloApi[] = [
   { caminho: '/veiculos', router: veiculosRouter },
   { caminho: '/sessoes', router: sessoesRouter },
   { caminho: '/caixa', router: caixaRouter },
+  { caminho: '/tarifas', router: tarifasRouter },
   { caminho: '/usuarios', router: usuariosRouter },
   { caminho: '/permissoes', router: permissoesRouter },
   { caminho: '/atividades', router: atividadesRouter },

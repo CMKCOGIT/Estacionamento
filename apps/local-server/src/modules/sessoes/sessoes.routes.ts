@@ -36,6 +36,12 @@ sessoesRouter.get('/vagas-livres', exigirPermissao('sessao.entrada'), async (req
   res.json({ itens: await sessoesService.vagasLivres(categoriaId) });
 });
 
+sessoesRouter.get('/tarifas', exigirPermissao('sessao.entrada'), async (req, res) => {
+  const { categoriaId } = z.object({ categoriaId: ulidSchema }).parse(req.query);
+  res.set('Cache-Control', 'no-store');
+  res.json(await sessoesService.tarifasDaEntrada(categoriaId));
+});
+
 sessoesRouter.get('/:id', consulta, async (req, res) => {
   res.set('Cache-Control', 'no-store');
   res.json(await sessoesService.obter(idDe(req)));
@@ -53,6 +59,7 @@ sessoesRouter.post('/entrada', exigirPermissao('sessao.entrada'), async (req, re
       marca: z.string().max(40).nullish(),
       modelo: z.string().max(60).nullish(),
       cor: z.string().max(30).nullish(),
+      tarifaRegraId: ulidSchema.nullish(),
     })
     .parse(req.body);
   res.status(201).json(await sessoesService.registrarEntrada(ator(req, 'entrada de veículo'), dados));

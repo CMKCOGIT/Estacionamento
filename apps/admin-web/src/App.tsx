@@ -6,6 +6,7 @@ import { Atividades } from './pages/Atividades';
 import { Dashboard } from './pages/Dashboard';
 import { Login } from './pages/Login';
 import { Operacao } from './pages/Operacao';
+import { Tarifas } from './pages/Tarifas';
 import { TrocarSenha } from './pages/TrocarSenha';
 import { UsuarioForm } from './pages/UsuarioForm';
 import { Vagas } from './pages/Vagas';
@@ -32,6 +33,14 @@ export function App() {
           >
             <Route index element={<Dashboard />} />
             <Route path="trocar-senha" element={<TrocarSenha />} />
+            <Route
+              path="tarifas"
+              element={
+                <RotaProtegida permissoes={['tarifa.ver', 'tarifa.gerenciar', 'tarifa.publicar']}>
+                  <Tarifas />
+                </RotaProtegida>
+              }
+            />
             <Route
               path="operacao"
               element={

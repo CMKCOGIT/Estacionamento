@@ -1,5 +1,5 @@
 /** Contratos do controle de entrada e saída (sessões de estacionamento) e do caixa. */
-import type { Modalidade } from './tarifa.js';
+import type { ItemCalculo, Modalidade } from './tarifa.js';
 
 export interface PedidoEntrada {
   placa: string;
@@ -14,6 +14,8 @@ export interface PedidoEntrada {
   marca?: string | null;
   modelo?: string | null;
   cor?: string | null;
+  /** Tarifa especial escolhida pelo operador. Vazio = padrão (ou especial automática do horário). */
+  tarifaRegraId?: string | null;
 }
 
 export interface CalculoEstadia {
@@ -26,6 +28,8 @@ export interface CalculoEstadia {
   aPagarCentavos: number;
   /** Faixa da tarifa aplicada (texto curto para o operador). */
   tarifa: string;
+  /** Como o valor foi formado (1ª hora, horas adicionais, frações, teto...). */
+  itens: ItemCalculo[];
 }
 
 export interface SessaoDetalhe {
@@ -44,6 +48,8 @@ export interface SessaoDetalhe {
   operadorEntrada: string | null;
   operadorSaida: string | null;
   valorFinalCentavos: number | null;
+  /** Tarifa gravada no ticket na entrada: nome, versão da tabela e se foi especial. */
+  tarifaAplicada: { nome: string; tabelaVersao: number | null; tipo: 'PADRAO' | 'ESPECIAL' };
   calculo: CalculoEstadia;
   pagamentos: PagamentoResumo[];
   versao: number;

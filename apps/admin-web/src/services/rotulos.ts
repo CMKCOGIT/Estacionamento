@@ -16,6 +16,7 @@ export const ROTULOS_ACOES: Record<string, string> = {
   'pagamento.estornado': 'Pagamento estornado',
   'caixa.aberto': 'Caixa aberto',
   'caixa.fechado': 'Caixa fechado',
+  'tarifa.rascunho_criado': 'Nova versão de tarifas criada',
   'tarifa.publicada': 'Tabela de tarifas publicada',
   'tarifa.arquivada': 'Tabela de tarifas arquivada',
   'tarifa.rascunho_excluido': 'Rascunho de tarifa excluído',

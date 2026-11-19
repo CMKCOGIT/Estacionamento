@@ -6,6 +6,8 @@ interface Props {
   children: ReactNode;
   textoConfirmar: string;
   perigo?: boolean;
+  /** Formulários grandes: diálogo mais largo. */
+  largo?: boolean;
   enviando?: boolean;
   erro?: string | null;
   onConfirmar: () => void;
@@ -19,6 +21,7 @@ export function Dialogo({
   children,
   textoConfirmar,
   perigo,
+  largo,
   enviando,
   erro,
   onConfirmar,
@@ -38,7 +41,12 @@ export function Dialogo({
   };
 
   return (
-    <dialog ref={ref} className="dialogo" onClose={onFechar} aria-labelledby="dialogo-titulo">
+    <dialog
+      ref={ref}
+      className={`dialogo${largo ? ' dialogo--largo' : ''}`}
+      onClose={onFechar}
+      aria-labelledby="dialogo-titulo"
+    >
       <form onSubmit={enviar}>
         <h2 id="dialogo-titulo">{titulo}</h2>
         {erro && (

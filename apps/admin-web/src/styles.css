@@ -1676,3 +1676,180 @@ a:has(> .placa) {
 .painel-op > .opcao {
   margin-bottom: 0.75rem;
 }
+
+/* ---------- Tarifas ---------- */
+.dialogo--largo {
+  width: min(680px, calc(100vw - 32px));
+}
+.botao-texto--perigo {
+  color: var(--falha);
+}
+.lista-dados__linha {
+  display: contents;
+}
+.lista-dados--compacta {
+  font-size: 0.88rem;
+  margin: 0.5rem 0;
+}
+.grade-tarifas {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr));
+  gap: 1.25rem;
+  align-items: start;
+}
+.grade-tarifas--dialogo {
+  margin: 1rem 0;
+}
+.categoria-tarifa {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  min-width: 0;
+}
+.categoria-tarifa h3 {
+  margin: 0;
+  font-size: 1.15rem;
+}
+.categoria-tarifa .alerta {
+  margin: 0;
+}
+.categoria-tarifa > .botao-texto {
+  align-self: flex-start;
+}
+.regra-tarifa {
+  border: 1px solid var(--borda);
+  border-radius: 8px;
+  padding: 0.75rem 0.9rem;
+  background: var(--fundo);
+}
+.regra-tarifa--inativa {
+  opacity: 0.65;
+  border-style: dashed;
+}
+.regra-tarifa__topo {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+.regra-tarifa__topo h4 {
+  margin: 0;
+  font-size: 1rem;
+}
+.regra-tarifa__topo p {
+  margin: 0.15rem 0 0;
+}
+.regra-tarifa .acoes {
+  margin-top: 0.25rem;
+  align-items: center;
+}
+.versao-tarifa {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 1rem;
+  font-size: 0.92rem;
+}
+.lista-mudancas {
+  margin: 0;
+  padding-left: 1.2rem;
+  display: grid;
+  gap: 0.25rem;
+  font-size: 0.92rem;
+}
+.lista-mudancas--curta {
+  max-height: 220px;
+  overflow-y: auto;
+  margin-bottom: 0.75rem;
+}
+.grupo-form {
+  border: 1px solid var(--borda);
+  border-radius: 8px;
+  padding: 0.6rem 0.9rem 0.25rem;
+  margin: 0 0 0.9rem;
+  min-width: 0;
+}
+.grupo-form legend {
+  font-weight: 600;
+  padding: 0 0.3rem;
+}
+.grade-campos--estreita {
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+}
+.campo small {
+  font-size: 0.78rem;
+}
+.opcoes-linha {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1.25rem;
+  margin-bottom: 0.6rem;
+}
+.dias-semana {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-bottom: 0.6rem;
+}
+.dias-semana .chip {
+  cursor: pointer;
+  padding: 0.3rem 0.7rem;
+}
+.dias-semana .chip:focus-within {
+  outline: 2px solid var(--primaria);
+  outline-offset: 2px;
+}
+.previa-tarifa {
+  border-top: 1px solid var(--borda);
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+}
+.previa-tarifa h3 {
+  margin: 0 0 0.25rem;
+}
+.campo--curto {
+  width: 6.5rem;
+}
+.simulador__campos {
+  align-items: flex-end;
+  flex-wrap: wrap;
+}
+.simulador__colunas {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1rem;
+  margin-top: 0.5rem;
+}
+.simulador__coluna {
+  border: 1px solid var(--borda);
+  border-radius: 8px;
+  padding: 0.75rem 0.9rem;
+}
+.simulador__coluna h3 {
+  margin: 0;
+}
+.simulador__total {
+  font-size: 1.6rem;
+  font-weight: 700;
+  margin: 0.25rem 0;
+  font-variant-numeric: tabular-nums;
+}
+.itens-calculo {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.15rem;
+}
+.itens-calculo li {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+.cabecalho > .botao {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+#titulo-simulador + p {
+  margin-bottom: 0.75rem;
+}

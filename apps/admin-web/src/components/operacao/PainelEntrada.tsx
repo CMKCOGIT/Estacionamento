@@ -7,9 +7,11 @@ import {
   type ConsultaPlaca,
   type Modalidade,
   type ResultadoEntrada,
+  type TarifasDaEntrada,
   type VagaLivre,
 } from '@estacionamento/shared';
 import { sessoesApi } from '../../services/sessoes';
+import { tarifasApi } from '../../services/tarifas';
 import { veiculosApi } from '../../services/veiculos';
 import { mensagemDeErro } from '../vagas/Dialogos';
 
@@ -31,6 +33,8 @@ export function PainelEntrada({ categorias, rodada, onEntrou, onIrParaSaida }: P
   const [vagaId, setVagaId] = useState('');
   const [vagas, setVagas] = useState<VagaLivre[] | null>(null);
   const [modalidade, setModalidade] = useState<Modalidade>('AVULSO');
+  const [tarifas, setTarifas] = useState<TarifasDaEntrada | null>(null);
+  const [tarifaId, setTarifaId] = useState('');
   const [modelo, setModelo] = useState('');
   const [cor, setCor] = useState('');
   const [enviando, setEnviando] = useState(false);
@@ -76,6 +80,33 @@ export function PainelEntrada({ categorias, rodada, onEntrou, onIrParaSaida }: P
     };
   }, [categoriaId, rodada]);
 
+  // Tarifas da tabela vigente para a categoria (padrão + especiais)
+  useEffect(() => {
+    if (!categoriaId) return;
+    let ativo = true;
+    tarifasApi
+      .daEntrada(categoriaId)
+      .then((r) => {
+        if (!ativo) return;
+        setTarifas(r);
+        setTarifaId((t) => (r.opcoes.some((o) => o.id === t) ? t : ''));
+      })
+      .catch(() => ativo && setTarifas(null));
+    return () => {
+      ativo = false;
+    };
+  }, [categoriaId, rodada]);
+
+  const automatica = tarifas?.opcoes.find((o) => o.id === tarifas.automaticaId);
+  const padrao = tarifas?.opcoes.find((o) => o.tipo === 'PADRAO');
+  const tarifaUsada = tarifaId
+    ? tarifas?.opcoes.find((o) => o.id === tarifaId)
+    : modalidade === 'DIARIA'
+      ? padrao
+      : automatica;
+  const semTarifa = tarifas !== null && tarifas.opcoes.length === 0;
+  const semDiaria = modalidade === 'DIARIA' && tarifaUsada !== undefined && !tarifaUsada.temDiaria;
+
   async function registrar(e: FormEvent) {
     e.preventDefault();
     setEnviando(true);
@@ -87,6 +118,7 @@ export function PainelEntrada({ categorias, rodada, onEntrou, onIrParaSaida }: P
         categoriaId: veiculo ? undefined : categoriaId,
         vagaId: vagaId || null,
         modalidade,
+        tarifaRegraId: tarifaId || null,
         modelo: veiculo ? undefined : modelo.trim() || null,
         cor: veiculo ? undefined : cor.trim() || null,
       });
@@ -94,6 +126,7 @@ export function PainelEntrada({ categorias, rodada, onEntrou, onIrParaSaida }: P
       setConsulta(null);
       setVagaId('');
       setModalidade('AVULSO');
+      setTarifaId('');
       setModelo('');
       setCor('');
       setEstrangeira(false);
@@ -214,6 +247,35 @@ export function PainelEntrada({ categorias, rodada, onEntrou, onIrParaSaida }: P
         </label>
       </div>
 
+      {tarifas && tarifas.opcoes.length > 1 && (
+        <label className="campo">
+          <span>Tarifa</span>
+          <select value={tarifaId} onChange={(e) => setTarifaId(e.target.value)}>
+            <option value="">
+              Automática ({(modalidade === 'DIARIA' ? padrao : automatica)?.nome ?? 'Padrão'})
+            </option>
+            {tarifas.opcoes.map((o) => (
+              <option key={o.id} value={o.id}>
+                {o.nome}
+                {o.aplicacao === 'MANUAL' ? ' (convênio/evento)' : ''}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+      {tarifaUsada && (
+        <p className="pequeno mudo" role="status">
+          {tarifaUsada.tipo === 'ESPECIAL' && <strong>{tarifaUsada.nome}: </strong>}
+          {tarifaUsada.descricao}
+          {tarifas?.tabela && ` (tabela v${tarifas.tabela.versao})`}
+        </p>
+      )}
+      {semTarifa && categoria && (
+        <p className="alerta alerta--erro">
+          Não há tarifa publicada para {categoria.nome}. Publique a tabela em Tarifas.
+        </p>
+      )}
+      {semDiaria && <p className="pequeno erro">Esta tarifa não oferece diária.</p>}
       {vagas && categoria && (
         <p className={`pequeno ${lotado ? 'erro' : 'mudo'}`} role="status">
           {lotado
@@ -229,7 +291,7 @@ export function PainelEntrada({ categorias, rodada, onEntrou, onIrParaSaida }: P
       <button
         type="submit"
         className="botao botao--bloco"
-        disabled={enviando || !valida || lotado || !!jaDentro}
+        disabled={enviando || !valida || lotado || !!jaDentro || semTarifa || semDiaria}
       >
         {enviando ? 'Registrando…' : 'Registrar entrada'}
       </button>

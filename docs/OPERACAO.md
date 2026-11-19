@@ -21,6 +21,7 @@ Sem internet, o único recurso que não funciona é o botão "Enviar no WhatsApp
    - **veículo que já está dentro:** a entrada é bloqueada e aparece o atalho "Ir para a saída".
 2. **Vaga:** "Automática" pega a primeira vaga livre da categoria, pela ordem setor e código. O operador também pode escolher uma vaga livre da lista. A tela mostra quantas vagas livres ainda há.
 3. **Cobrança:** por tempo (avulso) ou diária.
+   **Tarifa:** automática (a padrão ou a especial do dia/horário) ou uma especial escolhida, como um convênio. A tarifa usada fica gravada no ticket e não muda se os preços mudarem depois (ver [TARIFAS.md](TARIFAS.md)).
 4. **Registrar entrada** grava o **horário do servidor**, ocupa a vaga e cria o **ticket** (sessão). O ticket tem:
    - **número sequencial** (nº 125...), usado para localizar no balcão;
    - **código secreto exclusivo** (32 bytes aleatórios), que vai no **link individual** do cliente (`.../cliente/t#código`).

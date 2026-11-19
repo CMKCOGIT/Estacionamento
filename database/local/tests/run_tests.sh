@@ -13,7 +13,7 @@ PASS=0; FAIL=0
 run()  { $MYSQL "$DB" 2>&1 | grep -v "Using a password"; }
 
 $MYSQL -e "DROP DATABASE IF EXISTS $DB; CREATE DATABASE $DB CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;" 2>&1 | grep -v "Using a password"
-for f in 001_schema.sql 002_triggers.sql 003_views.sql 004_seed.sql 005_autenticacao.sql 006_usuarios_permissoes.sql 007_vagas.sql 008_veiculos.sql; do
+for f in 001_schema.sql 002_triggers.sql 003_views.sql 004_seed.sql 005_autenticacao.sql 006_usuarios_permissoes.sql 007_vagas.sql 008_veiculos.sql 009_tarifas.sql; do
   out=$(run < "$f"); [ -n "$out" ] && { echo "ERRO aplicando $f:"; echo "$out"; exit 1; }
 done
 
@@ -66,7 +66,8 @@ INSERT INTO tarifa_regras (id, tabela_id, categoria_id, primeira_hora_centavos, 
 fail "publicar sem regras"    "UPDATE tabelas_tarifa SET status='PUBLICADA', vigente_desde=NOW(3), publicado_em=NOW(3), publicado_por='U1' WHERE id='T8';" "sem regras"
 fail "sessão com tarifa rascunho" "INSERT INTO sessoes_estacionamento (id, site_id, numero, veiculo_id, placa, categoria_id, vaga_id, tarifa_regra_id, entrada_em, operador_entrada_id)
 VALUES ('X0','S1',99,'VE1','ABC1234','CAR','V1','R1',NOW(3),'U1');" "PUBLICADA"
-ok   "publicar T1"            "UPDATE tabelas_tarifa SET status='PUBLICADA', vigente_desde='2026-01-01', publicado_em=NOW(3), publicado_por='U1' WHERE id='T1';"
+fail "publicar retroativo"   "UPDATE tabelas_tarifa SET status='PUBLICADA', vigente_desde='2026-01-01', publicado_em=NOW(3), publicado_por='U1' WHERE id='T1';" "passado"
+ok   "publicar T1"            "SET @app_retroativo = 1; UPDATE tabelas_tarifa SET status='PUBLICADA', vigente_desde='2026-01-01', publicado_em=NOW(3), publicado_por='U1' WHERE id='T1';"
 fail "editar regra publicada" "UPDATE tarifa_regras SET primeira_hora_centavos=1 WHERE id='R1';" "imutáveis"
 fail "editar tabela publicada" "UPDATE tabelas_tarifa SET nome='outra' WHERE id='T1';" "imutável"
 fail "excluir tabela publicada" "DELETE FROM tabelas_tarifa WHERE id='T1';" "rascunhos"

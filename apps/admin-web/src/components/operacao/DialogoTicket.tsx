@@ -48,6 +48,11 @@ export function DialogoTicket({ sessao, acesso, titulo, veiculoCadastradoAgora, 
             <dd>{sessao.categoria}</dd>
             <dt>Entrada</dt>
             <dd>{formatarDataHora(sessao.entradaEm)}</dd>
+            <dt>Tarifa</dt>
+            <dd>
+              {sessao.tarifaAplicada.nome}
+              {sessao.tarifaAplicada.tabelaVersao !== null && ` · v${sessao.tarifaAplicada.tabelaVersao}`}
+            </dd>
           </dl>
           {veiculoCadastradoAgora && <p className="pequeno mudo">Veículo cadastrado agora.</p>}
         </div>

@@ -250,7 +250,31 @@ function Fechamento({
         <dt>Permanência</dt>
         <dd>{duracaoCurta(c.permanenciaMin)}</dd>
         <dt>Tarifa</dt>
-        <dd>{c.tarifa}</dd>
+        <dd>
+          {sessao.tarifaAplicada.tipo === 'ESPECIAL' && <strong>{sessao.tarifaAplicada.nome}: </strong>}
+          {c.tarifa}
+          {sessao.tarifaAplicada.tabelaVersao !== null && (
+            <span className="mudo"> (tabela v{sessao.tarifaAplicada.tabelaVersao}, da entrada)</span>
+          )}
+        </dd>
+        {c.itens.length > 0 && (
+          <>
+            <dt>Cálculo</dt>
+            <dd>
+              <ul className="itens-calculo">
+                {c.itens.map((i) => (
+                  <li key={i.descricao}>
+                    <span>
+                      {i.quantidade > 1 ? `${i.quantidade} × ` : ''}
+                      {i.descricao}
+                    </span>
+                    <span>{formatarCentavos(i.totalCentavos)}</span>
+                  </li>
+                ))}
+              </ul>
+            </dd>
+          </>
+        )}
         {c.pagoCentavos > 0 && (
           <>
             <dt>Já pago</dt>

@@ -2,6 +2,7 @@ import type { RowDataPacket } from 'mysql2/promise';
 import type { Modalidade, Movimento, RegraTarifa } from '@estacionamento/shared';
 import { env } from '../../config/env.js';
 import { pool } from '../../db/pool.js';
+import { COLUNAS_REGRA, regraDoTicket } from '../tarifas/regra.js';
 
 /**
  * Consultas do Dashboard. Todas leem dados reais do banco local.
@@ -123,9 +124,7 @@ export const dashboardRepository = {
 
   async sessoesAbertasParaCalculo(siteId: string): Promise<SessaoAbertaParaCalculo[]> {
     const [linhas] = await pool.query<RowDataPacket[]>(
-      `SELECT s.entrada_em, s.modalidade,
-              r.tolerancia_min, r.primeira_hora_centavos, r.hora_adicional_centavos, r.fracao_min, r.fracao_centavos,
-              r.diaria_maxima_centavos, r.diaria_centavos,
+      `SELECT s.entrada_em, s.modalidade, s.tarifa_aplicada, ${COLUNAS_REGRA},
               COALESCE((SELECT SUM(p.valor_centavos) FROM pagamentos p
                          WHERE p.sessao_id = s.id AND p.status = 'CONFIRMADO'), 0) AS pago
          FROM sessoes_estacionamento s
@@ -133,20 +132,11 @@ export const dashboardRepository = {
         WHERE s.site_id = ? AND s.status = 'ABERTA'`,
       [siteId],
     );
-    const nulo = (v: unknown) => (v === null || v === undefined ? null : n(v));
     return linhas.map((l) => ({
       entradaEm: l.entrada_em as Date,
       modalidade: l.modalidade as Modalidade,
       pagoCentavos: n(l.pago),
-      regra: {
-        toleranciaMin: n(l.tolerancia_min),
-        primeiraHoraCentavos: n(l.primeira_hora_centavos),
-        horaAdicionalCentavos: n(l.hora_adicional_centavos),
-        fracaoMin: nulo(l.fracao_min),
-        fracaoCentavos: nulo(l.fracao_centavos),
-        diariaMaximaCentavos: nulo(l.diaria_maxima_centavos),
-        diariaCentavos: nulo(l.diaria_centavos),
-      },
+      regra: regraDoTicket(l),
     }));
   },
 

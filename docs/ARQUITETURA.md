@@ -380,10 +380,12 @@ Formato:
 
 ## 8. Modelo de tarifas
 
+> Implementado no módulo de tarifas: veja [TARIFAS.md](TARIFAS.md) para as regras de arredondamento (carência), as tarifas especiais e a tela.
+
 ### 8.1 Princípios
 - **Tudo configurável pelo painel** (perfil `admin`). Nenhum valor fica no código.
 - **Tabelas versionadas**: editar uma tarifa **cria uma nova versão** com data de início de vigência. Versões publicadas nunca são alteradas.
-- **O ticket guarda a versão vigente na entrada** (`tarifa_versao_id`). Assim, mudar a tabela durante o dia não altera a conta de quem já entrou, e o PWA mostra o mesmo cálculo que o caixa.
+- **O ticket guarda a tarifa da entrada** (`tarifa_regra_id` e uma cópia completa da regra em `tarifa_aplicada`; o cálculo item a item fica em `calculo_detalhe` na saída). Detalhes em [TARIFAS.md](TARIFAS.md). Assim, mudar a tabela durante o dia não altera a conta de quem já entrou, e o PWA mostra o mesmo cálculo que o caixa.
 - **Por categoria de veículo**: `categorias_veiculo` (Carro, Moto, cadastráveis). Cada versão da tabela tem uma regra por categoria.
 - Valores em centavos e tempos em minutos inteiros. A permanência é arredondada **para cima**, ao minuto.
 

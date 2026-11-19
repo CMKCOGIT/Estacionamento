@@ -1,62 +1,32 @@
 import type { RowDataPacket } from 'mysql2/promise';
 import {
-  calcularTarifa,
-  formatarCentavos,
+  descreverRegra,
+  detalharTarifa,
   minutosDePermanencia,
-  type Modalidade,
+  type ItemCalculo,
   type PagamentoResumo,
-  type RegraTarifa,
   type SessaoDetalhe,
+  type TarifaAplicada,
 } from '@estacionamento/shared';
 import type { Conexao } from '../../db/pool.js';
 import { pool } from '../../db/pool.js';
+import { COLUNAS_REGRA, lerJson, regraDoTicket } from '../tarifas/regra.js';
 
 const iso = (v: unknown) => (v instanceof Date ? v.toISOString() : null);
 const n = (v: unknown) => Number(v ?? 0);
 const nulo = (v: unknown) => (v === null || v === undefined ? null : Number(v));
-
-export interface RegraVigente {
-  id: string;
-  regra: RegraTarifa;
-}
-
-export function regraDaLinha(l: RowDataPacket): RegraTarifa {
-  return {
-    toleranciaMin: n(l.tolerancia_min),
-    primeiraHoraCentavos: n(l.primeira_hora_centavos),
-    horaAdicionalCentavos: n(l.hora_adicional_centavos),
-    fracaoMin: nulo(l.fracao_min),
-    fracaoCentavos: nulo(l.fracao_centavos),
-    diariaMaximaCentavos: nulo(l.diaria_maxima_centavos),
-    diariaCentavos: nulo(l.diaria_centavos),
-  };
-}
-
-/** Texto curto da tarifa aplicada, para o operador conferir. */
-export function descreverTarifa(r: RegraTarifa, modalidade: Modalidade): string {
-  if (modalidade === 'DIARIA') return `Diária ${formatarCentavos(r.diariaCentavos ?? 0)} por 24h`;
-  const partes = [
-    `1ª hora ${formatarCentavos(r.primeiraHoraCentavos)}`,
-    `hora adicional ${formatarCentavos(r.horaAdicionalCentavos)}`,
-  ];
-  if (r.fracaoMin && r.fracaoCentavos !== null)
-    partes.push(`fração de ${r.fracaoMin} min ${formatarCentavos(r.fracaoCentavos)}`);
-  if (r.diariaMaximaCentavos !== null) partes.push(`máximo ${formatarCentavos(r.diariaMaximaCentavos)}/24h`);
-  if (r.toleranciaMin > 0) partes.push(`tolerância ${r.toleranciaMin} min`);
-  return partes.join(' · ');
-}
 
 const SELECT_SESSAO = `
   SELECT s.id, s.numero, s.status, s.placa, s.veiculo_id, s.categoria_id, c.nome AS categoria, s.vaga_id, v.codigo AS vaga,
          s.modalidade, s.entrada_em, s.saida_em, s.cancelado_em, s.valor_final_centavos, s.versao,
          (SELECT COALESCE(f.nome, u.login) FROM usuarios u LEFT JOIN funcionarios f ON f.usuario_id = u.id WHERE u.id = s.operador_entrada_id) AS operador_entrada,
          (SELECT COALESCE(f.nome, u.login) FROM usuarios u LEFT JOIN funcionarios f ON f.usuario_id = u.id WHERE u.id = s.operador_saida_id) AS operador_saida,
-         r.tolerancia_min, r.primeira_hora_centavos, r.hora_adicional_centavos, r.fracao_min, r.fracao_centavos,
-         r.diaria_maxima_centavos, r.diaria_centavos,
-         NOW(3) AS agora
+         s.tarifa_aplicada, s.calculo_detalhe, ${COLUNAS_REGRA}, r.tipo AS regra_tipo, r.nome AS regra_nome,
+         t.versao AS tabela_versao, NOW(3) AS agora
     FROM sessoes_estacionamento s
     JOIN categorias_veiculo c ON c.id = s.categoria_id
     JOIN tarifa_regras r ON r.id = s.tarifa_regra_id
+    JOIN tabelas_tarifa t ON t.id = r.tabela_id
     LEFT JOIN vagas v ON v.id = s.vaga_id`;
 
 async function pagamentosDaSessao(c: Conexao | typeof pool, sessaoId: string): Promise<PagamentoResumo[]> {
@@ -79,17 +49,20 @@ async function pagamentosDaSessao(c: Conexao | typeof pool, sessaoId: string): P
 }
 
 async function montar(c: Conexao | typeof pool, l: RowDataPacket): Promise<SessaoDetalhe> {
-  const regra = regraDaLinha(l);
+  const regra = regraDoTicket(l);
+  const aplicada = lerJson<TarifaAplicada>(l.tarifa_aplicada);
+  const gravado = lerJson<{ itens: ItemCalculo[] }>(l.calculo_detalhe);
   const pagamentos = await pagamentosDaSessao(c, l.id);
   const pago = pagamentos.filter((p) => p.status === 'CONFIRMADO').reduce((s, p) => s + p.valorCentavos, 0);
   const fim = (l.saida_em ?? l.cancelado_em ?? l.agora) as Date;
   const minutos = minutosDePermanencia(l.entrada_em as Date, fim);
+  const detalhe = detalharTarifa(regra, minutos, l.modalidade);
   const calculado =
     l.status === 'ENCERRADA'
       ? n(l.valor_final_centavos)
       : l.status === 'CANCELADA'
         ? 0
-        : calcularTarifa(regra, minutos, l.modalidade);
+        : detalhe.totalCentavos;
   return {
     id: l.id,
     numero: String(l.numero),
@@ -106,6 +79,13 @@ async function montar(c: Conexao | typeof pool, l: RowDataPacket): Promise<Sessa
     operadorEntrada: l.operador_entrada ?? null,
     operadorSaida: l.operador_saida ?? null,
     valorFinalCentavos: nulo(l.valor_final_centavos),
+    tarifaAplicada: aplicada
+      ? { nome: aplicada.nome, tabelaVersao: aplicada.tabelaVersao, tipo: aplicada.tipo }
+      : {
+          nome: l.regra_tipo === 'ESPECIAL' ? String(l.regra_nome) : 'Padrão',
+          tabelaVersao: nulo(l.tabela_versao),
+          tipo: l.regra_tipo,
+        },
     versao: n(l.versao),
     pagamentos,
     calculo: {
@@ -114,7 +94,9 @@ async function montar(c: Conexao | typeof pool, l: RowDataPacket): Promise<Sessa
       valorCalculadoCentavos: calculado,
       pagoCentavos: pago,
       aPagarCentavos: Math.max(0, calculado - pago),
-      tarifa: descreverTarifa(regra, l.modalidade),
+      tarifa: descreverRegra(regra, l.modalidade),
+      itens:
+        l.status === 'ENCERRADA' && gravado ? gravado.itens : l.status === 'CANCELADA' ? [] : detalhe.itens,
     },
   };
 }
@@ -151,19 +133,6 @@ export const sessoesRepository = {
       [siteId],
     );
     return Promise.all(linhas.map((l) => montar(pool, l)));
-  },
-
-  /** Regra da tabela de tarifas VIGENTE para a categoria (ou null). */
-  async regraVigente(c: Conexao, siteId: string, categoriaId: string): Promise<RegraVigente | null> {
-    const [[l]] = await c.query<RowDataPacket[]>(
-      `SELECT r.* FROM tarifa_regras r
-        WHERE r.categoria_id = ?
-          AND r.tabela_id = (SELECT t.id FROM tabelas_tarifa t
-                              WHERE t.site_id = ? AND t.status = 'PUBLICADA' AND t.vigente_desde <= NOW(3)
-                              ORDER BY t.vigente_desde DESC, t.versao DESC LIMIT 1)`,
-      [categoriaId, siteId],
-    );
-    return l ? { id: String(l.id), regra: regraDaLinha(l) } : null;
   },
 
   /**

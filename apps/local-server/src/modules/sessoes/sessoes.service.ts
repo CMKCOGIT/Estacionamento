@@ -1,7 +1,7 @@
 import type { ResultSetHeader, RowDataPacket } from 'mysql2/promise';
 import { ulid } from 'ulid';
 import {
-  calcularTarifa,
+  detalharTarifa,
   formatarCentavos,
   formatarPlaca,
   minutosDePermanencia,
@@ -20,7 +20,10 @@ import type { Autenticacao } from '../auth/auth.service.js';
 import { publicarDisponibilidade, registrarEvento } from '../../sync/outbox.js';
 import { exigirVeiculoForaDoEstacionamento, validarPlaca } from '../veiculos/veiculos.service.js';
 import { gerarToken, montarAcessoCliente } from './acesso-cliente.js';
-import { regraDaLinha, sessoesRepository as repo } from './sessoes.repository.js';
+import { COLUNAS_REGRA, regraDoTicket } from '../tarifas/regra.js';
+import { escolherTarifa, tarifasDaEntrada } from '../tarifas/selecao.js';
+import { pool } from '../../db/pool.js';
+import { sessoesRepository as repo } from './sessoes.repository.js';
 
 export interface Ator {
   auth: Autenticacao;
@@ -119,6 +122,9 @@ export const sessoesService = {
     return s;
   },
 
+  /** Tarifas da tabela vigente que o operador pode usar na entrada. */
+  tarifasDaEntrada: async (categoriaId: string) =>
+    tarifasDaEntrada(pool, (await obterSiteAtual()).id, categoriaId),
   vagasLivres: async (categoriaId: string) => repo.vagasLivres((await obterSiteAtual()).id, categoriaId),
 
   // -------------------------------------------------------------------------
@@ -174,17 +180,16 @@ export const sessoesService = {
         // 2. Regra: o veículo não pode já estar estacionado
         await exigirVeiculoForaDoEstacionamento(c, veiculoId);
 
-        // 3. Tarifa vigente para a categoria
-        const regra = await repo.regraVigente(c, site.id, categoriaId);
-        if (!regra) {
-          throw erros.regraDeNegocio(
-            `Não há tabela de tarifas publicada com preço para ${cat.nome}. Publique uma tabela de tarifas antes de registrar entradas.`,
-          );
-        }
+        // 3. Tarifa da tabela vigente: padrão, especial do horário ou a escolhida pelo operador.
+        //    A cópia completa da regra fica gravada no ticket (não muda se a tabela mudar).
         const modalidade = pedido.modalidade ?? 'AVULSO';
-        if (modalidade === 'DIARIA' && regra.regra.diariaCentavos === null) {
-          throw erros.regraDeNegocio(`A tarifa de ${cat.nome} não tem modalidade diária.`);
-        }
+        const regra = await escolherTarifa(c, {
+          siteId: site.id,
+          categoriaId,
+          categoriaNome: String(cat.nome),
+          modalidade,
+          regraId: pedido.tarifaRegraId,
+        });
 
         // 4. Vaga: a escolhida (validada) ou a primeira livre da categoria
         let vagaId: string;
@@ -216,9 +221,9 @@ export const sessoesService = {
         // 5. Cria a sessão (horário do servidor local) e o acesso do cliente
         const id = ulid();
         await c.query(
-          `INSERT INTO sessoes_estacionamento (id, site_id, numero, veiculo_id, placa, categoria_id, vaga_id, tarifa_regra_id, modalidade,
-                                             entrada_em, operador_entrada_id, posto_entrada_id)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(3), ?, ?)`,
+          `INSERT INTO sessoes_estacionamento (id, site_id, numero, veiculo_id, placa, categoria_id, vaga_id, tarifa_regra_id,
+                                             tarifa_aplicada, modalidade, entrada_em, operador_entrada_id, posto_entrada_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(3), ?, ?)`,
           [
             id,
             site.id,
@@ -227,7 +232,8 @@ export const sessoesService = {
             placa,
             categoriaId,
             vagaId,
-            regra.id,
+            regra.regraId,
+            JSON.stringify(regra.aplicada),
             modalidade,
             ator.auth.id,
             pedido.postoId ?? null,
@@ -241,7 +247,7 @@ export const sessoesService = {
         const s = await carregar(site.id, id, c);
         await eventoTicket(c, site.id, 'ticket.aberto', s, {
           token_hash: hash.toString('hex'),
-          tarifa_regra_id: regra.id,
+          tarifa_regra_id: regra.regraId,
         });
         return { sessaoId: id, veiculoNovo: !existente };
       });
@@ -298,15 +304,15 @@ export const sessoesService = {
         exigirAberta(s, 'registrar a saída');
 
         const [[t]] = await c.query<RowDataPacket[]>(
-          `SELECT NOW(3) AS agora, r.* FROM sessoes_estacionamento s JOIN tarifa_regras r ON r.id = s.tarifa_regra_id WHERE s.id = ?`,
+          `SELECT NOW(3) AS agora, s.tarifa_aplicada, ${COLUNAS_REGRA}
+             FROM sessoes_estacionamento s JOIN tarifa_regras r ON r.id = s.tarifa_regra_id WHERE s.id = ?`,
           [id],
         );
         const agora = t?.agora as Date;
-        const calculado = calcularTarifa(
-          regraDaLinha(t!),
-          minutosDePermanencia(new Date(s.entradaEm), agora),
-          s.modalidade,
-        );
+        // Cobra pela regra gravada no ticket na entrada, nunca pela tabela atual
+        const permanenciaMin = minutosDePermanencia(new Date(s.entradaEm), agora);
+        const detalhe = detalharTarifa(regraDoTicket(t!), permanenciaMin, s.modalidade);
+        const calculado = detalhe.totalCentavos;
         const final = calculado - desconto + acrescimo;
         if (final < 0) throw erros.regraDeNegocio('O desconto não pode ser maior que o valor da estadia.');
         const aPagar = final - s.calculo.pagoCentavos;
@@ -391,7 +397,8 @@ export const sessoesService = {
         const [r] = await c.query<ResultSetHeader>(
           `UPDATE sessoes_estacionamento
             SET status = 'ENCERRADA', saida_em = ?, operador_saida_id = ?, posto_saida_id = ?,
-                valor_calculado_centavos = ?, desconto_centavos = ?, acrescimo_centavos = ?, valor_final_centavos = ?, motivo_ajuste = ?
+                valor_calculado_centavos = ?, desconto_centavos = ?, acrescimo_centavos = ?, valor_final_centavos = ?, motivo_ajuste = ?,
+                calculo_detalhe = ?
           WHERE id = ? AND status = 'ABERTA'`,
           [
             agora,
@@ -402,6 +409,18 @@ export const sessoesService = {
             acrescimo,
             final,
             pedido.motivoAjuste?.trim() || null,
+            JSON.stringify({
+              calculadoEm: agora.toISOString(),
+              permanenciaMin,
+              modalidade: s.modalidade,
+              tarifa: s.tarifaAplicada,
+              itens: detalhe.itens,
+              valorCalculadoCentavos: calculado,
+              descontoCentavos: desconto,
+              acrescimoCentavos: acrescimo,
+              valorFinalCentavos: final,
+              pagoAntesCentavos: s.calculo.pagoCentavos,
+            }),
             id,
           ],
         );

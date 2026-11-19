@@ -19,6 +19,9 @@ const MENSAGENS_UNICIDADE: Record<string, string> = {
   uq_usuarios_login: 'Este login já está em uso.',
   uq_caixa_posto_aberto: 'Já existe um caixa aberto neste posto.',
   uq_caixa_operador_aberto: 'Você já tem um caixa aberto.',
+  uq_regras_padrao:
+    'Esta categoria já tem tarifa padrão nesta versão. Edite a existente ou crie uma tarifa especial.',
+  uq_tabelas_versao: 'Outra versão da tabela foi criada ao mesmo tempo. Atualize a tela.',
 };
 
 const ERROS_DE_CONEXAO = new Set([

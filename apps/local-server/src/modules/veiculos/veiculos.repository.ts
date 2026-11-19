@@ -7,6 +7,7 @@ import {
   type Modalidade,
   type VeiculoResumo,
 } from '@estacionamento/shared';
+import { COLUNAS_REGRA, regraDoTicket } from '../tarifas/regra.js';
 import type { Conexao } from '../../db/pool.js';
 import { pool } from '../../db/pool.js';
 
@@ -21,8 +22,7 @@ const SELECT_VEICULO = `
          v.observacoes, v.primeira_visita_em, v.ultima_visita_em, v.criado_em, v.atualizado_em,
          (SELECT COUNT(*) FROM sessoes_estacionamento x WHERE x.veiculo_id = v.id) AS total_estadias,
          a.id AS sessao_id, a.numero, a.entrada_em, a.modalidade, vg.codigo AS vaga,
-         r.tolerancia_min, r.primeira_hora_centavos, r.hora_adicional_centavos, r.fracao_min, r.fracao_centavos,
-         r.diaria_maxima_centavos, r.diaria_centavos,
+         a.tarifa_aplicada, ${COLUNAS_REGRA},
          (SELECT COALESCE(SUM(p.valor_centavos), 0) FROM pagamentos p WHERE p.sessao_id = a.id AND p.status = 'CONFIRMADO') AS pago
     FROM veiculos v
     JOIN categorias_veiculo c ON c.id = v.categoria_id
@@ -42,19 +42,7 @@ function paraResumo(
   let estadiaAtual: VeiculoResumo['estadiaAtual'] = null;
   if (l.sessao_id) {
     const minutos = minutosDePermanencia(l.entrada_em as Date, agora);
-    const devido = calcularTarifa(
-      {
-        toleranciaMin: n(l.tolerancia_min),
-        primeiraHoraCentavos: n(l.primeira_hora_centavos),
-        horaAdicionalCentavos: n(l.hora_adicional_centavos),
-        fracaoMin: nulo(l.fracao_min),
-        fracaoCentavos: nulo(l.fracao_centavos),
-        diariaMaximaCentavos: nulo(l.diaria_maxima_centavos),
-        diariaCentavos: nulo(l.diaria_centavos),
-      },
-      minutos,
-      l.modalidade as Modalidade,
-    );
+    const devido = calcularTarifa(regraDoTicket(l), minutos, l.modalidade as Modalidade);
     estadiaAtual = {
       sessaoId: l.sessao_id,
       numero: String(l.numero),

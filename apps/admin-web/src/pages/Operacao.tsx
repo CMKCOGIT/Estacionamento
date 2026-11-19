@@ -337,6 +337,19 @@ function DialogoRecibo({ recibo, onFechar }: { recibo: ReciboSaida; onFechar: ()
         <dd>{s.saidaEm ? horaCurta(s.saidaEm) : '—'}</dd>
         <dt>Permanência</dt>
         <dd>{duracaoCurta(s.calculo.permanenciaMin)}</dd>
+        <dt>Tarifa</dt>
+        <dd>
+          {s.tarifaAplicada.nome}
+          {s.tarifaAplicada.tabelaVersao !== null && ` (v${s.tarifaAplicada.tabelaVersao})`}
+        </dd>
+        {s.calculo.itens.map((i) => (
+          <FragmentoPagamento
+            key={`calc-${i.descricao}`}
+            nome={`${i.quantidade > 1 ? `${i.quantidade} × ` : ''}${i.descricao}`}
+            valor={i.totalCentavos}
+            recebido={null}
+          />
+        ))}
         <dt>Valor final</dt>
         <dd>
           <strong>{formatarCentavos(s.valorFinalCentavos ?? 0)}</strong>

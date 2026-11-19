@@ -1,6 +1,7 @@
 import type { RowDataPacket } from 'mysql2/promise';
 import { ulid } from 'ulid';
-import { calcularTarifa, minutosDePermanencia, type RegraTarifa } from '@estacionamento/shared';
+import { detalharTarifa, minutosDePermanencia, type RegraTarifa } from '@estacionamento/shared';
+import { tarifaAplicadaDaRegra } from '../tarifas/regra.js';
 import type { Conexao } from '../../db/pool.js';
 
 /**
@@ -128,10 +129,13 @@ export async function criarCadastrosBase(
       ],
     );
   }
+  // Cenário com histórico: a tabela "valia" desde antes (publicação retroativa só aqui)
+  await c.query('SET @app_retroativo = 1');
   await c.query(
     "UPDATE tabelas_tarifa SET status = 'PUBLICADA', vigente_desde = ?, publicado_em = ?, publicado_por = ? WHERE id = ?",
     [o.vigenteDesde, o.vigenteDesde, o.usuarioId, tabela],
   );
+  await c.query('SET @app_retroativo = 0');
   return {
     categorias: { carro, moto },
     vagas,
@@ -212,9 +216,9 @@ export async function registrarEntrada(
   ]);
   const id = ulid();
   await c.query(
-    `INSERT INTO sessoes_estacionamento (id, site_id, numero, veiculo_id, placa, categoria_id, vaga_id, tarifa_regra_id, modalidade,
-                                         entrada_em, operador_entrada_id, posto_entrada_id)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO sessoes_estacionamento (id, site_id, numero, veiculo_id, placa, categoria_id, vaga_id, tarifa_regra_id,
+                                         tarifa_aplicada, modalidade, entrada_em, operador_entrada_id, posto_entrada_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       id,
       o.siteId,
@@ -224,6 +228,7 @@ export async function registrarEntrada(
       o.categoriaId,
       o.vagaId,
       o.regraId,
+      JSON.stringify(await tarifaAplicadaDaRegra(c, o.regraId)),
       o.modalidade ?? 'AVULSO',
       o.em,
       o.operadorId,
@@ -317,7 +322,9 @@ export async function registrarSaida(
     modalidade?: 'AVULSO' | 'DIARIA';
   },
 ): Promise<number> {
-  const valor = calcularTarifa(o.regra, minutosDePermanencia(o.entradaEm, o.em), o.modalidade ?? 'AVULSO');
+  const permanenciaMin = minutosDePermanencia(o.entradaEm, o.em);
+  const detalhe = detalharTarifa(o.regra, permanenciaMin, o.modalidade ?? 'AVULSO');
+  const valor = detalhe.totalCentavos;
   const [[pago]] = await c.query<RowDataPacket[]>(
     "SELECT COALESCE(SUM(valor_centavos), 0) AS t FROM pagamentos WHERE sessao_id = ? AND status = 'CONFIRMADO'",
     [o.sessaoId],
@@ -339,9 +346,24 @@ export async function registrarSaida(
   await c.query(
     `UPDATE sessoes_estacionamento
         SET status = 'ENCERRADA', saida_em = ?, operador_saida_id = ?, posto_saida_id = ?,
-            valor_calculado_centavos = ?, valor_final_centavos = ?
+            valor_calculado_centavos = ?, valor_final_centavos = ?, calculo_detalhe = ?
       WHERE id = ?`,
-    [o.em, o.operadorId, o.postoId, valor, valor, o.sessaoId],
+    [
+      o.em,
+      o.operadorId,
+      o.postoId,
+      valor,
+      valor,
+      JSON.stringify({
+        calculadoEm: o.em.toISOString(),
+        permanenciaMin,
+        modalidade: o.modalidade ?? 'AVULSO',
+        itens: detalhe.itens,
+        valorCalculadoCentavos: valor,
+        valorFinalCentavos: valor,
+      }),
+      o.sessaoId,
+    ],
   );
   return valor;
 }

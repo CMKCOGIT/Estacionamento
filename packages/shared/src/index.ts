@@ -8,3 +8,4 @@ export * from './dashboard.js';
 export * from './vagas.js';
 export * from './veiculos.js';
 export * from './sessoes.js';
+export * from './tarifas.js';
