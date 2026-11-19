@@ -10,6 +10,7 @@ Sistema de gerenciamento de estacionamento:
 |-----------|----------|
 | [`docs/ARQUITETURA.md`](docs/ARQUITETURA.md) | Arquitetura, sincronização, segurança, tarifas, retenção |
 | [`docs/BANCO_LOCAL.md`](docs/BANCO_LOCAL.md) | Modelo do banco MySQL local e diagramas ER |
+| [`docs/DASHBOARD.md`](docs/DASHBOARD.md) | Como cada indicador, gráfico e alerta do painel é calculado |
 | [`docs/AUTENTICACAO.md`](docs/AUTENTICACAO.md) | Login, sessões, bloqueio de tentativas, níveis de acesso, gerenciamento de usuários e histórico |
 
 ## Estrutura
@@ -67,6 +68,7 @@ Na pasta do projeto há três arquivos para abrir com **dois cliques**:
 | **`Atualizar.cmd`** | Sempre que houver uma versão nova | Baixa a versão do GitHub, instala dependências, atualiza o banco (`db:migrar`) e compila o painel |
 | **`Iniciar.cmd`** | Para usar o sistema | Liga o servidor numa janela minimizada e abre o painel em http://localhost:8080. Se o servidor já estiver ligado, só abre o painel |
 | `Criar-Administrador.cmd` | Primeiro acesso | Cria o estacionamento e um usuário administrador |
+| `Demonstracao.cmd` | Para ver o painel com movimento | Abre um banco **separado** com 7 dias de dados de exemplo em http://localhost:8081 (login `demo` / `Painel2026`). O banco real não é alterado |
 
 **Para desligar o servidor**, feche a janela *Servidor do Estacionamento* na barra de tarefas. **Antes de atualizar**, desligue o servidor: o `Atualizar.cmd` avisa se ele estiver ligado.
 
@@ -147,6 +149,7 @@ O painel compilado passa a ser servido pelo próprio servidor em **http://localh
 | `npm run lint` / `npm run format` | ESLint / Prettier |
 | `npm run db:migrar` | Cria o banco (se preciso) e aplica as migrations pendentes de `database/local` |
 | `npm run usuario:admin` | Cria o estacionamento (na 1ª vez) e um usuário administrador |
+| `npm run demo:criar` | Recria o banco separado de demonstração (`estacionamento_demo`) |
 
 ## Endpoints disponíveis
 
@@ -163,5 +166,6 @@ O painel compilado passa a ser servido pelo próprio servidor em **http://localh
 | GET/POST/PATCH/PUT | `/api/v1/usuarios...` | Funcionários, acesso, níveis e permissões |
 | GET | `/api/v1/permissoes` | Catálogo de permissões e modelos |
 | GET | `/api/v1/atividades` | Histórico de atividades |
+| GET | `/api/v1/dashboard` | Indicadores, gráficos, alertas e sincronização do painel |
 
 Todas as rotas, exceto `/health` e `/auth/login`, exigem login. Detalhes em [`docs/AUTENTICACAO.md`](docs/AUTENTICACAO.md).

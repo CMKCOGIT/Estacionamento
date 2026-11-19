@@ -6,7 +6,7 @@ import { useAuth } from '../auth/contexto';
  * (níveis de acesso). `rota: null` = módulo previsto, ainda não implementado.
  */
 const MENU: { rotulo: string; rota: string | null; permissoes: string[] }[] = [
-  { rotulo: 'Início', rota: '/', permissoes: [] },
+  { rotulo: 'Painel', rota: '/', permissoes: [] },
   { rotulo: 'Entrada e saída', rota: null, permissoes: ['sessao.entrada', 'sessao.saida'] },
   { rotulo: 'Vagas', rota: null, permissoes: ['vaga.gerenciar', 'sessao.consultar'] },
   { rotulo: 'Caixa', rota: null, permissoes: ['caixa.operar', 'caixa.supervisionar'] },

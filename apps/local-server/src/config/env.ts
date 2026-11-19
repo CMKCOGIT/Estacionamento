@@ -33,6 +33,14 @@ const schemaEnv = z.object({
   DB_NAME: z.string().min(1).default('estacionamento'),
   DB_POOL_SIZE: z.coerce.number().int().min(1).max(100).default(10),
 
+  // Fuso do estacionamento para "hoje", relatórios e gráficos. Offset fixo
+  // (o Brasil não tem horário de verão desde 2019; não depende das tabelas de
+  // fuso do MySQL, que não vêm instaladas no Windows).
+  FUSO_OFFSET: z
+    .string()
+    .regex(/^[+-]\d{2}:\d{2}$/, 'Use o formato -03:00')
+    .default('-03:00'),
+
   // Autenticação
   SESSAO_INATIVIDADE_MIN: z.coerce
     .number()

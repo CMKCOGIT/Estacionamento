@@ -1,6 +1,7 @@
 import type { Router } from 'express';
 import { atividadesRouter } from './atividades/atividades.routes.js';
 import { authRouter } from './auth/auth.routes.js';
+import { dashboardRouter } from './dashboard/dashboard.routes.js';
 import { formasPagamentoRouter } from './formas-pagamento/formas-pagamento.routes.js';
 import { healthRouter } from './health/health.routes.js';
 import { permissoesRouter } from './usuarios/permissoes.routes.js';
@@ -30,6 +31,7 @@ export interface ModuloApi {
 export const modulos: ModuloApi[] = [
   { caminho: '/health', router: healthRouter, publico: true },
   { caminho: '/auth', router: authRouter, publico: true },
+  { caminho: '/dashboard', router: dashboardRouter },
   { caminho: '/formas-pagamento', router: formasPagamentoRouter },
   { caminho: '/usuarios', router: usuariosRouter },
   { caminho: '/permissoes', router: permissoesRouter },

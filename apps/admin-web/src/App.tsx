@@ -3,7 +3,7 @@ import { AuthProvider } from './auth/AuthProvider';
 import { RotaProtegida } from './auth/RotaProtegida';
 import { Layout } from './components/Layout';
 import { Atividades } from './pages/Atividades';
-import { Inicio } from './pages/Inicio';
+import { Dashboard } from './pages/Dashboard';
 import { Login } from './pages/Login';
 import { TrocarSenha } from './pages/TrocarSenha';
 import { UsuarioForm } from './pages/UsuarioForm';
@@ -26,7 +26,7 @@ export function App() {
               </RotaProtegida>
             }
           >
-            <Route index element={<Inicio />} />
+            <Route index element={<Dashboard />} />
             <Route path="trocar-senha" element={<TrocarSenha />} />
             <Route
               path="usuarios"

@@ -14,7 +14,8 @@
     "test:integracao": "vitest run --project integracao",
     "db:migrar": "tsx scripts/db-migrar.ts",
     "db:criar": "tsx scripts/db-migrar.ts",
-    "usuario:admin": "tsx scripts/criar-admin.ts"
+    "usuario:admin": "tsx scripts/criar-admin.ts",
+    "demo:criar": "tsx scripts/dados-demonstracao.ts"
   },
   "dependencies": {
     "@estacionamento/shared": "*",
