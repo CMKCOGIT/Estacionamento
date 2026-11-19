@@ -7,7 +7,7 @@ carregarDotenv({ path: fileURLToPath(new URL('./.env', import.meta.url)), quiet:
 
 // Variáveis padrão para testes. Os testes de integração usam um MySQL real:
 // sobrescreva com DB_HOST/DB_USER/DB_PASSWORD/DB_NAME_TESTE no ambiente.
-// O banco de teste é APAGADO e recriado a cada execução — nunca use o banco real.
+// Cada arquivo de teste cria e apaga o PRÓPRIO banco (estacionamento_teste_*): o real nunca é tocado.
 const envTeste = {
   NODE_ENV: 'test',
   LOG_LEVEL: 'silent',
@@ -30,6 +30,7 @@ export default defineConfig({
           include: ['tests/integracao/**/*.test.ts'],
           env: envTeste,
           globalSetup: ['tests/integracao/setup-banco.ts'],
+          setupFiles: ['tests/integracao/banco-por-arquivo.ts'],
           fileParallelism: false,
         },
       },

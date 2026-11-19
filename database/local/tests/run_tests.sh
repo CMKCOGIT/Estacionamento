@@ -13,7 +13,7 @@ PASS=0; FAIL=0
 run()  { $MYSQL "$DB" 2>&1 | grep -v "Using a password"; }
 
 $MYSQL -e "DROP DATABASE IF EXISTS $DB; CREATE DATABASE $DB CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;" 2>&1 | grep -v "Using a password"
-for f in 001_schema.sql 002_triggers.sql 003_views.sql 004_seed.sql 005_autenticacao.sql 006_usuarios_permissoes.sql; do
+for f in 001_schema.sql 002_triggers.sql 003_views.sql 004_seed.sql 005_autenticacao.sql 006_usuarios_permissoes.sql 007_vagas.sql; do
   out=$(run < "$f"); [ -n "$out" ] && { echo "ERRO aplicando $f:"; echo "$out"; exit 1; }
 done
 
@@ -91,7 +91,8 @@ UPDATE sessao_tokens SET revogado_em=NOW(3), revogado_por='U1', motivo_revogacao
 INSERT INTO sessao_tokens (id, sessao_id, token_hash, criado_por) VALUES ('K2','S01',UNHEX(SHA2('tok2',256)),'U1');"
 fail "reativar token revogado" "UPDATE sessao_tokens SET revogado_em=NULL, revogado_por=NULL WHERE id='K1';" "reativado"
 fail "inativar vaga ocupada"  "UPDATE vagas SET situacao='INATIVA', desativada_em=NOW(3) WHERE id='V1';" "Vaga ocupada"
-ok   "vaga V2 em manutenção"  "UPDATE vagas SET situacao='MANUTENCAO' WHERE id='V2';"
+fail "bloquear sem motivo"     "UPDATE vagas SET situacao='MANUTENCAO' WHERE id='V2';" "ck_vagas_bloqueio"
+ok   "vaga V2 em manutenção"  "UPDATE vagas SET situacao='MANUTENCAO', motivo_bloqueio='Pintura', bloqueada_em=NOW(3), bloqueada_por='U1' WHERE id='V2';"
 fail "entrar em vaga em manutenção" "INSERT INTO sessoes_estacionamento (id, site_id, numero, veiculo_id, placa, categoria_id, vaga_id, tarifa_regra_id, entrada_em, operador_entrada_id)
 VALUES ('S02','S1',2,'VE2','ABC1D23','CAR','V2','R1',NOW(3),'U1');" "indisponível"
 expect "ocupação carro (total/manut/ocup/livres)" "SELECT CONCAT_WS('/',capacidade_total,em_manutencao,ocupadas,livres) FROM vw_ocupacao_categoria WHERE categoria_codigo='CARRO';" "2/1/1/0"
@@ -193,6 +194,13 @@ ok   "conceder permissão individual" "INSERT INTO usuario_perfis (usuario_id, s
 INSERT INTO usuario_permissoes (usuario_id, site_id, permissao_codigo) VALUES ('U2','S1','sessao.entrada');"
 fail "permissão inexistente" "INSERT INTO usuario_permissoes (usuario_id, site_id, permissao_codigo) VALUES ('U2','S1','nao.existe');" "foreign key"
 expect "concessão registrada" "SELECT COUNT(*) FROM historico_atividades WHERE acao='usuario.permissao_concedida';" "1"
+
+echo "== Vagas (007)"
+fail "código de vaga inválido" "INSERT INTO vagas (id, site_id, codigo, categoria_id) VALUES ('VX','S1','a 1','CAR');" "ck_vagas_codigo"
+fail "liberar mantendo dados do bloqueio" "UPDATE vagas SET situacao='ATIVA' WHERE id='V2';" "ck_vagas_bloqueio"
+ok   "liberar vaga corretamente" "UPDATE vagas SET situacao='ATIVA', motivo_bloqueio=NULL, bloqueada_em=NULL, bloqueada_por=NULL WHERE id='V2';"
+fail "desativar categoria com vagas" "UPDATE categorias_veiculo SET ativo=FALSE WHERE id='CAR';" "Remova ou mude"
+expect "capacidade registrada no histórico geral" "SELECT COUNT(*) FROM historico_atividades WHERE acao='vaga.capacidade_alterada';" "1"
 
 echo
 echo "Resultado: $PASS passaram, $FAIL falharam"

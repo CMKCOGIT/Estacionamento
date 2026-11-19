@@ -7,6 +7,7 @@ import { Dashboard } from './pages/Dashboard';
 import { Login } from './pages/Login';
 import { TrocarSenha } from './pages/TrocarSenha';
 import { UsuarioForm } from './pages/UsuarioForm';
+import { Vagas } from './pages/Vagas';
 import { Usuarios } from './pages/Usuarios';
 
 /**
@@ -28,6 +29,22 @@ export function App() {
           >
             <Route index element={<Dashboard />} />
             <Route path="trocar-senha" element={<TrocarSenha />} />
+            <Route
+              path="vagas"
+              element={
+                <RotaProtegida
+                  permissoes={[
+                    'vaga.gerenciar',
+                    'vaga.capacidade',
+                    'sessao.consultar',
+                    'sessao.entrada',
+                    'relatorio.operacional',
+                  ]}
+                >
+                  <Vagas />
+                </RotaProtegida>
+              }
+            />
             <Route
               path="usuarios"
               element={

@@ -45,3 +45,11 @@ describe('cpf', () => {
     expect(formatarCpf('52998224725')).toBe('529.982.247-25');
   });
 });
+
+describe('códigos de vaga', () => {
+  it('gera lote com zeros à esquerda e ordena naturalmente', async () => {
+    const { gerarCodigosVaga, compararCodigos } = await import('../src/index.js');
+    expect(gerarCodigosVaga('a-', 9, 3, 2)).toEqual(['A-09', 'A-10', 'A-11']);
+    expect(['A-10', 'A-2', 'A-1'].sort(compararCodigos)).toEqual(['A-1', 'A-2', 'A-10']);
+  });
+});

@@ -5,3 +5,4 @@ export * from './auth.js';
 export * from './usuarios.js';
 export * from './tarifa.js';
 export * from './dashboard.js';
+export * from './vagas.js';

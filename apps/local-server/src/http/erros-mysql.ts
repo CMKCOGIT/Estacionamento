@@ -8,6 +8,18 @@ interface ErroMysql {
   sqlMessage?: string;
 }
 
+/** Mensagens específicas para as restrições de unicidade mais importantes. */
+const MENSAGENS_UNICIDADE: Record<string, string> = {
+  uq_sessoes_vaga_aberta: 'Esta vaga já está ocupada por outro veículo.',
+  uq_sessoes_veiculo_aberto: 'Este veículo já está estacionado.',
+  uq_vagas_codigo: 'Já existe uma vaga com este código.',
+  uq_categorias_codigo: 'Já existe uma categoria com este código.',
+  uq_pagamentos_idempotencia: 'Este pagamento já foi registrado.',
+  uq_usuarios_login: 'Este login já está em uso.',
+  uq_caixa_posto_aberto: 'Já existe um caixa aberto neste posto.',
+  uq_caixa_operador_aberto: 'Você já tem um caixa aberto.',
+};
+
 const ERROS_DE_CONEXAO = new Set([
   'ECONNREFUSED',
   'ETIMEDOUT',
@@ -40,7 +52,8 @@ export function traduzirErroMysql(erro: unknown): AppError | null {
     case 1062: {
       // ER_DUP_ENTRY: "Duplicate entry 'X' for key 'tabela.uq_nome'"
       const indice = /for key '(?:[^.']+\.)?([^']+)'/.exec(e.sqlMessage ?? '')?.[1];
-      return new AppError(409, 'REGISTRO_DUPLICADO', 'Já existe um registro com esses dados', {
+      const mensagem = (indice && MENSAGENS_UNICIDADE[indice]) ?? 'Já existe um registro com esses dados';
+      return new AppError(409, 'REGISTRO_DUPLICADO', mensagem, {
         ...(indice && { restricao: indice }),
       });
     }
@@ -52,6 +65,14 @@ export function traduzirErroMysql(erro: unknown): AppError | null {
         ...(restricao && { restricao }),
       });
     }
+
+    case 1213: // ER_LOCK_DEADLOCK (depois das repetições automáticas)
+    case 1205: // ER_LOCK_WAIT_TIMEOUT
+      return new AppError(
+        409,
+        'CONFLITO',
+        'Outra operação estava alterando os mesmos dados. Tente novamente.',
+      );
 
     case 1452: // ER_NO_REFERENCED_ROW_2
       return new AppError(422, 'DADOS_INVALIDOS', 'Um dos registros relacionados não existe');

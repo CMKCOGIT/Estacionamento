@@ -62,21 +62,28 @@ export async function criarCadastrosBase(
   for (let i = 1; i <= o.vagasCarro; i++) {
     const id = ulid();
     vagas.carro.push(id);
+    const bloqueada = i <= (o.manutencao ?? 0);
     linhas.push([
       id,
       o.siteId,
       `A-${String(i).padStart(2, '0')}`,
       i <= 15 ? 'Térreo' : 'Subsolo',
       carro,
-      i <= (o.manutencao ?? 0) ? 'MANUTENCAO' : 'ATIVA',
+      bloqueada ? 'MANUTENCAO' : 'ATIVA',
+      bloqueada ? 'Pintura da demarcação' : null,
+      bloqueada ? o.vigenteDesde : null,
+      bloqueada ? o.usuarioId : null,
     ]);
   }
   for (let i = 1; i <= o.vagasMoto; i++) {
     const id = ulid();
     vagas.moto.push(id);
-    linhas.push([id, o.siteId, `M-${String(i).padStart(2, '0')}`, 'Motos', moto, 'ATIVA']);
+    linhas.push([id, o.siteId, `M-${String(i).padStart(2, '0')}`, 'Motos', moto, 'ATIVA', null, null, null]);
   }
-  await c.query('INSERT INTO vagas (id, site_id, codigo, setor, categoria_id, situacao) VALUES ?', [linhas]);
+  await c.query(
+    'INSERT INTO vagas (id, site_id, codigo, setor, categoria_id, situacao, motivo_bloqueio, bloqueada_em, bloqueada_por) VALUES ?',
+    [linhas],
+  );
   // A manutenção fica nas primeiras vagas de carro; quem usa o cenário escolhe as outras.
   vagas.carro = [...vagas.carro.slice(o.manutencao ?? 0), ...vagas.carro.slice(0, o.manutencao ?? 0)];
 
