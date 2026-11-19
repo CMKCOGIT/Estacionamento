@@ -1,0 +1,37 @@
+{
+  "name": "@estacionamento/local-server",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Servidor local: API REST do painel administrativo (funciona sem internet)",
+  "type": "module",
+  "main": "dist/server.js",
+  "scripts": {
+    "dev": "tsx watch --clear-screen=false src/server.ts",
+    "build": "tsc -p tsconfig.build.json",
+    "start": "node --enable-source-maps dist/server.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run --project unit",
+    "test:integracao": "vitest run --project integracao",
+    "db:criar": "tsx scripts/db-criar.ts"
+  },
+  "dependencies": {
+    "@estacionamento/shared": "*",
+    "cors": "^2.8.6",
+    "dotenv": "^18.0.10",
+    "express": "^5.2.0",
+    "helmet": "^8.3.0",
+    "mysql2": "^3.24.0",
+    "pino": "^10.4.0",
+    "pino-http": "^11.0.0",
+    "ulid": "^3.0.2",
+    "zod": "^4.6.0"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "@types/supertest": "^7.2.1",
+    "pino-pretty": "^13.2.0",
+    "supertest": "^7.3.0",
+    "tsx": "^4.23.0"
+  }
+}

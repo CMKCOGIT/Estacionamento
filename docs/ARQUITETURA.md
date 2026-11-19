@@ -179,7 +179,7 @@ sequenceDiagram
 | Backend | **Express 5** | |
 | Validação | **Zod** | Schemas no `shared` |
 | Banco | **MySQL 8.4 LTS** (local e nuvem) | |
-| Acesso ao banco | **Knex.js** + `mysql2` | Migrations e SQL explícito |
+| Acesso ao banco | **`mysql2`** (SQL explícito, sem ORM) | Migrations = arquivos `database/local/NNN_*.sql`, aplicados em ordem por um runner próprio que entende `DELIMITER` (`npm run db:criar`) |
 | Frontend | **React 18 + Vite** + Tailwind | Painel e PWA |
 | PWA | **vite-plugin-pwa** (Workbox) | |
 | QR Code | `qrcode` (gerado no servidor local, funciona sem internet) | |
@@ -221,7 +221,7 @@ Estacionamento/
 │   ├── local-server/
 │   │   ├── src/
 │   │   │   ├── config/
-│   │   │   ├── db/{migrations,seeds}/
+│   │   │   ├── db/                  # pool, transação com auditoria, runner de SQL
 │   │   │   ├── modules/
 │   │   │   │   ├── auth/            # login dos funcionários
 │   │   │   │   ├── usuarios/

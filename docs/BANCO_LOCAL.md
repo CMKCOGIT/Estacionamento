@@ -443,7 +443,7 @@ Todas as FKs têm índice (o InnoDB exige, e isso evita bloqueios em cascata).
 | Nova permissão | `permissoes` | `INSERT` |
 | LPR, sensores, cancela, impressora | `origem_entrada` (`LPR`, `SENSOR`), `vaga_id` opcional, `postos` | Nova tabela `dispositivos` (migração aditiva) |
 
-**Regra de evolução:** toda mudança no banco é uma **migration versionada e aditiva** (nova tabela ou coluna anulável), aplicada pelo Knex na ordem. Os scripts `001`–`004` serão a **migration inicial**. Remover ou renomear coluna só acontece em duas etapas (*expand/contract*): primeiro a aplicação para de usar a coluna, depois a coluna é removida numa versão posterior.
+**Regra de evolução:** toda mudança no banco é uma **migration versionada e aditiva** (nova tabela ou coluna anulável), num novo arquivo `database/local/NNN_descricao.sql`, aplicado em ordem pelo runner do servidor local (`apps/local-server/src/db/scripts-sql.ts`). Os scripts `001`–`004` são a **versão inicial**. O controle de quais migrations já foram aplicadas num banco existente entra junto com a primeira migration nova. Remover ou renomear coluna só acontece em duas etapas (*expand/contract*): primeiro a aplicação para de usar a coluna, depois a coluna é removida numa versão posterior.
 
 ---
 
@@ -462,6 +462,12 @@ mysql -uroot -p estacionamento -e "source database/local/004_seed.sql"
 > Não use `mysql ... < arquivo.sql` no PowerShell: o PowerShell não aceita `<` para redirecionar entrada.
 >
 > Alternativa visual: no **MySQL Workbench**, abra cada arquivo em *File → Open SQL Script* e execute-os em ordem (001 → 004) com o banco `estacionamento` selecionado. O Workbench entende o `DELIMITER` dos triggers.
+
+Ou, com o projeto Node instalado (`npm install`), um único comando que cria o banco e aplica os 4 scripts (recusa se o banco já tiver tabelas):
+
+```bash
+npm run db:criar -w @estacionamento/local-server
+```
 
 Testes de integridade (criam e apagam o banco `est_test`):
 
