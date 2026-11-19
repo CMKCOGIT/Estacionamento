@@ -1,18 +1,30 @@
-import type { ReactNode } from 'react';
+import { NavLink, Outlet, useNavigate } from 'react-router';
+import { useAuth } from '../auth/contexto';
 
-/** Itens do menu. `pronto: false` = módulo previsto, ainda não implementado. */
-const MENU = [
-  { rotulo: 'Início', pronto: true },
-  { rotulo: 'Entrada e saída', pronto: false },
-  { rotulo: 'Vagas', pronto: false },
-  { rotulo: 'Caixa', pronto: false },
-  { rotulo: 'Tarifas', pronto: false },
-  { rotulo: 'Relatórios', pronto: false },
-  { rotulo: 'Usuários', pronto: false },
-  { rotulo: 'Configurações', pronto: false },
+/**
+ * Itens do menu. `permissoes`: o item só aparece para quem tem UMA delas
+ * (níveis de acesso). `rota: null` = módulo previsto, ainda não implementado.
+ */
+const MENU: { rotulo: string; rota: string | null; permissoes: string[] }[] = [
+  { rotulo: 'Início', rota: '/', permissoes: [] },
+  { rotulo: 'Entrada e saída', rota: null, permissoes: ['sessao.entrada', 'sessao.saida'] },
+  { rotulo: 'Vagas', rota: null, permissoes: ['vaga.gerenciar', 'sessao.consultar'] },
+  { rotulo: 'Caixa', rota: null, permissoes: ['caixa.operar', 'caixa.supervisionar'] },
+  { rotulo: 'Tarifas', rota: null, permissoes: ['tarifa.ver'] },
+  { rotulo: 'Relatórios', rota: null, permissoes: ['relatorio.operacional', 'relatorio.financeiro'] },
+  { rotulo: 'Usuários', rota: null, permissoes: ['usuario.gerenciar'] },
+  { rotulo: 'Configurações', rota: null, permissoes: ['config.gerenciar'] },
 ];
 
-export function Layout({ children }: { children: ReactNode }) {
+export function Layout() {
+  const { usuario, sair, temPermissao } = useAuth();
+  const navegar = useNavigate();
+
+  async function aoSair() {
+    await sair();
+    navegar('/login', { replace: true });
+  }
+
   return (
     <div className="layout">
       <aside className="layout__menu">
@@ -21,20 +33,42 @@ export function Layout({ children }: { children: ReactNode }) {
           <span>Estacionamento</span>
         </div>
         <nav>
-          {MENU.map((item) => (
-            <button
-              key={item.rotulo}
-              type="button"
-              className={`menu__item${item.rotulo === 'Início' ? ' menu__item--ativo' : ''}`}
-              disabled={!item.pronto}
-              title={item.pronto ? undefined : 'Em breve'}
-            >
-              {item.rotulo}
-            </button>
-          ))}
+          {MENU.filter((item) => temPermissao(...item.permissoes)).map((item) =>
+            item.rota ? (
+              <NavLink
+                key={item.rotulo}
+                to={item.rota}
+                end
+                className={({ isActive }) => `menu__item${isActive ? ' menu__item--ativo' : ''}`}
+              >
+                {item.rotulo}
+              </NavLink>
+            ) : (
+              <span key={item.rotulo} className="menu__item menu__item--em-breve" title="Em breve">
+                {item.rotulo}
+              </span>
+            ),
+          )}
         </nav>
+
+        {usuario && (
+          <div className="usuario">
+            <div className="usuario__nome">{usuario.nome}</div>
+            <div className="usuario__perfil">{usuario.perfis.map((p) => p.nome).join(', ')}</div>
+            <div className="usuario__acoes">
+              <NavLink to="/trocar-senha" className="botao-texto">
+                Trocar senha
+              </NavLink>
+              <button type="button" className="botao-texto" onClick={() => void aoSair()}>
+                Sair
+              </button>
+            </div>
+          </div>
+        )}
       </aside>
-      <main className="layout__conteudo">{children}</main>
+      <main className="layout__conteudo">
+        <Outlet />
+      </main>
     </div>
   );
 }

@@ -17,6 +17,8 @@
     "dev:web": "npm run dev -w @estacionamento/admin-web",
     "build": "npm run build -w @estacionamento/shared && npm run build -w @estacionamento/local-server && npm run build -w @estacionamento/admin-web",
     "start": "npm run start -w @estacionamento/local-server",
+    "db:migrar": "npm run db:migrar -w @estacionamento/local-server",
+    "usuario:admin": "npm run usuario:admin -w @estacionamento/local-server --",
     "test": "npm run build -w @estacionamento/shared && npm run test --workspaces --if-present",
     "test:integracao": "npm run build -w @estacionamento/shared && npm run test:integracao -w @estacionamento/local-server",
     "typecheck": "npm run build -w @estacionamento/shared && npm run typecheck --workspaces --if-present",

@@ -8,6 +8,9 @@
 | `002_triggers.sql` | 39 triggers: regras de integridade e histórico automático |
 | `003_views.sql` | 6 views: ocupação, mapa de vagas, sessões abertas, caixa, tarifa vigente, sincronização |
 | `004_seed.sql` | Formas de pagamento, permissões e perfis padrão. Pode ser executado de novo sem duplicar nada |
+| `005_autenticacao.sql` | Tabela `sessoes_acesso` (sessões de login; ver [`AUTENTICACAO.md`](AUTENTICACAO.md)) e a permissão `usuario.sessoes` |
+
+As migrations aplicadas ficam registradas na tabela `schema_migracoes`, criada e mantida por `npm run db:migrar`.
 
 ---
 
@@ -463,10 +466,10 @@ mysql -uroot -p estacionamento -e "source database/local/004_seed.sql"
 >
 > Alternativa visual: no **MySQL Workbench**, abra cada arquivo em *File → Open SQL Script* e execute-os em ordem (001 → 004) com o banco `estacionamento` selecionado. O Workbench entende o `DELIMITER` dos triggers.
 
-Ou, com o projeto Node instalado (`npm install`), um único comando que cria o banco e aplica os 4 scripts (recusa se o banco já tiver tabelas):
+Ou, com o projeto Node instalado (`npm install`), um único comando que cria o banco e aplica as migrations pendentes (pode ser repetido; só aplica o que falta):
 
 ```bash
-npm run db:criar -w @estacionamento/local-server
+npm run db:migrar
 ```
 
 Testes de integridade (criam e apagam o banco `est_test`):

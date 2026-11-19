@@ -9,24 +9,44 @@ export class ErroDaApi extends Error {
     super(corpo.mensagem);
     this.name = 'ErroDaApi';
   }
+
+  get codigo() {
+    return this.corpo.codigo;
+  }
 }
 
 const BASE = '/api/v1';
 
 /**
- * Cliente HTTP único do painel. Converte qualquer falha em `ErroDaApi`,
- * para que as telas tratem erros sempre do mesmo jeito.
+ * Eventos globais disparados quando a API indica que a sessão acabou ou que a
+ * senha precisa ser trocada. O AuthProvider escuta e redireciona.
  */
-export async function api<T>(caminho: string, init?: RequestInit): Promise<T> {
+export const EVENTO_SESSAO_ENCERRADA = 'auth:sessao-encerrada';
+export const EVENTO_TROCA_SENHA = 'auth:troca-senha-obrigatoria';
+
+interface OpcoesApi extends Omit<RequestInit, 'body'> {
+  corpo?: unknown;
+  /** Não dispara o redirecionamento global em 401 (usado no próprio login). */
+  ignorarSessao?: boolean;
+}
+
+/**
+ * Cliente HTTP único do painel. Envia o cookie de sessão (mesma origem),
+ * converte qualquer falha em `ErroDaApi` e avisa o app quando a sessão expira.
+ */
+export async function api<T>(caminho: string, opcoes: OpcoesApi = {}): Promise<T> {
+  const { corpo, ignorarSessao, headers, ...init } = opcoes;
   let resposta: Response;
   try {
     resposta = await fetch(`${BASE}${caminho}`, {
+      credentials: 'same-origin',
       ...init,
       headers: {
         Accept: 'application/json',
-        ...(init?.body ? { 'Content-Type': 'application/json' } : {}),
-        ...init?.headers,
+        ...(corpo !== undefined ? { 'Content-Type': 'application/json' } : {}),
+        ...headers,
       },
+      body: corpo !== undefined ? JSON.stringify(corpo) : undefined,
     });
   } catch {
     throw new ErroDaApi(0, {
@@ -35,15 +55,21 @@ export async function api<T>(caminho: string, init?: RequestInit): Promise<T> {
     });
   }
 
-  const corpo: unknown = await resposta.json().catch(() => null);
+  if (resposta.status === 204) return undefined as T;
+  const dados: unknown = await resposta.json().catch(() => null);
+
   if (!resposta.ok) {
-    const erro = (corpo as ErroApi | null)?.erro;
-    throw new ErroDaApi(
+    const erro = new ErroDaApi(
       resposta.status,
-      erro ?? { codigo: 'ERRO_INTERNO', mensagem: `Erro HTTP ${resposta.status}` },
+      (dados as ErroApi | null)?.erro ?? { codigo: 'ERRO_INTERNO', mensagem: `Erro HTTP ${resposta.status}` },
     );
+    if (!ignorarSessao && resposta.status === 401) {
+      window.dispatchEvent(new CustomEvent(EVENTO_SESSAO_ENCERRADA, { detail: erro.message }));
+    }
+    if (erro.codigo === 'TROCA_SENHA_OBRIGATORIA') window.dispatchEvent(new CustomEvent(EVENTO_TROCA_SENHA));
+    throw erro;
   }
-  return corpo as T;
+  return dados as T;
 }
 
 /** Variante para endpoints que respondem com corpo útil mesmo em erro (ex.: /health → 503). */

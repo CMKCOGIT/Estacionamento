@@ -1,6 +1,7 @@
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import cookieParser from 'cookie-parser';
 import cors from 'cors';
 import express, { type Express } from 'express';
 import helmet from 'helmet';
@@ -8,6 +9,7 @@ import { pinoHttp } from 'pino-http';
 import { ulid } from 'ulid';
 import { env } from './config/env.js';
 import { logger } from './config/logger.js';
+import { verificarOrigem } from './http/middlewares/origem.js';
 import { rotaNaoEncontrada, tratarErros } from './http/middlewares/tratar-erros.js';
 import { criarRotasApi } from './http/rotas.js';
 
@@ -20,14 +22,24 @@ function pastaAdminWeb(): string {
 
 /**
  * Monta a aplicação Express sem abrir porta (facilita os testes).
- * Ordem: segurança → log → corpo JSON → API → painel → erros.
+ * Ordem: segurança → log → corpo JSON/cookies → origem → API → painel → erros.
  */
 export function criarApp(): Express {
   const app = express();
   app.disable('x-powered-by');
 
-  app.use(helmet());
-  if (env.CORS_ORIGINS.length > 0) app.use(cors({ origin: env.CORS_ORIGINS }));
+  // Na rede local o painel é acessado por HTTP (http://<ip>:8080). Os padrões
+  // do helmet para HTTPS (upgrade-insecure-requests e HSTS) fariam o navegador
+  // de OUTROS computadores buscar os arquivos do painel via https:// — e a
+  // página ficaria em branco. Só são ativados quando o acesso é por HTTPS.
+  const usaHttps = env.COOKIE_SECURE;
+  app.use(
+    helmet({
+      contentSecurityPolicy: { directives: { upgradeInsecureRequests: usaHttps ? [] : null } },
+      strictTransportSecurity: usaHttps,
+    }),
+  );
+  if (env.CORS_ORIGINS.length > 0) app.use(cors({ origin: env.CORS_ORIGINS, credentials: true }));
 
   app.use(
     pinoHttp({
@@ -45,6 +57,8 @@ export function criarApp(): Express {
   );
 
   app.use(express.json({ limit: '100kb' }));
+  app.use(cookieParser());
+  app.use('/api', verificarOrigem);
 
   app.use('/api/v1', criarRotasApi());
   app.use('/api', rotaNaoEncontrada); // /api sem versão ou versão inexistente

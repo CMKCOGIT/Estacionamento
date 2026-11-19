@@ -1,4 +1,4 @@
-import { criarBancoLocal } from '../../src/db/scripts-sql.js';
+import { migrarBancoLocal } from '../../src/db/scripts-sql.js';
 
 /**
  * Antes dos testes de integração: recria um banco ISOLADO (estacionamento_teste
@@ -11,7 +11,7 @@ export default async function setup(): Promise<void> {
       `Por segurança, os testes de integração só rodam em banco com "teste" no nome (recebido: ${banco})`,
     );
   }
-  await criarBancoLocal({
+  await migrarBancoLocal({
     host: process.env.DB_HOST ?? '127.0.0.1',
     port: Number(process.env.DB_PORT ?? 3306),
     user: process.env.DB_USER ?? 'root',

@@ -179,7 +179,7 @@ sequenceDiagram
 | Backend | **Express 5** | |
 | Validação | **Zod** | Schemas no `shared` |
 | Banco | **MySQL 8.4 LTS** (local e nuvem) | |
-| Acesso ao banco | **`mysql2`** (SQL explícito, sem ORM) | Migrations = arquivos `database/local/NNN_*.sql`, aplicados em ordem por um runner próprio que entende `DELIMITER` (`npm run db:criar`) |
+| Acesso ao banco | **`mysql2`** (SQL explícito, sem ORM) | Migrations = arquivos `database/local/NNN_*.sql`, aplicados em ordem por um runner próprio que entende `DELIMITER` e registra o que já foi aplicado (`npm run db:migrar`) |
 | Frontend | **React 18 + Vite** + Tailwind | Painel e PWA |
 | PWA | **vite-plugin-pwa** (Workbox) | |
 | QR Code | `qrcode` (gerado no servidor local, funciona sem internet) | |
@@ -341,7 +341,7 @@ Formato:
 - API acessível **só pela rede local**: regra no Firewall do Windows restrita à sub-rede do estacionamento e **nenhuma porta aberta no roteador**.
 - MySQL em `127.0.0.1`, com usuário de aplicação de privilégios mínimos e a senha do `root` guardada à parte.
 - Os serviços rodam com uma conta Windows sem privilégio de administrador.
-- Login dos funcionários com argon2id, bloqueio após 5 tentativas e sessão que expira após inatividade.
+- Login dos funcionários com argon2id, bloqueio após 5 tentativas e sessão que expira após inatividade. A sessão fica guardada no servidor, com cookie `httpOnly` (detalhes e decisões em [`AUTENTICACAO.md`](AUTENTICACAO.md)).
 - **Perfis de acesso (RBAC)**: `admin` (tudo), `operador` (entrada, saída, pagamento, caixa próprio), `financeiro` (relatórios). Cancelamento, estorno e alteração de tarifa só para `admin`, com justificativa.
 - **Auditoria** (`audit_log`, sem permissão de alteração pela aplicação): cancelamentos, estornos, mudanças de tarifa, abertura e fechamento de caixa, logins.
 - **Backup diário** pelo Agendador de Tarefas: guardar 7 diários, 4 semanais e 12 mensais, e mandar uma cópia criptografada (AES-256) para fora do PC (pen drive, outro PC ou armazenamento na nuvem).

@@ -126,6 +126,12 @@ describe('app', () => {
     expect(res.body.erro.codigo).toBe('ROTA_NAO_ENCONTRADA');
   });
 
+  it('em HTTP (rede local) não força https nos arquivos do painel', async () => {
+    const res = await request(app).get('/api/v1/health/live');
+    expect(res.headers['content-security-policy']).not.toContain('upgrade-insecure-requests');
+    expect(res.headers['strict-transport-security']).toBeUndefined();
+  });
+
   it('aplica cabeçalhos de segurança e reaproveita X-Request-Id válido', async () => {
     const res = await request(app).get('/api/v1/health/live').set('X-Request-Id', 'abc-12345');
     expect(res.headers['x-content-type-options']).toBe('nosniff');

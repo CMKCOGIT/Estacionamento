@@ -8,16 +8,24 @@ import type { Server } from 'node:http';
 async function iniciar(): Promise<void> {
   let modulos;
   try {
-    const [{ env }, { logger }, { appInfo }, { criarApp }, { verificarBanco }, { fecharPool }] =
-      await Promise.all([
-        import('./config/env.js'),
-        import('./config/logger.js'),
-        import('./config/app-info.js'),
-        import('./app.js'),
-        import('./db/saude.js'),
-        import('./db/pool.js'),
-      ]);
-    modulos = { env, logger, appInfo, criarApp, verificarBanco, fecharPool };
+    const [
+      { env },
+      { logger },
+      { appInfo },
+      { criarApp },
+      { verificarBanco },
+      { fecharPool },
+      { authService, limitadorPorIp },
+    ] = await Promise.all([
+      import('./config/env.js'),
+      import('./config/logger.js'),
+      import('./config/app-info.js'),
+      import('./app.js'),
+      import('./db/saude.js'),
+      import('./db/pool.js'),
+      import('./modules/auth/auth.service.js'),
+    ]);
+    modulos = { env, logger, appInfo, criarApp, verificarBanco, fecharPool, authService, limitadorPorIp };
   } catch (erro) {
     // O logger pode não existir ainda (a falha pode ser justamente na configuração).
     // eslint-disable-next-line no-console
@@ -25,7 +33,7 @@ async function iniciar(): Promise<void> {
     process.exit(1);
   }
 
-  const { env, logger, appInfo, criarApp, verificarBanco, fecharPool } = modulos;
+  const { env, logger, appInfo, criarApp, verificarBanco, fecharPool, authService, limitadorPorIp } = modulos;
 
   // Testa o banco na inicialização. Se estiver fora, o servidor sobe mesmo
   // assim (o painel mostra o problema em /api/v1/health) e tenta de novo a
@@ -49,6 +57,17 @@ async function iniciar(): Promise<void> {
     }
     process.exit(1);
   });
+
+  // Rotina periódica: encerra no banco as sessões de login vencidas e limpa
+  // o limitador de tentativas por IP.
+  const faxina = setInterval(() => {
+    limitadorPorIp.faxina();
+    authService
+      .encerrarSessoesVencidas()
+      .then((n) => n > 0 && logger.info({ sessoes: n }, 'Sessões vencidas encerradas'))
+      .catch((e: unknown) => logger.warn({ err: e }, 'Falha ao encerrar sessões vencidas'));
+  }, 10 * 60_000);
+  faxina.unref();
 
   // Encerramento gracioso: para de aceitar conexões, termina as requisições
   // em andamento e fecha o pool do MySQL.

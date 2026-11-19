@@ -1,10 +1,12 @@
 import { useCallback } from 'react';
+import { useAuth } from '../auth/contexto';
 import type { FormaPagamento, Lista, StatusSistema } from '@estacionamento/shared';
 import { useCarregar } from '../hooks/useCarregar';
 import { api, apiComStatus } from '../services/api';
 
 /** Tela inicial provisória: mostra se API e banco estão funcionando. */
 export function Inicio() {
+  const { usuario } = useAuth();
   const saude = useCarregar(useCallback(() => apiComStatus<StatusSistema>('/health'), []));
   const formas = useCarregar(useCallback(() => api<Lista<FormaPagamento>>('/formas-pagamento'), []));
 
@@ -15,7 +17,10 @@ export function Inicio() {
   return (
     <>
       <header className="cabecalho">
-        <h1>Painel do estacionamento</h1>
+        <div>
+          <h1>Painel do estacionamento</h1>
+          <p className="mudo">Olá, {usuario?.nome}.</p>
+        </div>
         <button type="button" className="botao" onClick={() => (saude.recarregar(), formas.recarregar())}>
           Atualizar
         </button>

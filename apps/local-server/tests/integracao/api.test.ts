@@ -1,12 +1,21 @@
 import request from 'supertest';
-import { afterAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { RowDataPacket } from 'mysql2/promise';
 import { criarApp } from '../../src/app.js';
 import { fecharPool, pool } from '../../src/db/pool.js';
 import { comTransacao } from '../../src/db/transacao.js';
 import { traduzirErroMysql } from '../../src/http/erros-mysql.js';
+import { ADMIN, garantirAdmin } from './ajuda.js';
 
 const app = criarApp();
+/** Cliente com cookie de sessão do admin (as rotas de negócio exigem login). */
+const admin = request.agent(app);
+let siteId: string;
+
+beforeAll(async () => {
+  ({ siteId } = await garantirAdmin());
+  await admin.post('/api/v1/auth/login').send({ login: ADMIN.login, senha: ADMIN.senha }).expect(200);
+});
 afterAll(() => fecharPool());
 
 describe('GET /api/v1/health', () => {
@@ -21,7 +30,7 @@ describe('GET /api/v1/health', () => {
 
 describe('/api/v1/formas-pagamento', () => {
   it('lista as 4 formas da v1 em ordem', async () => {
-    const res = await request(app).get('/api/v1/formas-pagamento').expect(200);
+    const res = await admin.get('/api/v1/formas-pagamento').expect(200);
     expect(res.body.itens.map((f: { codigo: string }) => f.codigo)).toEqual([
       'DINHEIRO',
       'PIX',
@@ -32,18 +41,18 @@ describe('/api/v1/formas-pagamento', () => {
   });
 
   it('busca por código (sem diferenciar maiúsculas)', async () => {
-    const res = await request(app).get('/api/v1/formas-pagamento/pix').expect(200);
+    const res = await admin.get('/api/v1/formas-pagamento/pix').expect(200);
     expect(res.body).toMatchObject({ codigo: 'PIX', exigeAutorizacao: true });
   });
 
   it('404 no formato padrão para código inexistente', async () => {
-    const res = await request(app).get('/api/v1/formas-pagamento/CHEQUE').expect(404);
+    const res = await admin.get('/api/v1/formas-pagamento/CHEQUE').expect(404);
     expect(res.body.erro).toMatchObject({ codigo: 'NAO_ENCONTRADO' });
     expect(res.body.erro.requestId).toBeTruthy();
   });
 
   it('400 com detalhes para parâmetro inválido', async () => {
-    const res = await request(app).get('/api/v1/formas-pagamento?ativas=talvez').expect(400);
+    const res = await admin.get('/api/v1/formas-pagamento?ativas=talvez').expect(400);
     expect(res.body.erro.codigo).toBe('REQUISICAO_INVALIDA');
     expect(res.body.erro.detalhes[0].campo).toBe('ativas');
   });
@@ -67,12 +76,9 @@ describe('comTransacao', () => {
     await comTransacao(
       { usuarioId: '01JTESTEUSUARIO00000000000', motivo: 'teste de auditoria' },
       async (c) => {
-        await c.query(
-          "INSERT INTO sites (id, slug, nome) VALUES ('01JTESTESITE00000000000000', 'teste', 'Teste')",
-        );
-        await c.query(
-          "INSERT INTO configuracoes (site_id, chave, valor) VALUES ('01JTESTESITE00000000000000', 'retencao_anos', '5')",
-        );
+        await c.query("INSERT INTO configuracoes (site_id, chave, valor) VALUES (?, 'retencao_anos', '5')", [
+          siteId,
+        ]);
       },
     );
     const [linhas] = await pool.query<RowDataPacket[]>(

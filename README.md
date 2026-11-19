@@ -10,6 +10,7 @@ Sistema de gerenciamento de estacionamento:
 |-----------|----------|
 | [`docs/ARQUITETURA.md`](docs/ARQUITETURA.md) | Arquitetura, sincronização, segurança, tarifas, retenção |
 | [`docs/BANCO_LOCAL.md`](docs/BANCO_LOCAL.md) | Modelo do banco MySQL local e diagramas ER |
+| [`docs/AUTENTICACAO.md`](docs/AUTENTICACAO.md) | Login, sessões, bloqueio de tentativas e níveis de acesso |
 
 ## Estrutura
 
@@ -26,7 +27,7 @@ Estacionamento/
 │   │   │   ├── sync/            (a implementar) worker de sincronização com a nuvem
 │   │   │   ├── app.ts           monta o Express
 │   │   │   └── server.ts        inicialização e encerramento gracioso
-│   │   ├── scripts/db-criar.ts  cria o banco a partir de database/local
+│   │   ├── scripts/             db-migrar.ts (banco) e criar-admin.ts (primeiro acesso)
 │   │   ├── tests/               unit/ (sem banco) e integracao/ (MySQL real, banco isolado)
 │   │   └── .env.example
 │   ├── admin-web/           FRONTEND: painel administrativo (React + Vite)
@@ -35,7 +36,7 @@ Estacionamento/
 ├── packages/
 │   └── shared/              contratos e utilitários usados por backend e frontend
 ├── database/
-│   ├── local/               BANCO DE DADOS: scripts SQL 001–004 + testes
+│   ├── local/               BANCO DE DADOS: migrations SQL 001–005 + testes
 │   └── cloud/               (a modelar) banco da nuvem
 ├── infra/                   (a implementar) instalador Windows, Docker da nuvem
 └── docs/
@@ -81,13 +82,19 @@ copy apps\local-server\.env.example apps\local-server\.env
 
 3. Abra `apps\local-server\.env` no Bloco de Notas ou no VS Code e preencha `DB_PASSWORD` com a senha do root do MySQL.
 
-4. **Só se o banco ainda não existir:** crie o banco e aplique os scripts. Se já existir, o comando recusa sem alterar nada.
+4. Crie ou atualize o banco. Pode rodar sempre: o comando aplica só as migrations que faltam e reconhece um banco criado à mão.
 
 ```bash
-npm run db:criar -w @estacionamento/local-server
+npm run db:migrar
 ```
 
-5. Inicie em modo desenvolvimento:
+5. Crie o primeiro administrador. O comando pergunta o nome do estacionamento, o seu nome, o login e a senha:
+
+```bash
+npm run usuario:admin
+```
+
+6. Inicie em modo desenvolvimento:
 
 ```bash
 npm run dev
@@ -97,7 +104,7 @@ O comando sobe duas coisas:
 - a **API** em http://localhost:8080 (reinicia sozinha ao salvar um arquivo);
 - o **painel** em **http://localhost:5173** (atualiza na hora).
 
-Abra o painel no navegador. Ele mostra se o servidor e o banco estão funcionando.
+Abra o painel no navegador e entre com o login criado no passo 5.
 
 ## Modo produção (como vai rodar no estacionamento)
 
@@ -122,7 +129,8 @@ O painel compilado passa a ser servido pelo próprio servidor em **http://localh
 | `npm run test:integracao` | Testes com MySQL real. Cria e **apaga** o banco `estacionamento_teste`; o banco real não é tocado |
 | `npm run typecheck` | Verificação de tipos TypeScript |
 | `npm run lint` / `npm run format` | ESLint / Prettier |
-| `npm run db:criar -w @estacionamento/local-server` | Cria o banco local a partir de `database/local` |
+| `npm run db:migrar` | Cria o banco (se preciso) e aplica as migrations pendentes de `database/local` |
+| `npm run usuario:admin` | Cria o estacionamento (na 1ª vez) e um usuário administrador |
 
 ## Endpoints disponíveis
 
@@ -130,5 +138,11 @@ O painel compilado passa a ser servido pelo próprio servidor em **http://localh
 |--------|------|-----------|
 | GET | `/api/v1/health` | Status da API e do banco (503 se o banco estiver fora) |
 | GET | `/api/v1/health/live` | Processo no ar (não consulta o banco) |
-| GET | `/api/v1/formas-pagamento?ativas=true` | Lista formas de pagamento |
-| GET | `/api/v1/formas-pagamento/:codigo` | Uma forma de pagamento |
+| POST | `/api/v1/auth/login` | Entrar (público) |
+| POST | `/api/v1/auth/logout` | Sair |
+| GET | `/api/v1/auth/sessao` | Usuário logado, perfis e permissões |
+| POST | `/api/v1/auth/trocar-senha` | Trocar a própria senha |
+| GET | `/api/v1/formas-pagamento?ativas=true` | Lista formas de pagamento (requer login) |
+| GET | `/api/v1/formas-pagamento/:codigo` | Uma forma de pagamento (requer login) |
+
+Todas as rotas, exceto `/health` e `/auth/login`, exigem login. Detalhes em [`docs/AUTENTICACAO.md`](docs/AUTENTICACAO.md).

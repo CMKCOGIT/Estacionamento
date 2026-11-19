@@ -33,6 +33,24 @@ const schemaEnv = z.object({
   DB_NAME: z.string().min(1).default('estacionamento'),
   DB_POOL_SIZE: z.coerce.number().int().min(1).max(100).default(10),
 
+  // Autenticação
+  SESSAO_INATIVIDADE_MIN: z.coerce
+    .number()
+    .int()
+    .min(5)
+    .max(24 * 60)
+    .default(60),
+  SESSAO_DURACAO_MAX_HORAS: z.coerce.number().int().min(1).max(72).default(12),
+  LOGIN_MAX_TENTATIVAS: z.coerce.number().int().min(3).max(20).default(5),
+  LOGIN_BLOQUEIO_MIN: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(24 * 60)
+    .default(15),
+  LOGIN_LIMITE_POR_IP: z.coerce.number().int().min(5).max(1000).default(20),
+  COOKIE_SECURE: booleano.default(false),
+
   SERVE_ADMIN_WEB: booleano.default(true),
   ADMIN_WEB_DIST: z.string().optional(),
 

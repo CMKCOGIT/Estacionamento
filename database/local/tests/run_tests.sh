@@ -13,7 +13,7 @@ PASS=0; FAIL=0
 run()  { $MYSQL "$DB" 2>&1 | grep -v "Using a password"; }
 
 $MYSQL -e "DROP DATABASE IF EXISTS $DB; CREATE DATABASE $DB CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;" 2>&1 | grep -v "Using a password"
-for f in 001_schema.sql 002_triggers.sql 003_views.sql 004_seed.sql; do
+for f in 001_schema.sql 002_triggers.sql 003_views.sql 004_seed.sql 005_autenticacao.sql; do
   out=$(run < "$f"); [ -n "$out" ] && { echo "ERRO aplicando $f:"; echo "$out"; exit 1; }
 done
 
