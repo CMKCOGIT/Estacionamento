@@ -1,15 +1,20 @@
 import type { ResultSetHeader, RowDataPacket } from 'mysql2/promise';
 import { ulid } from 'ulid';
+import { detalharTarifa, problemasDaRegra } from '@estacionamento/calculo';
 import {
   descreverCondicao,
-  problemasDaRegra,
   regraDeDados,
   type DadosRegra,
   type PainelTarifas,
+  type PedidoSimulacao,
+  type RegraTarifa,
+  type ResultadoSimulacao,
   type TabelaTarifaDetalhe,
 } from '@estacionamento/shared';
 import { obterSiteAtual } from '../../config/site.js';
 import type { Conexao } from '../../db/pool.js';
+import { pool } from '../../db/pool.js';
+import { regraDaLinha } from './regra.js';
 import { comTransacao, type ContextoAuditoria } from '../../db/transacao.js';
 import { erros } from '../../http/erros.js';
 import { registrarEvento } from '../../sync/outbox.js';
@@ -80,6 +85,37 @@ const colunas = (d: DadosRegra) => {
 };
 
 export const tarifasService = {
+  /** Simulação de preço: mesma função do caixa, para a tela conferir antes de publicar. */
+  async simular(p: PedidoSimulacao): Promise<ResultadoSimulacao> {
+    let regras: { id: string | null; regra: RegraTarifa }[];
+    if (p.regra) {
+      const regra = { ...p.regra, valorFixoCentavos: p.regra.valorFixoCentavos ?? null };
+      const problemas = problemasDaRegra(regra);
+      if (problemas.length) return { problemas, resultados: [] };
+      regras = [{ id: null, regra }];
+    } else {
+      const site = await obterSiteAtual();
+      const [linhas] = await pool.query<RowDataPacket[]>(
+        `SELECT r.* FROM tarifa_regras r JOIN tabelas_tarifa t ON t.id = r.tabela_id
+          WHERE t.site_id = ? AND r.id IN (?)`,
+        [site.id, p.regraIds],
+      );
+      const porId = new Map(linhas.map((l) => [String(l.id), regraDaLinha(l)]));
+      regras = (p.regraIds ?? []).filter((id) => porId.has(id)).map((id) => ({ id, regra: porId.get(id)! }));
+    }
+    return {
+      problemas: [],
+      resultados: regras.flatMap(({ id, regra }) =>
+        p.duracoes.map((minutos) => {
+          if (p.modalidade === 'DIARIA' && regra.diariaCentavos === null)
+            return { regraId: id, permanenciaMin: minutos, totalCentavos: null, itens: [] };
+          const d = detalharTarifa(regra, minutos, p.modalidade);
+          return { regraId: id, permanenciaMin: minutos, totalCentavos: d.totalCentavos, itens: d.itens };
+        }),
+      ),
+    };
+  },
+
   async painel(): Promise<PainelTarifas> {
     const site = await obterSiteAtual();
     const todas = await repo.listar(site.id);

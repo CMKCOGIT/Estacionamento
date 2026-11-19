@@ -16,7 +16,7 @@ import { BarraCaixa } from '../components/operacao/BarraCaixa';
 import { DialogoTicket } from '../components/operacao/DialogoTicket';
 import { PainelEntrada } from '../components/operacao/PainelEntrada';
 import { PainelSaida } from '../components/operacao/PainelSaida';
-import { horaCurta } from '../components/operacao/util';
+import { horaCurta, quandoCurto } from '../components/operacao/util';
 import { DialogoMotivo, mensagemDeErro } from '../components/vagas/Dialogos';
 import { duracaoCurta } from '../components/vagas/MapaVagas';
 import { useAtualizacaoAutomatica } from '../hooks/useAtualizacaoAutomatica';
@@ -231,7 +231,15 @@ export function Operacao() {
                     <td>{s.categoria}</td>
                     <td className="sem-quebra">{horaCurta(s.entradaEm)}</td>
                     <td className="sem-quebra">{duracaoCurta(s.calculo.permanenciaMin)}</td>
-                    <td className="numero">{formatarCentavos(s.calculo.aPagarCentavos)}</td>
+                    <td className="numero">
+                      {formatarCentavos(s.calculo.aPagarCentavos)}
+                      {s.calculo.proximaCobranca && (
+                        <span className="valor-proximo">
+                          {formatarCentavos(s.calculo.proximaCobranca.valorCentavos)} a partir de{' '}
+                          {quandoCurto(s.calculo.proximaCobranca.em)}
+                        </span>
+                      )}
+                    </td>
                     <td>
                       <div className="acoes acoes--tabela">
                         {podeSaida && (

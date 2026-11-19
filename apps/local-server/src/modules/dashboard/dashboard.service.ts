@@ -1,7 +1,6 @@
+import { calcularEstadia } from '@estacionamento/calculo';
 import {
-  calcularTarifa,
   formatarCentavos,
-  minutosDePermanencia,
   type Alerta,
   type DashboardResposta,
   type FaturamentoDia,
@@ -202,8 +201,13 @@ export const dashboardService = {
       let quantidade = 0;
       let parciais = 0;
       for (const s of abertas) {
-        const devido = calcularTarifa(s.regra, minutosDePermanencia(s.entradaEm, agora), s.modalidade);
-        const saldo = devido - s.pagoCentavos;
+        const saldo = calcularEstadia({
+          entradaEm: s.entradaEm,
+          fim: agora,
+          regra: s.regra,
+          modalidade: s.modalidade,
+          pagoCentavos: s.pagoCentavos,
+        }).aPagarCentavos;
         if (saldo > 0) {
           quantidade++;
           valorEstimado += saldo;

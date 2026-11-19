@@ -1853,3 +1853,12 @@ a:has(> .placa) {
 #titulo-simulador + p {
   margin-bottom: 0.75rem;
 }
+.valor-proximo {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--texto-mudo);
+  white-space: nowrap;
+}
+.fechamento__proxima {
+  margin: -0.5rem 0 0.9rem;
+}

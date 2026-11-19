@@ -1,6 +1,7 @@
 import type { RowDataPacket } from 'mysql2/promise';
 import { ulid } from 'ulid';
-import { detalharTarifa, minutosDePermanencia, type RegraTarifa } from '@estacionamento/shared';
+import { calcularEstadia } from '@estacionamento/calculo';
+import type { RegraTarifa } from '@estacionamento/shared';
 import { tarifaAplicadaDaRegra } from '../tarifas/regra.js';
 import type { Conexao } from '../../db/pool.js';
 
@@ -322,9 +323,14 @@ export async function registrarSaida(
     modalidade?: 'AVULSO' | 'DIARIA';
   },
 ): Promise<number> {
-  const permanenciaMin = minutosDePermanencia(o.entradaEm, o.em);
-  const detalhe = detalharTarifa(o.regra, permanenciaMin, o.modalidade ?? 'AVULSO');
-  const valor = detalhe.totalCentavos;
+  const detalhe = calcularEstadia({
+    entradaEm: o.entradaEm,
+    fim: o.em,
+    regra: o.regra,
+    modalidade: o.modalidade ?? 'AVULSO',
+  });
+  const { permanenciaMin } = detalhe;
+  const valor = detalhe.valorCalculadoCentavos;
   const [[pago]] = await c.query<RowDataPacket[]>(
     "SELECT COALESCE(SUM(valor_centavos), 0) AS t FROM pagamentos WHERE sessao_id = ? AND status = 'CONFIRMADO'",
     [o.sessaoId],

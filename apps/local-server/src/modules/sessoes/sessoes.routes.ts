@@ -76,7 +76,8 @@ sessoesRouter.post('/:id/saida', exigirPermissao('sessao.saida'), async (req, re
               .string()
               .regex(/^[A-Z][A-Z0-9_]*$/)
               .max(20),
-            valorCentavos: centavos,
+            // null = completa automaticamente o que faltar
+            valorCentavos: centavos.nullable(),
             valorRecebidoCentavos: centavos.nullish(),
             autorizacao: z.string().trim().max(40).nullish(),
             parcelas: z.number().int().min(1).max(24).optional(),
@@ -91,6 +92,32 @@ sessoesRouter.post('/:id/saida', exigirPermissao('sessao.saida'), async (req, re
     })
     .parse(req.body);
   res.json(await sessoesService.registrarSaida(ator(req, 'saída de veículo'), idDe(req), dados));
+});
+
+/** Prévia da saída: valor agora, ajustes, pagamentos conferidos e troco. Não grava nada. */
+sessoesRouter.post('/:id/previa-saida', exigirPermissao('sessao.saida'), async (req, res) => {
+  const dados = z
+    .object({
+      pagamentos: z
+        .array(
+          z.object({
+            forma: z
+              .string()
+              .regex(/^[A-Z][A-Z0-9_]*$/)
+              .max(20),
+            valorCentavos: centavos.nullable(),
+            valorRecebidoCentavos: centavos.nullish(),
+            parcelas: z.number().int().min(1).max(24).optional(),
+          }),
+        )
+        .max(10)
+        .default([]),
+      descontoCentavos: centavos.default(0),
+      acrescimoCentavos: centavos.default(0),
+    })
+    .parse(req.body ?? {});
+  res.set('Cache-Control', 'no-store');
+  res.json(await sessoesService.previaSaida(ator(req, 'prévia de saída'), idDe(req), dados));
 });
 
 sessoesRouter.post('/:id/cancelar', exigirPermissao('sessao.cancelar'), async (req, res) => {

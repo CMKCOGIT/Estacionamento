@@ -30,6 +30,8 @@ export interface CalculoEstadia {
   tarifa: string;
   /** Como o valor foi formado (1ª hora, horas adicionais, frações, teto...). */
   itens: ItemCalculo[];
+  /** Ticket aberto: quando o valor sobe de novo e para quanto. null = não sobe em 24h ou já encerrado. */
+  proximaCobranca: { em: string; permanenciaMin: number; valorCentavos: number } | null;
 }
 
 export interface SessaoDetalhe {
@@ -83,7 +85,8 @@ export interface ResultadoEntrada {
 
 export interface PagamentoSaida {
   forma: string;
-  valorCentavos: number;
+  /** null = completa automaticamente o que faltar (no máximo um pagamento). */
+  valorCentavos: number | null;
   /** Só dinheiro: valor entregue pelo cliente (calcula o troco). */
   valorRecebidoCentavos?: number | null;
   autorizacao?: string | null;
@@ -127,4 +130,36 @@ export interface VagaLivre {
   id: string;
   codigo: string;
   setor: string | null;
+}
+
+/** Pedido de prévia: o mesmo da saída, sem chave de idempotência e sem gravar nada. */
+export interface PedidoPreviaSaida {
+  descontoCentavos?: number;
+  acrescimoCentavos?: number;
+  pagamentos: Omit<PagamentoSaida, 'chaveIdempotencia'>[];
+}
+
+/** Tudo o que a tela de saída mostra, calculado pelo servidor. */
+export interface PreviaSaida {
+  calculo: CalculoEstadia;
+  descontoCentavos: number;
+  acrescimoCentavos: number;
+  valorFinalCentavos: number;
+  /** Valor final − já pago. */
+  aPagarCentavos: number;
+  pagamentos: {
+    linha: number;
+    forma: string;
+    formaNome: string;
+    valorCentavos: number;
+    valorRecebidoCentavos: number | null;
+    trocoCentavos: number;
+    automatico: boolean;
+  }[];
+  somaPagamentosCentavos: number;
+  /** a pagar − soma: positivo = falta, negativo = sobra. */
+  diferencaCentavos: number;
+  trocoTotalCentavos: number;
+  /** Vazio = pode confirmar a saída com este pedido. */
+  problemas: { mensagem: string; linha?: number; acao?: 'ABRIR_CAIXA' }[];
 }

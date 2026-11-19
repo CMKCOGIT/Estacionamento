@@ -1,9 +1,10 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import {
   centavosParaCampo,
   formatarCentavos,
   lerCentavos,
   type FormaPagamento,
+  type PreviaSaida,
   type ReciboSaida,
   type SessaoDetalhe,
 } from '@estacionamento/shared';
@@ -13,7 +14,7 @@ import { sessoesApi } from '../../services/sessoes';
 import { Placa } from '../Placa';
 import { duracaoCurta } from '../vagas/MapaVagas';
 import { mensagemDeErro } from '../vagas/Dialogos';
-import { novoUuid } from './util';
+import { novoUuid, quandoCurto } from './util';
 
 interface Linha {
   chave: string;
@@ -127,6 +128,9 @@ export function PainelSaida({
   );
 }
 
+/** Texto digitado → centavos. Vazio vale 0 (o servidor aponta o que falta). */
+const centavosDoCampo = (texto: string): number | null => (texto.trim() ? lerCentavos(texto) : 0);
+
 function Fechamento({
   sessao,
   onSessao,
@@ -137,7 +141,6 @@ function Fechamento({
   onAbrirCaixa,
   onSaiu,
 }: Omit<Props, 'sessao'> & { sessao: SessaoDetalhe }) {
-  const c = sessao.calculo;
   const formaPadrao = formas[0]?.codigo ?? 'DINHEIRO';
   const [linhas, setLinhas] = useState<Linha[]>(() => [novaLinha(formaPadrao, null)]);
   const [desconto, setDesconto] = useState('');
@@ -145,40 +148,81 @@ function Fechamento({
   const [enviando, setEnviando] = useState(false);
   const [erro, setErro] = useState<{ texto: string; abrirCaixa?: boolean } | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
-
-  const descontoCentavos = desconto.trim() ? lerCentavos(desconto) : 0;
-  const aPagar = Math.max(0, c.aPagarCentavos - (descontoCentavos ?? 0));
-  const somaFixas = linhas.reduce((t, l) => (l.valor === null ? t : t + (lerCentavos(l.valor) ?? 0)), 0);
-  const restante = Math.max(0, aPagar - somaFixas);
-  const valores = linhas.map((l) => (l.valor === null ? restante : lerCentavos(l.valor)));
-  const soma = valores.reduce<number>((t, v) => t + (v ?? 0), 0);
-  const falta = aPagar - soma;
-
-  // O tempo corre: recalcula a cada 30 s. Se o valor mudar, refaz o pagamento.
-  useEffect(() => {
-    const t = setInterval(() => {
-      if (document.hidden) return;
-      sessoesApi
-        .obter(sessao.id)
-        .then((s) => {
-          if (s.status !== 'ABERTA') return onSessao(null);
-          if (s.calculo.valorCalculadoCentavos !== sessao.calculo.valorCalculadoCentavos) {
-            setAviso(
-              `O valor passou de ${formatarCentavos(sessao.calculo.valorCalculadoCentavos)} para ${formatarCentavos(s.calculo.valorCalculadoCentavos)} (mudou a fração de tempo).`,
-            );
-          }
-          onSessao(s);
-        })
-        .catch(() => undefined);
-    }, 30_000);
-    return () => clearInterval(t);
-  }, [sessao, onSessao]);
+  const [previa, setPrevia] = useState<PreviaSaida | null>(null);
+  const [erroPrevia, setErroPrevia] = useState<string | null>(null);
+  const [rodada, setRodada] = useState(0);
+  const ultimoValor = useRef(sessao.calculo.valorCalculadoCentavos);
 
   const formaDe = (codigo: string) => formas.find((f) => f.codigo === codigo);
-  const troco = linhas.reduce((t, l, i) => {
-    const recebido = formaDe(l.forma)?.permiteTroco && l.recebido.trim() ? lerCentavos(l.recebido) : null;
-    return recebido !== null && valores[i] !== null ? t + Math.max(0, recebido - valores[i]!) : t;
-  }, 0);
+
+  // O pedido montado a partir do que foi digitado (só conversão de texto; nenhuma conta aqui)
+  const descontoCentavos = centavosDoCampo(desconto);
+  const pagamentos = linhas.map((l) => ({
+    forma: l.forma,
+    valorCentavos: l.valor === null ? null : centavosDoCampo(l.valor),
+    valorRecebidoCentavos:
+      formaDe(l.forma)?.permiteTroco && l.recebido.trim() ? lerCentavos(l.recebido) : null,
+  }));
+  const digitacaoInvalida =
+    descontoCentavos === null
+      ? 'Desconto inválido. Use o formato 10,00.'
+      : linhas.some((l, i) => l.valor !== null && pagamentos[i]!.valorCentavos === null)
+        ? 'Valor de pagamento inválido. Use o formato 10,00.'
+        : linhas.some((l, i) => l.recebido.trim() && pagamentos[i]!.valorRecebidoCentavos === null)
+          ? 'Valor recebido inválido. Use o formato 10,00.'
+          : null;
+  const pedido = digitacaoInvalida
+    ? null
+    : { descontoCentavos: descontoCentavos ?? 0, acrescimoCentavos: 0, pagamentos };
+  const chavePedido = JSON.stringify(pedido);
+
+  // Prévia calculada pelo servidor a cada mudança (e quando o valor da estadia sobe)
+  useEffect(() => {
+    if (!chavePedido || chavePedido === 'null') return;
+    let ativo = true;
+    const t = setTimeout(() => {
+      sessoesApi
+        .previaSaida(sessao.id, JSON.parse(chavePedido))
+        .then((p) => {
+          if (!ativo) return;
+          if (p.calculo.valorCalculadoCentavos !== ultimoValor.current) {
+            setAviso(
+              `O valor subiu de ${formatarCentavos(ultimoValor.current)} para ${formatarCentavos(p.calculo.valorCalculadoCentavos)} (passou mais uma fração de tempo).`,
+            );
+            ultimoValor.current = p.calculo.valorCalculadoCentavos;
+          }
+          setPrevia(p);
+          setErroPrevia(null);
+        })
+        .catch((falha) => {
+          if (!ativo) return;
+          if (falha instanceof ErroDaApi && falha.status === 409) {
+            onSessao(null);
+            return;
+          }
+          setErroPrevia(mensagemDeErro(falha));
+        });
+    }, 200);
+    return () => {
+      ativo = false;
+      clearTimeout(t);
+    };
+  }, [chavePedido, sessao.id, rodada, onSessao]);
+
+  // Recalcula no instante em que o valor sobe (e a cada minuto, por garantia)
+  const proxima = previa?.calculo.proximaCobranca ?? null;
+  useEffect(() => {
+    const ate = proxima ? new Date(proxima.em).getTime() - Date.now() + 500 : 60_000;
+    const t = setTimeout(() => setRodada((r) => r + 1), Math.min(Math.max(ate, 1000), 60_000));
+    return () => clearTimeout(t);
+  }, [proxima, rodada]);
+
+  const c = previa?.calculo ?? sessao.calculo;
+  const aPagar = previa?.aPagarCentavos ?? null;
+  const linhaDaPrevia = (i: number) => previa?.pagamentos.find((p) => p.linha === i);
+  const problemasDaLinha = (i: number) => previa?.problemas.filter((p) => p.linha === i) ?? [];
+  const problemasGerais = previa?.problemas.filter((p) => p.linha === undefined) ?? [];
+  const pedeCaixa = problemasGerais.some((p) => p.acao === 'ABRIR_CAIXA');
 
   const mudar = (i: number, campo: keyof Linha, valor: string) =>
     setLinhas((ls) => ls.map((l, j) => (j === i ? { ...l, [campo]: valor } : l)));
@@ -186,32 +230,22 @@ function Fechamento({
   async function confirmar(e: FormEvent) {
     e.preventDefault();
     setErro(null);
-    if (descontoCentavos === null) return setErro({ texto: 'Desconto inválido.' });
-    if (descontoCentavos > 0 && motivo.trim().length < 3)
+    if (digitacaoInvalida) return setErro({ texto: digitacaoInvalida });
+    if (!previa || !pedido) return setErro({ texto: 'Aguarde o cálculo do valor.' });
+    if (pedido.descontoCentavos > 0 && motivo.trim().length < 3)
       return setErro({ texto: 'Informe o motivo do desconto.' });
-    if (aPagar > 0 && (valores.some((v) => v === null || v <= 0) || falta !== 0)) {
-      return setErro({
-        texto: `Os pagamentos somam ${formatarCentavos(soma)}, mas o valor a pagar é ${formatarCentavos(aPagar)}.`,
-      });
-    }
+    const problema = previa.problemas[0];
+    if (problema) return setErro({ texto: problema.mensagem, abrirCaixa: problema.acao === 'ABRIR_CAIXA' });
     setEnviando(true);
     try {
       const recibo = await sessoesApi.saida(sessao.id, {
-        valorEsperadoCentavos: c.valorCalculadoCentavos,
-        descontoCentavos: descontoCentavos || 0,
-        motivoAjuste: descontoCentavos ? motivo.trim() : null,
+        // O servidor confere: se o valor tiver subido desde a prévia, pede nova conferência
+        valorEsperadoCentavos: previa.calculo.valorCalculadoCentavos,
+        descontoCentavos: pedido.descontoCentavos,
+        motivoAjuste: pedido.descontoCentavos ? motivo.trim() : null,
         pagamentos:
-          aPagar > 0
-            ? linhas.map((l, i) => {
-                const f = formaDe(l.forma);
-                return {
-                  forma: l.forma,
-                  valorCentavos: valores[i]!,
-                  valorRecebidoCentavos:
-                    f?.permiteTroco && l.recebido.trim() ? lerCentavos(l.recebido) : null,
-                  chaveIdempotencia: l.chave,
-                };
-              })
+          previa.aPagarCentavos > 0
+            ? pedido.pagamentos.map((p, i) => ({ ...p, chaveIdempotencia: linhas[i]!.chave }))
             : [],
       });
       onSaiu(recibo);
@@ -221,7 +255,7 @@ function Fechamento({
         if (d?.acao === 'ABRIR_CAIXA') return setErro({ texto: falha.message, abrirCaixa: true });
         if (typeof d?.valorCalculadoCentavos === 'number') {
           setAviso(falha.message);
-          onSessao(await sessoesApi.obter(sessao.id));
+          setRodada((r) => r + 1);
           return;
         }
       }
@@ -271,6 +305,12 @@ function Fechamento({
                     <span>{formatarCentavos(i.totalCentavos)}</span>
                   </li>
                 ))}
+                {previa && previa.descontoCentavos > 0 && (
+                  <li>
+                    <span>Desconto</span>
+                    <span>− {formatarCentavos(previa.descontoCentavos)}</span>
+                  </li>
+                )}
               </ul>
             </dd>
           </>
@@ -289,8 +329,18 @@ function Fechamento({
       )}
       <p className="fechamento__total">
         <span>A pagar</span>
-        <strong>{formatarCentavos(aPagar)}</strong>
+        <strong>{aPagar === null ? '…' : formatarCentavos(aPagar)}</strong>
       </p>
+      {proxima && (
+        <p className="pequeno mudo fechamento__proxima">
+          O valor passa a {formatarCentavos(proxima.valorCentavos)} a partir de {quandoCurto(proxima.em)}.
+        </p>
+      )}
+      {erroPrevia && (
+        <p className="alerta alerta--erro" role="alert">
+          {erroPrevia}
+        </p>
+      )}
 
       {podeAjustar && (
         <details className="fechamento__ajuste" open={!!desconto}>
@@ -324,8 +374,7 @@ function Fechamento({
           <legend>Pagamento</legend>
           {linhas.map((l, i) => {
             const f = formaDe(l.forma);
-            const recebido = f?.permiteTroco && l.recebido.trim() ? lerCentavos(l.recebido) : null;
-            const trocoLinha = recebido !== null && valores[i] !== null ? recebido - valores[i]! : null;
+            const conferido = linhaDaPrevia(i);
             return (
               <div key={l.chave} className="pagamento">
                 <label className="campo">
@@ -341,11 +390,14 @@ function Fechamento({
                 <label className="campo">
                   <span>Valor (R$)</span>
                   <input
-                    value={l.valor ?? centavosParaCampo(restante)}
+                    value={l.valor ?? (conferido ? centavosParaCampo(conferido.valorCentavos) : '')}
                     onChange={(e) => mudar(i, 'valor', e.target.value)}
                     inputMode="decimal"
-                    required
+                    placeholder={l.valor === null ? 'O que faltar' : '0,00'}
                   />
+                  {l.valor === null && linhas.length > 1 && (
+                    <small className="mudo">completa o restante</small>
+                  )}
                 </label>
                 {f?.permiteTroco && (
                   <label className="campo">
@@ -373,9 +425,16 @@ function Fechamento({
                     Remover
                   </button>
                 )}
-                {trocoLinha !== null && trocoLinha < 0 && (
-                  <p className="pequeno erro pagamento__aviso">Recebido menor que o valor.</p>
+                {conferido && conferido.trocoCentavos > 0 && (
+                  <p className="pequeno pagamento__aviso">
+                    Troco deste pagamento: {formatarCentavos(conferido.trocoCentavos)}
+                  </p>
                 )}
+                {problemasDaLinha(i).map((p) => (
+                  <p key={p.mensagem} className="pequeno erro pagamento__aviso">
+                    {p.mensagem}
+                  </p>
+                ))}
               </div>
             );
           })}
@@ -393,18 +452,20 @@ function Fechamento({
             >
               + Dividir em outra forma
             </button>
-            {falta !== 0 && (
+            {previa && previa.diferencaCentavos !== 0 && (
               <span className="erro pequeno">
-                {falta > 0 ? `Faltam ${formatarCentavos(falta)}` : `Sobram ${formatarCentavos(-falta)}`}
+                {previa.diferencaCentavos > 0
+                  ? `Faltam ${formatarCentavos(previa.diferencaCentavos)}`
+                  : `Sobram ${formatarCentavos(-previa.diferencaCentavos)}`}
               </span>
             )}
           </div>
-          {troco > 0 && (
+          {previa && previa.trocoTotalCentavos > 0 && (
             <p className="fechamento__troco" role="status">
-              Troco: <strong>{formatarCentavos(troco)}</strong>
+              Troco: <strong>{formatarCentavos(previa.trocoTotalCentavos)}</strong>
             </p>
           )}
-          {!caixaAberto && (
+          {(pedeCaixa || !caixaAberto) && (
             <p className="alerta alerta--info">
               Seu caixa está fechado.{' '}
               <button type="button" className="botao-texto" onClick={onAbrirCaixa}>
@@ -434,8 +495,12 @@ function Fechamento({
         >
           Limpar
         </button>
-        <button type="submit" className="botao" disabled={enviando || (aPagar > 0 && !podeReceber)}>
-          {enviando ? 'Registrando…' : `Registrar saída${aPagar > 0 ? ` · ${formatarCentavos(aPagar)}` : ''}`}
+        <button
+          type="submit"
+          className="botao"
+          disabled={enviando || !previa || (aPagar !== null && aPagar > 0 && !podeReceber)}
+        >
+          {enviando ? 'Registrando…' : `Registrar saída${aPagar ? ` · ${formatarCentavos(aPagar)}` : ''}`}
         </button>
       </div>
     </form>

@@ -14,7 +14,7 @@ Todos os valores vêm do **banco local**, em tempo real, pela rota `GET /api/v1/
 | **Vagas bloqueadas** | Vagas em `MANUTENCAO` |
 | **Veículos estacionados** | Sessões `ABERTA`, inclusive as sem vaga definida. Se passar das ocupadas, aparece um alerta |
 | **Faturamento hoje** | Soma dos pagamentos `CONFIRMADO` registrados hoje. Estornados não entram. O valor de ontem aparece como referência |
-| **Pagamentos pendentes** | Sessões abertas cujo **valor acumulado até agora** (calculado pela mesma função de tarifa do caixa, `packages/shared/src/tarifa.ts`) é maior que o já pago. O valor é uma **estimativa**: continua crescendo até a saída |
+| **Pagamentos pendentes** | Sessões abertas cujo **valor acumulado até agora** (calculado pelo servidor com a mesma função do caixa, `calcularEstadia` em `packages/calculo`) é maior que o já pago. O valor é uma **estimativa**: continua crescendo até a saída |
 
 ## Gráficos
 

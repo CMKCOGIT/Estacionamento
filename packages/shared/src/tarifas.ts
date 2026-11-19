@@ -1,5 +1,5 @@
 /** Contratos do gerenciamento de tarifas (painel ↔ servidor local). */
-import type { CondicaoEspecial, RegraTarifa } from './tarifa.js';
+import type { CondicaoEspecial, ItemCalculo, RegraTarifa } from './tarifa.js';
 
 export type TipoRegra = 'PADRAO' | 'ESPECIAL';
 export type AplicacaoEspecial = 'AUTOMATICA' | 'MANUAL';
@@ -111,4 +111,27 @@ export function regraDeDados(d: Pick<DadosRegra, keyof RegraTarifa>): Required<R
     carenciaMin: d.carenciaMin,
     valorFixoCentavos: d.valorFixoCentavos,
   };
+}
+
+/** Simulação de preço feita pelo servidor (tela de tarifas). */
+export interface PedidoSimulacao {
+  /** Regras já cadastradas (ex.: a mesma tarifa na versão em vigor e na nova)… */
+  regraIds?: string[];
+  /** …ou uma regra ainda não salva (prévia do formulário). */
+  regra?: Omit<DadosRegra, 'categoriaId' | 'tipo' | 'nome' | 'aplicacao' | 'diasSemana' | 'horaInicio' | 'horaFim' | 'ativo'>;
+  /** Permanências em minutos. */
+  duracoes: number[];
+  modalidade: 'AVULSO' | 'DIARIA';
+}
+
+export interface ResultadoSimulacao {
+  /** Problemas da regra informada (vazio = válida). */
+  problemas: string[];
+  resultados: {
+    regraId: string | null;
+    permanenciaMin: number;
+    /** null quando a regra não oferece a modalidade pedida (ex.: sem diária). */
+    totalCentavos: number | null;
+    itens: ItemCalculo[];
+  }[];
 }

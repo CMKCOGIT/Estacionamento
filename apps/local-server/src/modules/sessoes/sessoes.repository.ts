@@ -1,10 +1,12 @@
 import type { RowDataPacket } from 'mysql2/promise';
+import { calcularEstadia, minutosDePermanencia, type ResultadoEstadia } from '@estacionamento/calculo';
 import {
   descreverRegra,
-  detalharTarifa,
-  minutosDePermanencia,
+  type CalculoEstadia,
   type ItemCalculo,
+  type Modalidade,
   type PagamentoResumo,
+  type RegraTarifa,
   type SessaoDetalhe,
   type TarifaAplicada,
 } from '@estacionamento/shared';
@@ -48,21 +50,70 @@ async function pagamentosDaSessao(c: Conexao | typeof pool, sessaoId: string): P
   }));
 }
 
+/** Converte o resultado do motor no formato da API. */
+export function calculoDaApi(
+  r: ResultadoEstadia,
+  calculadoEm: Date,
+  regra: RegraTarifa,
+  modalidade: Modalidade,
+): CalculoEstadia {
+  return {
+    calculadoEm: calculadoEm.toISOString(),
+    permanenciaMin: r.permanenciaMin,
+    valorCalculadoCentavos: r.valorCalculadoCentavos,
+    pagoCentavos: r.pagoCentavos,
+    aPagarCentavos: r.aPagarCentavos,
+    tarifa: descreverRegra(regra, modalidade),
+    itens: r.itens,
+    proximaCobranca: r.proximaCobranca
+      ? {
+          em: r.proximaCobranca.em.toISOString(),
+          permanenciaMin: r.proximaCobranca.permanenciaMin,
+          valorCentavos: r.proximaCobranca.valorCentavos,
+        }
+      : null,
+  };
+}
+
 async function montar(c: Conexao | typeof pool, l: RowDataPacket): Promise<SessaoDetalhe> {
   const regra = regraDoTicket(l);
   const aplicada = lerJson<TarifaAplicada>(l.tarifa_aplicada);
-  const gravado = lerJson<{ itens: ItemCalculo[] }>(l.calculo_detalhe);
+  const gravado = lerJson<{ itens: ItemCalculo[]; permanenciaMin: number }>(l.calculo_detalhe);
   const pagamentos = await pagamentosDaSessao(c, l.id);
   const pago = pagamentos.filter((p) => p.status === 'CONFIRMADO').reduce((s, p) => s + p.valorCentavos, 0);
+  const entradaEm = l.entrada_em as Date;
   const fim = (l.saida_em ?? l.cancelado_em ?? l.agora) as Date;
-  const minutos = minutosDePermanencia(l.entrada_em as Date, fim);
-  const detalhe = detalharTarifa(regra, minutos, l.modalidade);
-  const calculado =
-    l.status === 'ENCERRADA'
-      ? n(l.valor_final_centavos)
-      : l.status === 'CANCELADA'
-        ? 0
-        : detalhe.totalCentavos;
+
+  let calculo: CalculoEstadia;
+  if (l.status === 'ABERTA') {
+    // Valor acumulado AGORA (relógio do banco), pela tarifa gravada na entrada
+    const r = calcularEstadia({
+      entradaEm,
+      fim,
+      regra,
+      modalidade: l.modalidade,
+      pagoCentavos: pago,
+      emAndamento: true,
+    });
+    calculo = calculoDaApi(r, fim, regra, l.modalidade);
+  } else {
+    // Encerrado/cancelado: vale o que foi gravado na saída; nada é recalculado
+    const permanenciaMin = gravado?.permanenciaMin ?? minutosDePermanencia(entradaEm, fim);
+    const final = l.status === 'ENCERRADA' ? n(l.valor_final_centavos) : 0;
+    calculo = {
+      calculadoEm: fim.toISOString(),
+      permanenciaMin,
+      valorCalculadoCentavos: final,
+      pagoCentavos: pago,
+      aPagarCentavos: Math.max(0, final - pago),
+      tarifa: descreverRegra(regra, l.modalidade),
+      itens:
+        l.status === 'CANCELADA'
+          ? []
+          : (gravado?.itens ?? calcularEstadia({ entradaEm, fim, regra, modalidade: l.modalidade }).itens),
+      proximaCobranca: null,
+    };
+  }
   return {
     id: l.id,
     numero: String(l.numero),
@@ -88,16 +139,7 @@ async function montar(c: Conexao | typeof pool, l: RowDataPacket): Promise<Sessa
         },
     versao: n(l.versao),
     pagamentos,
-    calculo: {
-      calculadoEm: iso(fim) ?? '',
-      permanenciaMin: minutos,
-      valorCalculadoCentavos: calculado,
-      pagoCentavos: pago,
-      aPagarCentavos: Math.max(0, calculado - pago),
-      tarifa: descreverRegra(regra, l.modalidade),
-      itens:
-        l.status === 'ENCERRADA' && gravado ? gravado.itens : l.status === 'CANCELADA' ? [] : detalhe.itens,
-    },
+    calculo,
   };
 }
 
@@ -241,7 +283,7 @@ export const sessoesRepository = {
   },
 
   async formasAtivas(
-    c: Conexao,
+    c: Conexao | typeof pool,
   ): Promise<Map<string, { nome: string; permiteTroco: boolean; permiteParcelas: boolean }>> {
     const [linhas] = await c.query<RowDataPacket[]>(
       'SELECT codigo, nome, permite_troco, permite_parcelas FROM formas_pagamento WHERE ativo = TRUE',

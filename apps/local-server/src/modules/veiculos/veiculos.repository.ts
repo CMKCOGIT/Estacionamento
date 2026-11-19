@@ -1,7 +1,6 @@
 import type { RowDataPacket } from 'mysql2/promise';
+import { calcularEstadia } from '@estacionamento/calculo';
 import {
-  calcularTarifa,
-  minutosDePermanencia,
   type Estadia,
   type EstatisticasVeiculo,
   type Modalidade,
@@ -41,17 +40,22 @@ function paraResumo(
 } {
   let estadiaAtual: VeiculoResumo['estadiaAtual'] = null;
   if (l.sessao_id) {
-    const minutos = minutosDePermanencia(l.entrada_em as Date, agora);
-    const devido = calcularTarifa(regraDoTicket(l), minutos, l.modalidade as Modalidade);
+    const estadia = calcularEstadia({
+      entradaEm: l.entrada_em as Date,
+      fim: agora,
+      regra: regraDoTicket(l),
+      modalidade: l.modalidade as Modalidade,
+      pagoCentavos: n(l.pago),
+    });
     estadiaAtual = {
       sessaoId: l.sessao_id,
       numero: String(l.numero),
       entradaEm: iso(l.entrada_em) ?? '',
-      permanenciaMin: minutos,
+      permanenciaMin: estadia.permanenciaMin,
       vaga: l.vaga ?? null,
       modalidade: l.modalidade,
       pagoCentavos: n(l.pago),
-      valorEstimadoCentavos: Math.max(0, devido - n(l.pago)),
+      valorEstimadoCentavos: estadia.aPagarCentavos,
     };
   }
   return {

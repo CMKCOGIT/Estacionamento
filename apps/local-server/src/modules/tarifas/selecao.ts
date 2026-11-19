@@ -1,8 +1,8 @@
 import type { RowDataPacket } from 'mysql2/promise';
+import { especialSeAplica } from '@estacionamento/calculo';
 import {
   descreverCondicao,
   descreverRegra,
-  especialSeAplica,
   type Modalidade,
   type OpcaoTarifaEntrada,
   type TarifaAplicada,

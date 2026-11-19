@@ -1,5 +1,6 @@
 import type { ErrorRequestHandler, RequestHandler } from 'express';
 import { ZodError } from 'zod';
+import { ErroCalculo } from '@estacionamento/calculo';
 import type { ErroApi } from '@estacionamento/shared';
 import { emProducao } from '../../config/env.js';
 import { AppError } from '../erros.js';
@@ -12,6 +13,9 @@ export const rotaNaoEncontrada: RequestHandler = (req, _res, next) => {
 
 function normalizarErro(erro: unknown): AppError {
   if (erro instanceof AppError) return erro;
+  // Regra do motor de cálculo (ex.: desconto maior que o valor, tarifa sem diária)
+  if (erro instanceof ErroCalculo)
+    return new AppError(422, 'REGRA_DE_NEGOCIO', erro.message, { motivo: erro.codigo });
 
   if (erro instanceof ZodError) {
     return new AppError(

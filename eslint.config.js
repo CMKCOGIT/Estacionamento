@@ -30,6 +30,20 @@ export default tseslint.config(
     files: ['apps/admin-web/**/*.{ts,tsx}'],
     languageOptions: { globals: globals.browser },
     plugins: { 'react-hooks': reactHooks },
-    rules: reactHooks.configs.recommended.rules,
+    rules: {
+      ...reactHooks.configs.recommended.rules,
+      // Regras financeiras ficam no backend: a tela mostra o que a API calcula.
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: [
+            {
+              name: '@estacionamento/calculo',
+              message: 'O cálculo das estadias é feito no servidor. Use os valores devolvidos pela API.',
+            },
+          ],
+        },
+      ],
+    },
   },
 );

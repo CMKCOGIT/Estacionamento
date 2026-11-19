@@ -35,8 +35,10 @@ O endereço do link vem de `PUBLIC_PWA_URL` no `.env`, quando o app do cliente e
 
 1. **Localizar:** digite a placa ou o nº do ticket, ou clique em **Saída** na lista "No estacionamento agora".
 2. **Cálculo:** a tela mostra a entrada, a permanência, a tarifa aplicada e o **valor a pagar**:
-   - o valor é recalculado a cada 30 s;
-   - se ele mudar (passou de uma fração de tempo), a tela avisa.
+   - tudo é calculado pelo **servidor** (prévia da saída), inclusive o troco e quanto falta ou sobra nos pagamentos;
+   - a tela mostra quando o valor sobe ("passa a R$ X a partir de HH:MM") e recalcula sozinha nesse instante, avisando a mudança.
+
+   Ver [CALCULO.md](CALCULO.md).
 3. **Pagamento (presencial):**
    - **Formas:** dinheiro, Pix, débito ou crédito.
    - **Dividir em outra forma:** a primeira linha completa automaticamente o que faltar.
@@ -110,6 +112,7 @@ Tudo fica no **histórico de atividades**, com o operador, o horário e o motivo
 | GET | `/api/v1/sessoes/:id` | Ticket com cálculo atualizado |
 | GET | `/api/v1/sessoes/vagas-livres?categoriaId=` | Vagas livres da categoria |
 | POST | `/api/v1/sessoes/entrada` | Registra a entrada (devolve o ticket, o link e o QR) |
+| POST | `/api/v1/sessoes/:id/previa-saida` | Prévia da saída calculada pelo servidor (valores, troco, problemas), sem gravar |
 | POST | `/api/v1/sessoes/:id/saida` | Registra a saída com os pagamentos |
 | POST | `/api/v1/sessoes/:id/cancelar` | Cancela o ticket (com motivo) |
 | POST | `/api/v1/sessoes/:id/novo-link` | Gera um novo link/QR e revoga o anterior |

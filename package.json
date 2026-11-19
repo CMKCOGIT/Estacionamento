@@ -12,20 +12,21 @@
     "node": ">=22.12.0"
   },
   "scripts": {
-    "dev": "npm run build -w @estacionamento/shared && concurrently -k -n api,web -c blue,green \"npm run dev -w @estacionamento/local-server\" \"npm run dev -w @estacionamento/admin-web\"",
-    "dev:api": "npm run build -w @estacionamento/shared && npm run dev -w @estacionamento/local-server",
+    "dev": "npm run build:pacotes && concurrently -k -n api,web -c blue,green \"npm run dev -w @estacionamento/local-server\" \"npm run dev -w @estacionamento/admin-web\"",
+    "dev:api": "npm run build:pacotes && npm run dev -w @estacionamento/local-server",
     "dev:web": "npm run dev -w @estacionamento/admin-web",
-    "build": "npm run build -w @estacionamento/shared && npm run build -w @estacionamento/local-server && npm run build -w @estacionamento/admin-web",
-    "start": "npm run build -w @estacionamento/shared && npm run start -w @estacionamento/local-server",
-    "db:migrar": "npm run build -w @estacionamento/shared && npm run db:migrar -w @estacionamento/local-server",
-    "usuario:admin": "npm run build -w @estacionamento/shared && npm run usuario:admin -w @estacionamento/local-server --",
-    "demo:criar": "npm run build -w @estacionamento/shared && npm run demo:criar -w @estacionamento/local-server --",
-    "test": "npm run build -w @estacionamento/shared && npm run test --workspaces --if-present",
-    "test:integracao": "npm run build -w @estacionamento/shared && npm run test:integracao -w @estacionamento/local-server",
-    "typecheck": "npm run build -w @estacionamento/shared && npm run typecheck --workspaces --if-present",
+    "build": "npm run build:pacotes && npm run build -w @estacionamento/local-server && npm run build -w @estacionamento/admin-web",
+    "start": "npm run build:pacotes && npm run start -w @estacionamento/local-server",
+    "db:migrar": "npm run build:pacotes && npm run db:migrar -w @estacionamento/local-server",
+    "usuario:admin": "npm run build:pacotes && npm run usuario:admin -w @estacionamento/local-server --",
+    "demo:criar": "npm run build:pacotes && npm run demo:criar -w @estacionamento/local-server --",
+    "test": "npm run build:pacotes && npm run test --workspaces --if-present",
+    "test:integracao": "npm run build:pacotes && npm run test:integracao -w @estacionamento/local-server",
+    "typecheck": "npm run build:pacotes && npm run typecheck --workspaces --if-present",
     "lint": "eslint .",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "build:pacotes": "npm run build -w @estacionamento/shared && npm run build -w @estacionamento/calculo"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

@@ -1,12 +1,11 @@
 import { describe, expect, it } from 'vitest';
+import { descreverCondicao, type RegraTarifa } from '@estacionamento/shared';
 import {
   calcularTarifa,
-  descreverCondicao,
   detalharTarifa,
   especialSeAplica,
   minutosDePermanencia,
   problemasDaRegra,
-  type RegraTarifa,
 } from '../src/index.js';
 
 /** Tabela de exemplo de docs/ARQUITETURA.md §8.2 (carro). */

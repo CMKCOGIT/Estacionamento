@@ -1,6 +1,8 @@
 import type {
   DadosRegra,
   PainelTarifas,
+  PedidoSimulacao,
+  ResultadoSimulacao,
   TabelaTarifaDetalhe,
   TarifasDaEntrada,
 } from '@estacionamento/shared';
@@ -24,5 +26,7 @@ export const tarifasApi = {
     api<TabelaTarifaDetalhe>(`/tarifas/${id}/publicar`, { method: 'POST', corpo: { vigenteDesde } }),
   arquivar: (id: string) =>
     api<TabelaTarifaDetalhe>(`/tarifas/${id}/arquivar`, { method: 'POST', corpo: {} }),
+  /** Quanto custa ficar X minutos: calculado pelo servidor. */
+  simular: (p: PedidoSimulacao) => api<ResultadoSimulacao>('/tarifas/simular', { method: 'POST', corpo: p }),
   daEntrada: (categoriaId: string) => api<TarifasDaEntrada>(`/sessoes/tarifas?categoriaId=${categoriaId}`),
 };

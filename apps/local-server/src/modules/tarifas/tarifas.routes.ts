@@ -59,6 +59,41 @@ tarifasRouter.get('/', ver, async (_req, res) => {
   res.json(await tarifasService.painel());
 });
 
+/** Quanto custa ficar X minutos — calculado no servidor (simulador e prévia do formulário). */
+tarifasRouter.post('/simular', ver, async (req, res) => {
+  const d = z
+    .object({
+      regraIds: z.array(ulidSchema).max(10).optional(),
+      regra: schemaRegra
+        .pick({
+          toleranciaMin: true,
+          primeiraHoraCentavos: true,
+          horaAdicionalCentavos: true,
+          fracaoMin: true,
+          fracaoCentavos: true,
+          carenciaMin: true,
+          diariaMaximaCentavos: true,
+          diariaCentavos: true,
+          valorFixoCentavos: true,
+        })
+        .optional(),
+      duracoes: z
+        .array(
+          z
+            .number()
+            .int()
+            .min(0)
+            .max(60 * 24 * 60),
+        )
+        .min(1)
+        .max(20),
+      modalidade: z.enum(['AVULSO', 'DIARIA']).default('AVULSO'),
+    })
+    .refine((x) => !!x.regra !== !!x.regraIds?.length, 'Informe a regra ou os ids das regras')
+    .parse(req.body);
+  res.json(await tarifasService.simular(d));
+});
+
 tarifasRouter.get('/:id', ver, async (req, res) => {
   res.json(await tarifasService.obter(params(req).id));
 });

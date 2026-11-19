@@ -1,12 +1,13 @@
 import type { ResultSetHeader, RowDataPacket } from 'mysql2/promise';
 import { ulid } from 'ulid';
+import { calcularEstadia, conferirPagamentos } from '@estacionamento/calculo';
 import {
-  detalharTarifa,
   formatarCentavos,
   formatarPlaca,
-  minutosDePermanencia,
   normalizarPlaca,
   type PedidoEntrada,
+  type PedidoPreviaSaida,
+  type PreviaSaida,
   type PedidoSaida,
   type ReciboSaida,
   type ResultadoEntrada,
@@ -23,7 +24,7 @@ import { gerarToken, montarAcessoCliente } from './acesso-cliente.js';
 import { COLUNAS_REGRA, regraDoTicket } from '../tarifas/regra.js';
 import { escolherTarifa, tarifasDaEntrada } from '../tarifas/selecao.js';
 import { pool } from '../../db/pool.js';
-import { sessoesRepository as repo } from './sessoes.repository.js';
+import { calculoDaApi, sessoesRepository as repo } from './sessoes.repository.js';
 
 export interface Ator {
   auth: Autenticacao;
@@ -96,6 +97,55 @@ async function eventoTicket(
   });
   await publicarDisponibilidade(c, siteId);
 }
+
+/** Desconto/acréscimo exigem permissão; para gravar, também o motivo. */
+function exigirAjustePermitido(
+  ator: Ator,
+  desconto: number,
+  acrescimo: number,
+  motivo?: string | null,
+  gravar = true,
+) {
+  if ((desconto || acrescimo) && !ator.auth.temPermissao('sessao.ajustar_valor')) {
+    throw new AppError(403, 'SEM_PERMISSAO', 'Você não tem permissão para conceder desconto ou acréscimo.');
+  }
+  if (gravar && (desconto || acrescimo) && !motivo?.trim()) {
+    throw erros.requisicaoInvalida('Informe o motivo do desconto/acréscimo', [
+      { campo: 'motivoAjuste', mensagem: 'Obrigatório' },
+    ]);
+  }
+}
+
+/**
+ * Valor do ticket aberto AGORA (relógio do banco), pela regra gravada na
+ * entrada. Usado pela prévia e pelo encerramento — a mesma conta.
+ */
+async function calcularAgora(
+  c: Conexao | typeof pool,
+  s: SessaoDetalhe,
+  ajustes: { descontoCentavos: number; acrescimoCentavos: number },
+) {
+  const [[t]] = await c.query<RowDataPacket[]>(
+    `SELECT NOW(3) AS agora, s.tarifa_aplicada, ${COLUNAS_REGRA}
+       FROM sessoes_estacionamento s JOIN tarifa_regras r ON r.id = s.tarifa_regra_id WHERE s.id = ?`,
+    [s.id],
+  );
+  const agora = t!.agora as Date;
+  const regra = regraDoTicket(t!);
+  const estadia = calcularEstadia({
+    entradaEm: new Date(s.entradaEm),
+    fim: agora,
+    regra,
+    modalidade: s.modalidade,
+    pagoCentavos: s.calculo.pagoCentavos,
+    ...ajustes,
+    emAndamento: true,
+  });
+  return { agora, regra, estadia };
+}
+
+const formasParaConferencia = (formas: Awaited<ReturnType<typeof repo.formasAtivas>>) =>
+  [...formas].map(([codigo, f]) => ({ codigo, ...f }));
 
 export const sessoesService = {
   abertas: async () => repo.abertas((await obterSiteAtual()).id),
@@ -282,18 +332,65 @@ export const sessoesService = {
   // -------------------------------------------------------------------------
   // SAÍDA
   // -------------------------------------------------------------------------
+  /**
+   * Prévia da saída: valor agora, ajustes, pagamentos conferidos e troco —
+   * sem gravar nada. É a mesma conta do encerramento.
+   */
+  async previaSaida(ator: Ator, id: string, pedido: PedidoPreviaSaida): Promise<PreviaSaida> {
+    const site = await obterSiteAtual();
+    const desconto = pedido.descontoCentavos ?? 0;
+    const acrescimo = pedido.acrescimoCentavos ?? 0;
+    exigirAjustePermitido(ator, desconto, acrescimo, null, false);
+    const s = await carregar(site.id, id);
+    exigirAberta(s, 'registrar a saída');
+    const { agora, regra, estadia } = await calcularAgora(pool, s, {
+      descontoCentavos: desconto,
+      acrescimoCentavos: acrescimo,
+    });
+    const conferencia = conferirPagamentos(
+      estadia.aPagarCentavos,
+      pedido.pagamentos,
+      formasParaConferencia(await repo.formasAtivas(pool)),
+    );
+    const problemas: PreviaSaida['problemas'] = conferencia.problemas.map(({ mensagem, linha }) => ({
+      mensagem,
+      linha,
+    }));
+    if (estadia.excedentePagoCentavos > 0) {
+      problemas.unshift({
+        mensagem: `Já foram pagos ${formatarCentavos(estadia.pagoCentavos)}, mais que o valor final (${formatarCentavos(estadia.valorFinalCentavos)}). Estorne a diferença antes de encerrar.`,
+      });
+    }
+    if (conferencia.pagamentos.length && !(await repo.caixaAbertoDoOperador(pool, ator.auth.id))) {
+      problemas.push({ mensagem: 'Abra o seu caixa para receber o pagamento.', acao: 'ABRIR_CAIXA' });
+    }
+    return {
+      calculo: calculoDaApi(estadia, agora, regra, s.modalidade),
+      descontoCentavos: estadia.descontoCentavos,
+      acrescimoCentavos: estadia.acrescimoCentavos,
+      valorFinalCentavos: estadia.valorFinalCentavos,
+      aPagarCentavos: estadia.aPagarCentavos,
+      pagamentos: conferencia.pagamentos.map((p) => ({
+        linha: p.linha,
+        forma: p.forma,
+        formaNome: p.formaNome,
+        valorCentavos: p.valorCentavos,
+        valorRecebidoCentavos: p.valorRecebidoCentavos,
+        trocoCentavos: p.trocoCentavos,
+        automatico: p.automatico,
+      })),
+      somaPagamentosCentavos: conferencia.somaCentavos,
+      diferencaCentavos: conferencia.diferencaCentavos,
+      trocoTotalCentavos: conferencia.trocoTotalCentavos,
+      problemas,
+    };
+  },
+
   async registrarSaida(ator: Ator, id: string, pedido: PedidoSaida): Promise<ReciboSaida> {
     const site = await obterSiteAtual();
     const desconto = pedido.descontoCentavos ?? 0;
     const acrescimo = pedido.acrescimoCentavos ?? 0;
-    if ((desconto || acrescimo) && !ator.auth.temPermissao('sessao.ajustar_valor')) {
-      throw new AppError(403, 'SEM_PERMISSAO', 'Você não tem permissão para conceder desconto ou acréscimo.');
-    }
-    if ((desconto || acrescimo) && !pedido.motivoAjuste?.trim()) {
-      throw erros.requisicaoInvalida('Informe o motivo do desconto/acréscimo', [
-        { campo: 'motivoAjuste', mensagem: 'Obrigatório' },
-      ]);
-    }
+    exigirAjustePermitido(ator, desconto, acrescimo, pedido.motivoAjuste);
 
     let troco = 0;
     await comTransacao(
@@ -303,19 +400,13 @@ export const sessoesService = {
         const s = await carregar(site.id, id, c, true);
         exigirAberta(s, 'registrar a saída');
 
-        const [[t]] = await c.query<RowDataPacket[]>(
-          `SELECT NOW(3) AS agora, s.tarifa_aplicada, ${COLUNAS_REGRA}
-             FROM sessoes_estacionamento s JOIN tarifa_regras r ON r.id = s.tarifa_regra_id WHERE s.id = ?`,
-          [id],
-        );
-        const agora = t?.agora as Date;
         // Cobra pela regra gravada no ticket na entrada, nunca pela tabela atual
-        const permanenciaMin = minutosDePermanencia(new Date(s.entradaEm), agora);
-        const detalhe = detalharTarifa(regraDoTicket(t!), permanenciaMin, s.modalidade);
-        const calculado = detalhe.totalCentavos;
-        const final = calculado - desconto + acrescimo;
-        if (final < 0) throw erros.regraDeNegocio('O desconto não pode ser maior que o valor da estadia.');
-        const aPagar = final - s.calculo.pagoCentavos;
+        const { agora, estadia } = await calcularAgora(c, s, {
+          descontoCentavos: desconto,
+          acrescimoCentavos: acrescimo,
+        });
+        const calculado = estadia.valorCalculadoCentavos;
+        const final = estadia.valorFinalCentavos;
 
         // O valor mudou desde que o operador conferiu (ex.: virou a fração)?
         if (calculado !== pedido.valorEsperadoCentavos) {
@@ -323,27 +414,31 @@ export const sessoesService = {
             409,
             'CONFLITO',
             `O valor da estadia mudou de ${formatarCentavos(pedido.valorEsperadoCentavos)} para ${formatarCentavos(calculado)}. Confira e confirme novamente.`,
-            {
-              valorCalculadoCentavos: calculado,
-            },
+            { valorCalculadoCentavos: calculado },
           );
         }
-        if (aPagar < 0) {
+        if (estadia.excedentePagoCentavos > 0) {
           throw erros.regraDeNegocio(
             `Já foram pagos ${formatarCentavos(s.calculo.pagoCentavos)}, mais que o valor final (${formatarCentavos(final)}). Estorne a diferença antes de encerrar.`,
           );
         }
 
-        const somaPagamentos = pedido.pagamentos.reduce((soma, p) => soma + p.valorCentavos, 0);
-        if (somaPagamentos !== aPagar) {
-          throw erros.regraDeNegocio(
-            `Os pagamentos somam ${formatarCentavos(somaPagamentos)}, mas o valor a pagar é ${formatarCentavos(aPagar)}.`,
-            { aPagarCentavos: aPagar },
-          );
+        // Mesma conferência da prévia: soma, troco, linha automática
+        const formas = await repo.formasAtivas(c);
+        const conferencia = conferirPagamentos(
+          estadia.aPagarCentavos,
+          pedido.pagamentos,
+          formasParaConferencia(formas),
+        );
+        const problema = conferencia.problemas[0];
+        if (problema) {
+          throw problema.tipo === 'DADOS'
+            ? erros.requisicaoInvalida(problema.mensagem)
+            : erros.regraDeNegocio(problema.mensagem, { aPagarCentavos: estadia.aPagarCentavos });
         }
 
         // Registros financeiros: pagamento(s) + movimentação no caixa do operador
-        if (pedido.pagamentos.length) {
+        if (conferencia.pagamentos.length) {
           if (!ator.auth.temPermissao('pagamento.registrar'))
             throw new AppError(403, 'SEM_PERMISSAO', 'Você não tem permissão para registrar pagamentos.');
           const caixa = await repo.caixaAbertoDoOperador(c, ator.auth.id);
@@ -351,21 +446,10 @@ export const sessoesService = {
             throw new AppError(422, 'REGRA_DE_NEGOCIO', 'Abra o seu caixa para receber o pagamento.', {
               acao: 'ABRIR_CAIXA',
             });
-          const formas = await repo.formasAtivas(c);
-          for (const p of pedido.pagamentos) {
-            const forma = formas.get(p.forma);
-            if (!forma) throw erros.requisicaoInvalida(`Forma de pagamento inválida: ${p.forma}`);
-            if (p.valorCentavos <= 0)
-              throw erros.requisicaoInvalida('Cada pagamento precisa ter valor maior que zero');
-            const recebido = p.valorRecebidoCentavos ?? null;
-            if (recebido !== null && !forma.permiteTroco)
-              throw erros.requisicaoInvalida(`${forma.nome} não tem troco: informe só o valor.`);
-            if (recebido !== null && recebido < p.valorCentavos)
-              throw erros.regraDeNegocio(`Valor recebido em ${forma.nome} menor que o valor do pagamento.`);
-            const parcelas = forma.permiteParcelas ? (p.parcelas ?? 1) : 1;
+          for (const p of conferencia.pagamentos) {
+            const informado = pedido.pagamentos[p.linha]!;
             const pagamentoId = ulid();
-            const trocoPagamento = recebido === null ? 0 : recebido - p.valorCentavos;
-            troco += trocoPagamento;
+            troco += p.trocoCentavos;
             await c.query(
               `INSERT INTO pagamentos (id, site_id, sessao_id, caixa_sessao_id, forma_codigo, valor_centavos, valor_recebido_centavos,
                                      troco_centavos, autorizacao, parcelas, chave_idempotencia, registrado_por, registrado_em)
@@ -377,11 +461,11 @@ export const sessoesService = {
                 caixa.id,
                 p.forma,
                 p.valorCentavos,
-                recebido,
-                trocoPagamento,
-                p.autorizacao?.trim() || null,
-                parcelas,
-                p.chaveIdempotencia,
+                p.valorRecebidoCentavos,
+                p.trocoCentavos,
+                informado.autorizacao?.trim() || null,
+                p.parcelas,
+                informado.chaveIdempotencia,
                 ator.auth.id,
               ],
             );
@@ -411,10 +495,10 @@ export const sessoesService = {
             pedido.motivoAjuste?.trim() || null,
             JSON.stringify({
               calculadoEm: agora.toISOString(),
-              permanenciaMin,
+              permanenciaMin: estadia.permanenciaMin,
               modalidade: s.modalidade,
               tarifa: s.tarifaAplicada,
-              itens: detalhe.itens,
+              itens: estadia.itens,
               valorCalculadoCentavos: calculado,
               descontoCentavos: desconto,
               acrescimoCentavos: acrescimo,

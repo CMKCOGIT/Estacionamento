@@ -3,7 +3,7 @@
 Menu **Tarifas** do painel (`/tarifas`).
 
 - **Backend:** `apps/local-server/src/modules/tarifas` (`tarifas.*`, `selecao.ts`, `regra.ts`).
-- **Cálculo:** `packages/shared/src/tarifa.ts`. É a mesma função usada pelo caixa, pelo painel, pelo simulador e, no futuro, pelo app do cliente.
+- **Cálculo:** `packages/calculo` (só no backend). O caixa, o painel, o simulador e a prévia do formulário recebem os valores calculados pelo servidor. Ver [CALCULO.md](CALCULO.md).
 - **Banco:** `database/local/009_tarifas.sql`.
 
 ## O que o administrador configura

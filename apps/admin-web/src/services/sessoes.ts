@@ -4,7 +4,9 @@ import type {
   FormaPagamento,
   Lista,
   PedidoEntrada,
+  PedidoPreviaSaida,
   PedidoSaida,
+  PreviaSaida,
   ReciboSaida,
   ResultadoEntrada,
   SessaoDetalhe,
@@ -19,6 +21,9 @@ export const sessoesApi = {
   vagasLivres: (categoriaId: string) =>
     api<Lista<VagaLivre>>(`/sessoes/vagas-livres?categoriaId=${categoriaId}`),
   entrada: (p: PedidoEntrada) => api<ResultadoEntrada>('/sessoes/entrada', { method: 'POST', corpo: p }),
+  /** Valor agora, pagamentos conferidos e troco — calculados pelo servidor, sem gravar. */
+  previaSaida: (id: string, p: PedidoPreviaSaida) =>
+    api<PreviaSaida>(`/sessoes/${id}/previa-saida`, { method: 'POST', corpo: p }),
   saida: (id: string, p: PedidoSaida) =>
     api<ReciboSaida>(`/sessoes/${id}/saida`, { method: 'POST', corpo: p }),
   cancelar: (id: string, motivo: string) =>

@@ -1,15 +1,14 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
-  calcularTarifa,
   centavosParaCampo,
   DIAS_SEMANA,
   formatarCentavos,
   lerCentavos,
-  problemasDaRegra,
   regraDeDados,
   type AplicacaoEspecial,
   type Categoria,
   type DadosRegra,
+  type ResultadoSimulacao,
   type RegraCadastrada,
   type TabelaTarifaDetalhe,
   type TipoRegra,
@@ -100,9 +99,26 @@ export function DialogoRegra({ tabelaId, regra, nova, categorias, modelo, onFech
     numeros.some((v) => Number.isNaN(v)) ||
     (!fixo && teto.trim() && dados.diariaMaximaCentavos === null) ||
     (diaria.trim() && dados.diariaCentavos === null);
+  // Regras de preço e a prévia vêm do servidor (mesma conta do caixa)
+  const [simulacao, setSimulacao] = useState<ResultadoSimulacao | null>(null);
+  const precos = incompleto ? null : JSON.stringify(regraDeDados(dados));
+  useEffect(() => {
+    if (!precos) return;
+    let ativo = true;
+    const t = setTimeout(() => {
+      tarifasApi
+        .simular({ regra: JSON.parse(precos), duracoes: EXEMPLOS, modalidade: 'AVULSO' })
+        .then((r) => ativo && setSimulacao(r))
+        .catch(() => ativo && setSimulacao(null));
+    }, 250);
+    return () => {
+      ativo = false;
+      clearTimeout(t);
+    };
+  }, [precos]);
   const problemas = incompleto
     ? ['Preencha os valores (ex.: 10,00) e os minutos com números inteiros.']
-    : problemasDaRegra(regraDeDados(dados));
+    : [...(simulacao?.problemas ?? [])];
   if (automatica && dias === 0) problemas.push('Escolha ao menos um dia da semana.');
   if (automatica && comHorario && horaInicio === horaFim)
     problemas.push('Início e fim do horário não podem ser iguais.');
@@ -351,10 +367,12 @@ export function DialogoRegra({ tabelaId, regra, nova, categorias, modelo, onFech
         ) : (
           <table className="tabela tabela--compacta">
             <tbody>
-              {EXEMPLOS.map((m) => (
-                <tr key={m}>
-                  <td>{duracaoCurta(m)}</td>
-                  <td className="numero">{formatarCentavos(calcularTarifa(regraDeDados(dados), m))}</td>
+              {(simulacao?.resultados ?? []).map((x) => (
+                <tr key={x.permanenciaMin}>
+                  <td>{duracaoCurta(x.permanenciaMin)}</td>
+                  <td className="numero">
+                    {x.totalCentavos === null ? '—' : formatarCentavos(x.totalCentavos)}
+                  </td>
                 </tr>
               ))}
             </tbody>

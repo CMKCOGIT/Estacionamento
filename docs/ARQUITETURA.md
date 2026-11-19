@@ -61,7 +61,7 @@ flowchart LR
 | D2 | **Na v1, a nuvem só recebe dados e responde consultas.** Ela recebe eventos do local e não cria nenhum dado de negócio. | Não há escrita nos dois lados, então não há conflito. O fluxo inverso (*inbox*) fica preparado para mensalistas e Pix online. |
 | D3 | **Só o servidor local inicia a conexão**, de dentro para fora. | Não precisa abrir porta no roteador nem ter IP fixo. O servidor local nunca fica exposto à internet. |
 | D4 | **Fila de eventos gravada na mesma transação** (Outbox) e **envio repetido seguro** (idempotente). | Nenhum dado se perde quando a internet cai, e reenviar não gera duplicidade. |
-| D5 | **O cálculo de tarifa é uma função única no pacote `shared`**, usada pelo servidor local e pela nuvem. | O valor acumulado mostrado no PWA é exatamente o que o caixa vai cobrar. |
+| D5 | **O cálculo de tarifa é uma função única no pacote `calculo`**, usada só pelos backends (servidor local e nuvem); as telas recebem os valores da API (ver [CALCULO.md](CALCULO.md)). | O valor acumulado mostrado no PWA é exatamente o que o caixa vai cobrar. |
 | D6 | **O cliente acessa o ticket com um token aleatório de 256 bits**, colocado no final do link, depois do `#` (não é enviado ao servidor). | Não precisa de login, o token não aparece em logs e é impossível de adivinhar (§7.3). |
 | D7 | **As integrações ficam atrás de interfaces** (*ports/adapters*). | Na v1 tudo é manual; LPR, cancela e impressora entram depois sem mexer nas regras de negócio. |
 | D8 | **`site_id` em todas as tabelas e em todos os eventos** desde o início. | Vários estabelecimentos sem precisar migrar o modelo de dados. |
@@ -427,8 +427,8 @@ custo_horas(r):
 
 **Exemplo** (valores da tabela acima, carro, 2h20): 1ª hora 10,00 + 1 hora adicional 6,00 + sobra de 20 min = 2 frações × 2,00 = 4,00 → **R$ 20,00** (abaixo do teto de 40,00).
 
-- A função fica em `packages/shared/src/tarifa` e terá **testes com uma tabela de casos**: limites da tolerância, virada de hora, teto da diária, mais de 24h.
-- No painel, o admin terá um **simulador** (“quanto custa ficar X horas?”) para conferir a tabela antes de publicar.
+- A função fica em `packages/calculo` (só backends) e tem **testes com uma tabela de casos e propriedades**: limites da tolerância, virada de hora, teto da diária, mais de 24h, valor nunca decrescente. Ver [CALCULO.md](CALCULO.md).
+- No painel, o admin tem um **simulador**, calculado pelo servidor, (“quanto custa ficar X horas?”) para conferir a tabela antes de publicar.
 - O PWA mostra a tabela de forma legível, gerada a partir dos mesmos parâmetros.
 
 ---

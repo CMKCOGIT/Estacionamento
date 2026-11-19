@@ -43,3 +43,14 @@ export async function copiarTexto(texto: string): Promise<boolean> {
 export function horaCurta(iso: string): string {
   return new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 }
+
+/** "14:35" se for hoje; "amanhã 14:35" ou "21/11 14:35" se não. */
+export function quandoCurto(iso: string): string {
+  const d = new Date(iso);
+  const hoje = new Date();
+  const amanha = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate() + 1);
+  const mesmoDia = (a: Date, b: Date) => a.toDateString() === b.toDateString();
+  if (mesmoDia(d, hoje)) return horaCurta(iso);
+  if (mesmoDia(d, amanha)) return `amanhã ${horaCurta(iso)}`;
+  return `${d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })} ${horaCurta(iso)}`;
+}
