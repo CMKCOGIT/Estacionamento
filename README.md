@@ -10,6 +10,7 @@ Sistema de gerenciamento de estacionamento:
 |-----------|----------|
 | [`docs/ARQUITETURA.md`](docs/ARQUITETURA.md) | Arquitetura, sincronização, segurança, tarifas, retenção |
 | [`docs/BANCO_LOCAL.md`](docs/BANCO_LOCAL.md) | Modelo do banco MySQL local e diagramas ER |
+| [`docs/PWA.md`](docs/PWA.md) | App do cliente (PWA) e API pública: telas, instalação, service worker, HTTPS, acesso só ao próprio ticket |
 | [`docs/RELATORIOS.md`](docs/RELATORIOS.md) | Faturamento diário/semanal/mensal/por período, formas de pagamento, histórico com detalhe, pendentes e fechamentos de caixa |
 | [`docs/FINANCEIRO.md`](docs/FINANCEIRO.md) | Pagamentos, estorno, proteção contra duplicidade, caixa (abertura, sangria, fechamento) e resumo diário |
 | [`docs/CALCULO.md`](docs/CALCULO.md) | Cálculo automático das estadias (só no backend): valor acumulado, próxima cobrança, saída e testes |
@@ -39,14 +40,14 @@ Estacionamento/
 │   │   ├── tests/               unit/ (sem banco) e integracao/ (MySQL real, banco isolado)
 │   │   └── .env.example
 │   ├── admin-web/           FRONTEND: painel administrativo (React + Vite)
-│   ├── cloud-api/           (a implementar) API externa
-│   └── pwa/                 (a implementar) app do cliente
+│   ├── cloud-api/           API EXTERNA (nuvem): API pública /v1, só leitura, consumida pelo app do cliente
+│   └── pwa/                 APP DO CLIENTE "Meu Ticket" (PWA): vagas, preços e o próprio ticket
 ├── packages/
 │   ├── shared/              contratos (tipos) e utilitários usados por backend e frontend
 │   └── calculo/             motor de cálculo das estadias — SÓ backends (o painel recebe os valores da API)
 ├── database/
 │   ├── local/               BANCO DE DADOS: migrations SQL 001–010 + testes
-│   └── cloud/               (a modelar) banco da nuvem
+│   └── cloud/               banco da NUVEM (modelo de leitura da API pública)
 ├── infra/                   (a implementar) instalador Windows, Docker da nuvem
 └── docs/
 ```

@@ -11,3 +11,4 @@ export * from './sessoes.js';
 export * from './tarifas.js';
 export * from './financeiro.js';
 export * from './relatorios.js';
+export * from './publico.js';

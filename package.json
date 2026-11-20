@@ -21,12 +21,14 @@
     "usuario:admin": "npm run build:pacotes && npm run usuario:admin -w @estacionamento/local-server --",
     "demo:criar": "npm run build:pacotes && npm run demo:criar -w @estacionamento/local-server --",
     "test": "npm run build:pacotes && npm run test --workspaces --if-present",
-    "test:integracao": "npm run build:pacotes && npm run test:integracao -w @estacionamento/local-server",
+    "test:integracao": "npm run build:pacotes && npm run test:integracao -w @estacionamento/local-server && npm run test:integracao -w @estacionamento/cloud-api",
     "typecheck": "npm run build:pacotes && npm run typecheck --workspaces --if-present",
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "build:pacotes": "npm run build -w @estacionamento/shared && npm run build -w @estacionamento/calculo"
+    "build:pacotes": "npm run build -w @estacionamento/shared && npm run build -w @estacionamento/calculo",
+    "pwa:dev": "npm run build:pacotes && npm run dev -w @estacionamento/pwa",
+    "nuvem:dev": "npm run build:pacotes && npm run dev -w @estacionamento/cloud-api"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

@@ -30,6 +30,8 @@ if errorlevel 1 goto erro
 
 set "DB_NAME=estacionamento_demo"
 set "PORT=8081"
+rem Links do QR Code abrem o app do cliente da demonstração (App-Cliente-Demonstracao.cmd)
+set "PUBLIC_PWA_URL=http://localhost:5174"
 start "Servidor de Demonstração" /min cmd /k npm start
 
 for /l %%i in (1,1,60) do (

@@ -18,16 +18,23 @@ export default tseslint.config(
     },
   },
   {
-    files: ['apps/local-server/**/*.ts', 'packages/**/*.ts', '*.js'],
+    files: [
+      'apps/local-server/**/*.ts',
+      'apps/cloud-api/**/*.ts',
+      'packages/**/*.ts',
+      'apps/pwa/scripts/**/*.mjs',
+      '*.js',
+    ],
     languageOptions: { globals: globals.node },
   },
   {
     // Scripts de linha de comando escrevem no terminal de propósito.
-    files: ['**/scripts/**/*.ts'],
+    files: ['**/scripts/**/*.{ts,mjs}'],
     rules: { 'no-console': 'off' },
   },
   {
-    files: ['apps/admin-web/**/*.{ts,tsx}'],
+    // Painel e app do cliente: navegador, regras de hooks e nada de regras financeiras na tela
+    files: ['apps/admin-web/**/*.{ts,tsx}', 'apps/pwa/**/*.{ts,tsx}'],
     languageOptions: { globals: globals.browser },
     plugins: { 'react-hooks': reactHooks },
     rules: {

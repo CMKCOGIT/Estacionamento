@@ -1,0 +1,29 @@
+{
+  "name": "@estacionamento/pwa",
+  "version": "0.1.0",
+  "private": true,
+  "description": "App do cliente (PWA): vagas livres, tarifas e o próprio ticket, pelo link ou QR Code. Consome só a API pública externa.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "dev:https": "vite --host --mode https",
+    "build": "tsc -p tsconfig.json && vite build",
+    "preview": "vite preview --port 5174",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "icones": "node scripts/gerar-icones.mjs"
+  },
+  "dependencies": {
+    "@estacionamento/shared": "*",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "react-router": "^7.18.5"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "@vitejs/plugin-basic-ssl": "^2.1.0",
+    "@vitejs/plugin-react": "^6.0.0",
+    "vite": "^8.0.0"
+  }
+}

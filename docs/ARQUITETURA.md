@@ -122,6 +122,8 @@ Os dispositivos chamam os **mesmos serviços** que o painel usa. A regra de neg�
 - Dados preparados para consulta (*read model*): `sites`, `disponibilidade`, `tarifas`, `tickets_publicos` (hash do token, placa, entrada, saída, status, vaga, tarifa), mais `sync_applied`, `sync_state` e `inbox` (futuro).
 
 ### 2.8 PWA (`apps/pwa`)
+
+> Implementado: ver [PWA.md](PWA.md). A prévia assinada (Ed25519) para ticket ainda não sincronizado fica para o módulo de sincronização.
 - Telas: **Início** (vagas livres e tarifas) e **Meu ticket** (placa, entrada, tempo de permanência atualizando a cada segundo, valor acumulado e status).
 - O token é lido do `#` do link e guardado no `localStorage` do celular, para o cliente reabrir pelo atalho sem escanear de novo.
 - Mostra “atualizado há X min”, para o cliente saber se a informação pode estar desatualizada.
@@ -181,7 +183,7 @@ sequenceDiagram
 | Banco | **MySQL 8.4 LTS** (local e nuvem) | |
 | Acesso ao banco | **`mysql2`** (SQL explícito, sem ORM) | Migrations = arquivos `database/local/NNN_*.sql`, aplicados em ordem por um runner próprio que entende `DELIMITER` e registra o que já foi aplicado (`npm run db:migrar`) |
 | Frontend | **React 18 + Vite** + Tailwind | Painel e PWA |
-| PWA | **vite-plugin-pwa** (Workbox) | |
+| PWA | Service worker próprio (`apps/pwa/src/sw.ts`), sem Workbox | Pequeno e auditável: garante que o ticket nunca vai para cache (ver [PWA.md](PWA.md)) |
 | QR Code | `qrcode` (gerado no servidor local, funciona sem internet) | |
 | Senhas dos funcionários | **argon2id** | |
 | Logs | **pino** + rotação de arquivos | |
