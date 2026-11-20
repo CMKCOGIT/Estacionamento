@@ -1,8 +1,10 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router';
 import type { TicketPublico } from '@estacionamento/shared';
-import { api, ErroApi } from '../api';
-import { apagarDadosPessoais, atualizarUltimo, esquecer, type TicketSalvo } from '../armazenamento';
+import type { ErroApi } from '../api';
+import type { TicketSalvo } from '../armazenamento';
+import { avaliarFrescor, mensagemDeFalha, type Frescor } from '../consulta/regras';
+import { useConsultaTicket, type ConsultaTicket } from '../consulta/useConsultaTicket';
 import { Placa } from '../componentes/Placa';
 import { dataHora, dataHoraCompleta, dinheiro, duracao, haQuanto, hora, horasPorExtenso } from '../formato';
 
@@ -33,71 +35,28 @@ function politicaDoLink(t: TicketPublico): string {
 }
 
 /**
- * Um ticket do cliente. Busca na API só pelo token deste ticket; sem
- * internet mostra a última resposta guardada, com o horário dela.
+ * Um ticket do cliente. Os dados vêm só da API externa, pelo token deste
+ * ticket (useConsultaTicket). O que não veio de uma consulta recente é
+ * mostrado com o horário em que foi recebido, nunca como "agora".
  */
 export function CartaoTicket({ salvo, onEsquecer }: { salvo: TicketSalvo; onEsquecer: () => void }) {
-  const [ticket, setTicket] = useState<TicketPublico | null>(salvo.ultimo);
-  const [falha, setFalha] = useState<ErroApi | null>(null);
+  const c = useConsultaTicket(salvo);
+  const { ticket, falha } = c;
   const [agora, setAgora] = useState(() => Date.now());
   const [detalhes, setDetalhes] = useState(false);
   const [confirmar, setConfirmar] = useState(false);
 
-  const jaFuncionou = salvo.ultimo !== null;
-  const buscar = useCallback(
-    () =>
-      api.ticket(salvo.token).then(
-        (t) => {
-          setTicket(t);
-          setFalha(null);
-          setAgora(Date.now());
-          atualizarUltimo(salvo.token, t);
-        },
-        (e: unknown) => {
-          const erro = e instanceof ErroApi ? e : new ErroApi('INDISPONIVEL', 'Não foi possível atualizar.');
-          if (erro.tipo === 'NAO_ENCONTRADO') {
-            // Link que nunca funcionou (digitado/alterado): não fica guardado; os que já funcionaram perdem os dados pessoais
-            if (jaFuncionou) apagarDadosPessoais(salvo.token);
-            else esquecer(salvo.token);
-          }
-          setFalha(erro);
-        },
-      ),
-    [salvo.token, jaFuncionou],
-  );
-
-  // Busca ao abrir, ao voltar para o app e quando a internet volta
+  // Relógio da tela: 1 s (tempo correndo, "há X s", contagem para a nova tentativa)
   useEffect(() => {
-    void buscar();
-    const visivel = () => document.visibilityState === 'visible' && void buscar();
-    document.addEventListener('visibilitychange', visivel);
-    window.addEventListener('online', buscar);
-    return () => {
-      document.removeEventListener('visibilitychange', visivel);
-      window.removeEventListener('online', buscar);
-    };
-  }, [buscar]);
-
-  // Estacionado: atualiza o valor quando ele sobe (ou a cada minuto) e o relógio a cada segundo
-  const estacionado = ticket?.situacao === 'ESTACIONADO';
-  const proxima = ticket?.proximaCobranca?.em ?? null;
-  const calculadoEm = ticket?.calculadoEm ?? null;
-  useEffect(() => {
-    if (!estacionado) return;
-    const ate = proxima ? Date.parse(proxima) - Date.now() + 1000 : 60_000;
-    const t = setTimeout(() => void buscar(), Math.min(Math.max(ate, 5000), 60_000));
-    return () => clearTimeout(t);
-  }, [estacionado, proxima, buscar, calculadoEm]);
-  useEffect(() => {
-    const t = setInterval(() => setAgora(Date.now()), estacionado ? 1000 : 30_000);
+    const t = setInterval(() => setAgora(Date.now()), 1000);
     return () => clearInterval(t);
-  }, [estacionado]);
+  }, []);
 
   if (!ticket) {
     return (
       <section className="cartao ticket ticket--vazio" aria-busy={!falha}>
         {falha ? (
-          <ErroTicket falha={falha} onEsquecer={onEsquecer} />
+          <ErroTicket falha={falha} consulta={c} agora={agora} onEsquecer={onEsquecer} />
         ) : (
           <p className="mudo">Carregando o seu ticket…</p>
         )}
@@ -106,27 +65,40 @@ export function CartaoTicket({ salvo, onEsquecer }: { salvo: TicketSalvo; onEsqu
   }
 
   // Acesso encerrado (prazo após a saída, novo link ou cancelamento): não mostra mais os dados
-  const encerrado =
-    falha?.tipo === 'NAO_ENCONTRADO' ||
-    (ticket.acessoExpiraEm !== null && Date.parse(ticket.acessoExpiraEm) <= agora);
-  if (encerrado) {
-    return (
-      <AcessoEncerrado
-        ticket={ticket}
-        expirou={ticket.acessoExpiraEm !== null && Date.parse(ticket.acessoExpiraEm) <= agora}
-        onEsquecer={onEsquecer}
-      />
-    );
+  const agoraServidor = agora + c.desvioRelogioMs;
+  const expirou = ticket.acessoExpiraEm !== null && Date.parse(ticket.acessoExpiraEm) <= agoraServidor;
+  if (falha?.tipo === 'NAO_ENCONTRADO' || expirou) {
+    return <AcessoEncerrado ticket={ticket} expirou={expirou} onEsquecer={onEsquecer} />;
   }
 
+  const estacionado = ticket.situacao === 'ESTACIONADO';
+  const frescor = avaliarFrescor({
+    recebidoEm: c.recebidoEm,
+    falhando: falha !== null,
+    calculadoEm: ticket.calculadoEm,
+    sincronizadoEm: ticket.estacionamento.sincronizadoEm ?? ticket.sincronizadoEm,
+    agora,
+  });
+  const aoVivo = frescor !== 'DESATUALIZADO';
+  const horaDosDados = hora(ticket.calculadoEm);
+
+  // Tempo: corre só com dados recentes (a partir do horário do servidor, não do relógio do celular).
+  // Desatualizado: fica parado no horário do último dado recebido.
+  const baseMs =
+    (ticket.saidaEm ? Date.parse(ticket.saidaEm) : Date.parse(ticket.calculadoEm)) -
+    Date.parse(ticket.entradaEm);
+  const tempoMs = estacionado && aoVivo && c.recebidoEm ? baseMs + (agora - c.recebidoEm) : baseMs;
+  const proximaFutura =
+    ticket.proximaCobranca && Date.parse(ticket.proximaCobranca.em) > agoraServidor
+      ? ticket.proximaCobranca
+      : null;
+
   const s = SELO[ticket.situacao];
-  // Relógio: a partir do tempo calculado pelo servidor (não depende do relógio do celular estar certo)
-  const decorridoMs = estacionado ? Math.max(0, agora - Date.parse(ticket.calculadoEm)) : 0;
-  const tempoMs = ticket.saidaEm
-    ? Date.parse(ticket.saidaEm) - Date.parse(ticket.entradaEm)
-    : Date.parse(ticket.calculadoEm) - Date.parse(ticket.entradaEm) + decorridoMs;
   return (
-    <section className="cartao ticket" aria-label={`Ticket nº ${ticket.numero}`}>
+    <section
+      className={`cartao ticket${aoVivo ? '' : ' ticket--desatualizado'}`}
+      aria-label={`Ticket nº ${ticket.numero}`}
+    >
       <div className="ticket__cabeca">
         <div>
           <p className="ticket__local">{ticket.estacionamento.nome}</p>
@@ -134,6 +106,9 @@ export function CartaoTicket({ salvo, onEsquecer }: { salvo: TicketSalvo; onEsqu
         </div>
         <span className={`selo ${s.classe}`}>{s.texto}</span>
       </div>
+
+      <EstadoDaAtualizacao consulta={c} ticket={ticket} frescor={frescor} agora={agora} />
+
       <div className="ticket__placa">
         <Placa placa={ticket.placa} />
         <span className="mudo">
@@ -142,7 +117,7 @@ export function CartaoTicket({ salvo, onEsquecer }: { salvo: TicketSalvo; onEsqu
         </span>
       </div>
       <p className="ticket__situacao">
-        <span className="mudo pequeno">Situação atual</span>
+        <span className="mudo pequeno">{aoVivo ? 'Situação atual' : `Situação às ${horaDosDados}`}</span>
         {situacaoAtual(ticket)}
       </p>
 
@@ -154,10 +129,13 @@ export function CartaoTicket({ salvo, onEsquecer }: { salvo: TicketSalvo; onEsqu
           <dd>{dataHora(ticket.entradaEm)}</dd>
         </div>
         <div>
-          <dt>Tempo de permanência</dt>
+          <dt>
+            Tempo de permanência
+            {estacionado && !aoVivo ? ` (às ${horaDosDados})` : ''}
+          </dt>
           <dd>
             <span className="relogio" aria-live="off">
-              {duracao(tempoMs, estacionado)}
+              {duracao(tempoMs, estacionado && aoVivo)}
             </span>
           </dd>
         </div>
@@ -170,8 +148,18 @@ export function CartaoTicket({ salvo, onEsquecer }: { salvo: TicketSalvo; onEsqu
       </dl>
 
       {ticket.situacao !== 'CANCELADO' && (
-        <div className={`ticket__valor${estacionado ? '' : ' ticket__valor--final'}`}>
-          <span>{estacionado ? 'Valor acumulado até agora' : 'Valor total'}</span>
+        <div
+          className={`ticket__valor${
+            !estacionado ? ' ticket__valor--final' : aoVivo ? '' : ' ticket__valor--desatualizado'
+          }`}
+        >
+          <span>
+            {!estacionado
+              ? 'Valor total'
+              : aoVivo
+                ? 'Valor acumulado até agora'
+                : `Valor às ${horaDosDados} (último dado recebido)`}
+          </span>
           <strong>{dinheiro(ticket.valorCentavos)}</strong>
           {ticket.pagoCentavos > 0 && (
             <small>
@@ -179,10 +167,14 @@ export function CartaoTicket({ salvo, onEsquecer }: { salvo: TicketSalvo; onEsqu
               {ticket.aPagarCentavos > 0 ? ` · falta ${dinheiro(ticket.aPagarCentavos)}` : ''}
             </small>
           )}
-          {ticket.proximaCobranca && (
-            <small>
-              Passa a {dinheiro(ticket.proximaCobranca.valorCentavos)} às {hora(ticket.proximaCobranca.em)}
-            </small>
+          {estacionado && !aoVivo ? (
+            <small>Pode ter aumentado desde então. O valor certo aparece quando a consulta voltar.</small>
+          ) : (
+            proximaFutura && (
+              <small>
+                Passa a {dinheiro(proximaFutura.valorCentavos)} às {hora(proximaFutura.em)}
+              </small>
+            )
           )}
         </div>
       )}
@@ -193,7 +185,7 @@ export function CartaoTicket({ salvo, onEsquecer }: { salvo: TicketSalvo; onEsqu
           open={detalhes}
           onToggle={(e) => setDetalhes(e.currentTarget.open)}
         >
-          <summary>Como o valor foi calculado</summary>
+          <summary>Como o valor foi calculado{aoVivo ? '' : ` (às ${horaDosDados})`}</summary>
           <ul>
             {ticket.itens.map((i) => (
               <li key={i.descricao}>
@@ -224,30 +216,125 @@ export function CartaoTicket({ salvo, onEsquecer }: { salvo: TicketSalvo; onEsqu
         </Link>
       </section>
 
-      <div className={`atualizacao${falha ? ' atualizacao--alerta' : ''}`} role="status">
-        <p>
-          <span className="mudo">Última atualização: </span>
-          <time dateTime={ticket.calculadoEm}>{dataHoraCompleta(ticket.calculadoEm)}</time> (
-          {haQuanto(ticket.calculadoEm, agora)})
-        </p>
-        {falha && <p>{falha.message} Mostrando a última informação recebida.</p>}
-        {agora - Date.parse(ticket.sincronizadoEm) > 5 * 60_000 && (
-          <p>
-            Dados enviados pelo estacionamento em {dataHoraCompleta(ticket.sincronizadoEm)}. O valor pode
-            estar desatualizado; o caixa confirma na saída.
-          </p>
-        )}
-      </div>
+      <p className="atualizacao">
+        <span className="mudo">Última atualização: </span>
+        <time dateTime={ticket.calculadoEm}>{dataHoraCompleta(ticket.calculadoEm)}</time> (
+        {haQuanto(ticket.calculadoEm, agoraServidor)})
+      </p>
       <p className="mudo pequeno">{politicaDoLink(ticket)}</p>
 
       <div className="ticket__acoes">
-        <button type="button" className="botao botao--secundario" onClick={() => void buscar()}>
-          Atualizar
+        <button
+          type="button"
+          className="botao botao--secundario"
+          onClick={c.atualizar}
+          disabled={c.consultando}
+        >
+          {c.consultando ? 'Atualizando…' : 'Atualizar'}
         </button>
         <Esquecer confirmar={confirmar} setConfirmar={setConfirmar} onEsquecer={onEsquecer} />
       </div>
     </section>
   );
+}
+
+/** "em 12 s" / "em 1 min". */
+function contagem(ms: number): string {
+  const s = Math.max(1, Math.round(ms / 1000));
+  return s < 60 ? `em ${s} s` : `em ${Math.round(s / 60)} min`;
+}
+
+/**
+ * Faixa do topo do cartão: ao vivo, atualizando, estacionamento sem enviar
+ * dados, ou indisponível (com a hora dos dados mostrados e a próxima tentativa).
+ */
+function EstadoDaAtualizacao({
+  consulta: c,
+  ticket,
+  frescor,
+  agora,
+}: {
+  consulta: ConsultaTicket;
+  ticket: TicketPublico;
+  frescor: Frescor;
+  agora: number;
+}) {
+  const agoraServidor = agora + c.desvioRelogioMs;
+  const quando = `${dataHoraCompleta(ticket.calculadoEm)} (${idade(agoraServidor - Date.parse(ticket.calculadoEm))})`;
+  const ativo = ticket.situacao === 'ESTACIONADO';
+
+  if (frescor === 'AO_VIVO') {
+    if (!ativo) return null;
+    return (
+      <p className="estado estado--ao-vivo" role="status">
+        <span className="estado__ponto" aria-hidden="true" /> Atualizando automaticamente · última consulta{' '}
+        {c.recebidoEm ? segundosAtras(agora - c.recebidoEm) : 'agora'}
+      </p>
+    );
+  }
+  if (frescor === 'SEM_SINCRONIA') {
+    const sinc = ticket.estacionamento.sincronizadoEm ?? ticket.sincronizadoEm;
+    return (
+      <div className="estado estado--aviso" role="status">
+        <p>
+          <b>O estacionamento não envia dados desde {dataHoraCompleta(sinc)}.</b>
+        </p>
+        <p>
+          O tempo e o valor seguem o relógio, mas uma saída ou um pagamento feito depois disso pode ainda não
+          aparecer. O caixa confirma o valor na saída.
+        </p>
+      </div>
+    );
+  }
+  // DESATUALIZADO: ainda sem a primeira resposta, ou falha
+  if (!c.falha) {
+    return (
+      <p className="estado estado--aviso" role="status">
+        Buscando dados atualizados… Por enquanto, mostrando os de {quando}.
+      </p>
+    );
+  }
+  if (!ativo) {
+    // Encerrado/cancelado: os dados da saída não mudam mais; só não foi possível confirmar agora
+    return (
+      <p className="estado estado--aviso" role="status">
+        {mensagemDeFalha(c.falha.tipo)} Mostrando os dados de {quando}; depois da saída eles não mudam mais.
+      </p>
+    );
+  }
+  const tentativa = c.consultando
+    ? 'Tentando de novo…'
+    : c.falha.tipo === 'SEM_CONEXAO'
+      ? 'A consulta volta sozinha quando a internet voltar.'
+      : c.proximaEm
+        ? `Nova tentativa automática ${contagem(c.proximaEm - agora)}.`
+        : '';
+  return (
+    <div className="estado estado--falha" role="alert">
+      <p>
+        <b>{mensagemDeFalha(c.falha.tipo)}</b> {tentativa}
+      </p>
+      <p>
+        Estes dados <b>não são em tempo real</b>: são de {quando}.
+      </p>
+      <button type="button" className="botao-texto" onClick={c.atualizar} disabled={c.consultando}>
+        Tentar agora
+      </button>
+    </div>
+  );
+}
+
+/** Idade exata dos dados ("há 12 s"), sem arredondar para "agora". */
+function idade(ms: number): string {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  if (s < 60) return `há ${s} s`;
+  const m = Math.floor(s / 60);
+  return m < 60 ? `há ${m} min` : `há ${Math.floor(m / 60)} h ${String(m % 60).padStart(2, '0')} min`;
+}
+
+function segundosAtras(ms: number): string {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  return s < 5 ? 'agora' : s < 60 ? `há ${s} s` : `há ${Math.floor(s / 60)} min`;
 }
 
 function Esquecer({
@@ -313,17 +400,48 @@ function AcessoEncerrado({
   );
 }
 
-function ErroTicket({ falha, onEsquecer }: { falha: ErroApi; onEsquecer: () => void }) {
+function ErroTicket({
+  falha,
+  consulta: c,
+  agora,
+  onEsquecer,
+}: {
+  falha: ErroApi;
+  consulta: ConsultaTicket;
+  agora: number;
+  onEsquecer: () => void;
+}) {
+  if (falha.tipo === 'NAO_ENCONTRADO') {
+    return (
+      <>
+        <p className="alerta">
+          Não encontramos este ticket. Confira o link ou peça um novo QR Code no caixa. Depois da saída, o
+          link funciona só pelo prazo definido pelo estacionamento.
+        </p>
+        <button type="button" className="botao-texto" onClick={onEsquecer}>
+          Tirar este ticket do celular
+        </button>
+      </>
+    );
+  }
+  // Primeiro acesso sem conseguir falar com a API: nada para mostrar ainda
   return (
-    <>
-      <p className="alerta">
-        {falha.tipo === 'NAO_ENCONTRADO'
-          ? 'Não encontramos este ticket. Confira o link ou peça um novo QR Code no caixa. Depois da saída, o link funciona só pelo prazo definido pelo estacionamento.'
-          : falha.message}
+    <div className="estado estado--falha" role="alert">
+      <p>
+        <b>{mensagemDeFalha(falha.tipo)}</b> Não foi possível carregar o seu ticket.
       </p>
-      <button type="button" className="botao-texto" onClick={onEsquecer}>
-        Tirar este ticket do celular
+      <p>
+        {c.consultando
+          ? 'Tentando de novo…'
+          : falha.tipo === 'SEM_CONEXAO'
+            ? 'Ele aparece sozinho quando a internet voltar.'
+            : c.proximaEm
+              ? `Nova tentativa automática ${contagem(c.proximaEm - agora)}.`
+              : ''}
+      </p>
+      <button type="button" className="botao-texto" onClick={c.atualizar} disabled={c.consultando}>
+        Tentar agora
       </button>
-    </>
+    </div>
   );
 }

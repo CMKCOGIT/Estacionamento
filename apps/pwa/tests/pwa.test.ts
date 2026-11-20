@@ -9,6 +9,13 @@ import {
   salvarToken,
 } from '../src/armazenamento';
 import { dataHoraCompleta, duracao, haQuanto, horasPorExtenso } from '../src/formato';
+import {
+  avaliarFrescor,
+  INTERVALO_ATIVO_MS,
+  LIMITE_AO_VIVO_MS,
+  mensagemDeFalha,
+  proximaConsultaEm,
+} from '../src/consulta/regras';
 import { estrategiaPara } from '../src/sw-regras';
 import { tokenDoLink } from '../src/token';
 
@@ -157,5 +164,73 @@ describe('textos da consulta do ticket', () => {
     expect(horasPorExtenso(24)).toBe('24 horas');
     expect(horasPorExtenso(72)).toBe('3 dias');
     expect(horasPorExtenso(168)).toBe('7 dias');
+  });
+});
+
+describe('atualização periódica do ticket', () => {
+  const base = {
+    situacao: 'ESTACIONADO' as const,
+    proximaCobrancaEm: null,
+    desvioRelogioMs: 0,
+    falhasSeguidas: 0,
+    ultimaFalha: null,
+    agora: Date.parse('2026-11-20T12:00:00Z'),
+  };
+
+  it('estacionado: a cada 30 s, ou no instante em que o valor sobe', () => {
+    expect(proximaConsultaEm(base)).toBe(INTERVALO_ATIVO_MS);
+    expect(proximaConsultaEm({ ...base, proximaCobrancaEm: '2026-11-20T12:00:10Z' })).toBe(11_000);
+    // celular 5 min adiantado: a hora da cobrança é convertida para o relógio do celular
+    expect(
+      proximaConsultaEm({
+        ...base,
+        proximaCobrancaEm: '2026-11-20T12:00:10Z',
+        desvioRelogioMs: -5 * 60_000,
+        agora: base.agora + 5 * 60_000,
+      }),
+    ).toBe(11_000);
+    expect(proximaConsultaEm({ ...base, proximaCobrancaEm: '2026-11-20T12:10:00Z' })).toBe(
+      INTERVALO_ATIVO_MS,
+    );
+  });
+
+  it('falhas: novas tentativas com espera crescente, até 1 min; link encerrado não tenta mais', () => {
+    const esperas = [1, 2, 3, 4, 5, 9].map((n) =>
+      proximaConsultaEm({ ...base, falhasSeguidas: n, ultimaFalha: 'INDISPONIVEL' }),
+    );
+    expect(esperas).toEqual([5_000, 10_000, 20_000, 40_000, 60_000, 60_000]);
+    expect(proximaConsultaEm({ ...base, falhasSeguidas: 1, ultimaFalha: 'MUITAS_TENTATIVAS' })).toBe(60_000);
+    expect(proximaConsultaEm({ ...base, falhasSeguidas: 1, ultimaFalha: 'NAO_ENCONTRADO' })).toBeNull();
+    // falha também em ticket encerrado: tenta de novo (o cliente pode estar vendo dados antigos)
+    expect(
+      proximaConsultaEm({ ...base, situacao: 'ENCERRADO', falhasSeguidas: 1, ultimaFalha: 'SEM_CONEXAO' }),
+    ).toBe(5_000);
+  });
+
+  it('encerrado ou cancelado não muda mais: para de consultar', () => {
+    expect(proximaConsultaEm({ ...base, situacao: 'ENCERRADO' })).toBeNull();
+    expect(proximaConsultaEm({ ...base, situacao: 'CANCELADO' })).toBeNull();
+  });
+
+  it('dados ao vivo só com consulta recente bem-sucedida e o estacionamento enviando dados', () => {
+    const agora = Date.parse('2026-11-20T12:00:00Z');
+    const f = {
+      recebidoEm: agora - 10_000,
+      falhando: false,
+      calculadoEm: '2026-11-20T11:59:50Z',
+      sincronizadoEm: '2026-11-20T11:59:40Z',
+      agora,
+    };
+    expect(avaliarFrescor(f)).toBe('AO_VIVO');
+    expect(avaliarFrescor({ ...f, falhando: true })).toBe('DESATUALIZADO');
+    expect(avaliarFrescor({ ...f, recebidoEm: null })).toBe('DESATUALIZADO'); // só a cópia guardada
+    expect(avaliarFrescor({ ...f, recebidoEm: agora - LIMITE_AO_VIVO_MS - 1 })).toBe('DESATUALIZADO');
+    expect(avaliarFrescor({ ...f, sincronizadoEm: '2026-11-20T11:50:00Z' })).toBe('SEM_SINCRONIA');
+  });
+
+  it('mensagens de indisponibilidade para cada falha', () => {
+    expect(mensagemDeFalha('SEM_CONEXAO')).toMatch(/internet/);
+    expect(mensagemDeFalha('TEMPO_ESGOTADO')).toMatch(/não respondeu/);
+    expect(mensagemDeFalha('INDISPONIVEL')).toMatch(/indisponível/);
   });
 });

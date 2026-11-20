@@ -661,3 +661,74 @@ a {
 .ticket--encerrado p {
   margin: 0.75rem 0;
 }
+
+/* ---------- Atualização: ao vivo, desatualizado, indisponível ---------- */
+.estado {
+  margin: 0.75rem 0 0;
+  padding: 0.6rem 0.8rem;
+  border-radius: 12px;
+  font-size: 0.9rem;
+}
+.estado p {
+  margin: 0 0 0.25rem;
+}
+.estado p:last-of-type {
+  margin-bottom: 0;
+}
+.estado .botao-texto {
+  margin-top: 0.25rem;
+  min-height: 44px;
+  padding-left: 0;
+}
+.estado--ao-vivo {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0;
+  color: var(--mudo);
+  font-size: 0.85rem;
+}
+.estado__ponto {
+  width: 9px;
+  height: 9px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--acento);
+  box-shadow: 0 0 0 0 var(--acento);
+  animation: pulsar 2s ease-out infinite;
+}
+@keyframes pulsar {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--acento) 60%, transparent);
+  }
+  100% {
+    box-shadow: 0 0 0 8px transparent;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .estado__ponto {
+    animation: none;
+  }
+}
+.estado--aviso {
+  background: var(--aviso-suave);
+  color: var(--aviso);
+}
+.estado--falha {
+  background: var(--alerta-suave);
+  color: var(--alerta);
+}
+.estado--falha .botao-texto,
+.estado--aviso .botao-texto {
+  color: inherit;
+  text-decoration: underline;
+}
+/* Dados antigos: sem o destaque de "valor correndo" */
+.ticket__valor--desatualizado {
+  background: var(--superficie-2);
+  color: var(--texto);
+  border: 2px dashed var(--borda);
+}
+.ticket--desatualizado .relogio {
+  color: var(--mudo);
+}

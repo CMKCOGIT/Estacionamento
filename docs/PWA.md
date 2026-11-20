@@ -73,7 +73,42 @@ O cliente lê o QR Code ou abre o link recebido na entrada. Não há conta, cada
 | **Situação atual** | Selo (Estacionado, Encerrado ou Cancelado) e uma frase: dentro da tolerância, pagamento na saída, pago até agora, saída registrada às HH:MM |
 | **Última atualização** | "20/11/2026 às 14:32:05 (há 1 min)", o horário do cálculo no servidor. Sem internet ou com dados antigos do estacionamento, o app avisa |
 
-O app atualiza sozinho: quando o valor sobe, a cada minuto, ao voltar para o app e quando a internet volta.
+A atualização é automática, pela API externa (veja a seção seguinte).
+
+### Atualização automática e falhas de conexão
+
+As regras ficam em `apps/pwa/src/consulta/regras.ts` (com testes) e o mecanismo em `useConsultaTicket.ts`.
+
+**Quando o app consulta a API**
+
+| Situação | Consulta |
+|----------|----------|
+| Veículo estacionado | A cada **30 s** e no instante em que o valor sobe (`proximaCobranca`) |
+| App volta para a tela / internet volta | Na hora |
+| App em segundo plano | Não consulta (economiza bateria e dados) |
+| Falha | Novas tentativas automáticas: 5 s, 10 s, 20 s, 40 s e depois a cada 60 s. "Muitas consultas": 60 s |
+| Ticket encerrado ou cancelado | Para de consultar (os dados não mudam mais) |
+| Link encerrado | Para de consultar |
+
+Uma consulta sem resposta em **10 s** conta como falha, para a tela não ficar "carregando" para sempre. Quando o celular perde a rede, o app marca a falha na hora, sem esperar o tempo limite. Respostas fora de ordem são descartadas, então a tela nunca volta para um dado mais antigo.
+
+**Os dados só aparecem como atuais quando são.** O app classifica o que mostra em três estados:
+
+| Estado | Quando | O que a tela mostra |
+|--------|--------|---------------------|
+| **Ao vivo** | Última consulta bem-sucedida há menos de 75 s, e o estacionamento enviando dados | "● Atualizando automaticamente · última consulta há 12 s". O relógio corre e o valor aparece como "Valor acumulado até agora" |
+| **Estacionamento sem enviar dados** | O servidor local não atualiza a nuvem há mais de 3 min (ex.: estacionamento sem internet) | Aviso com o horário do último envio. O tempo e o valor seguem o relógio, mas uma saída ou um pagamento posterior pode ainda não aparecer |
+| **Desatualizado** | Falha na consulta, sem internet, ou última resposta com mais de 75 s | Mensagem de indisponibilidade (sem internet, serviço indisponível ou lento, muitas consultas), mais "Estes dados **não são em tempo real**: são de 20/11/2026 às 16:48:02 (há 7 s)", a próxima tentativa automática e o botão "Tentar agora" |
+
+No estado desatualizado:
+- o relógio **para** no horário do último dado ("Tempo de permanência (às 16:48)");
+- o valor vira "Valor às 16:48 (último dado recebido)", num quadro sem destaque, com o aviso "pode ter aumentado desde então";
+- a situação vira "Situação às 16:48";
+- o aviso de quando o valor sobe some.
+
+**Relógio do celular errado:** o tempo corre a partir do horário do servidor. O app mede a diferença entre os dois relógios a cada resposta, então um celular com o relógio adiantado ou atrasado não altera o tempo mostrado.
+
+**Recuperação automática:** quando a internet ou a API volta, a próxima consulta restaura o estado "ao vivo" sem o cliente fazer nada. No teste, isso levou menos de 1 s depois da internet voltar e cerca de 3 s depois de a API voltar.
 
 ### Política de encerramento do acesso
 
@@ -164,4 +199,4 @@ Nunca copia usuários, caixa ou pagamentos individuais. A sincronização vai al
 |------|-------------|
 | `apps/cloud-api/tests/publico.test.ts` (14) | Tabela de tarifas do próprio ticket e política; código alterado em várias posições, número, placa e identificador no lugar do token: sempre 404; registro apagado da nuvem 30 dias após a saída; valor acumulado e final; resposta sem dados internos; 404 igual para token errado, revogado ou expirado; limite por IP; token na URL ignorado; nenhuma rota administrativa e só leitura; CORS só para o app; cabeçalhos de segurança; redirecionamento para HTTPS |
 | `apps/local-server/tests/integracao/sessoes.test.ts` | Política de encerramento: padrão 24h, alteração vale na próxima saída, 0 = encerra na saída, limites, auditoria, permissão |
-| `apps/pwa/tests/pwa.test.ts` (12) | Remoção de tickets vencidos e dos dados pessoais; data e hora completas; leitura do token do link; tickets guardados (limite, esquecer, sem armazenamento, dados corrompidos); regras do service worker (ticket nunca em cache); formatos |
+| `apps/pwa/tests/pwa.test.ts` (17) | Agenda das consultas (30 s, instante da cobrança com o relógio do celular errado, espera crescente nas falhas, parada após encerramento); estados ao vivo, sem sincronia e desatualizado; mensagens de indisponibilidade; remoção de tickets vencidos e dos dados pessoais; data e hora completas; leitura do token do link; tickets guardados (limite, esquecer, sem armazenamento, dados corrompidos); regras do service worker (ticket nunca em cache); formatos |
