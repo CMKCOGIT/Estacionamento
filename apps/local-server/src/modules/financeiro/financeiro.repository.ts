@@ -11,17 +11,17 @@ import type { Conexao } from '../../db/pool.js';
 import { pool } from '../../db/pool.js';
 
 type Db = Conexao | typeof pool;
-const FUSO = env.FUSO_OFFSET;
+export const FUSO = env.FUSO_OFFSET;
 const iso = (v: unknown) => (v instanceof Date ? v.toISOString() : null);
 const n = (v: unknown) => Number(v ?? 0);
 const nulo = (v: unknown) => (v === null || v === undefined ? null : Number(v));
-const nome = (coluna: string) =>
+export const nome = (coluna: string) =>
   `(SELECT COALESCE(f.nome, u.login) FROM usuarios u LEFT JOIN funcionarios f ON f.usuario_id = u.id WHERE u.id = ${coluna})`;
 
 /** Início do dia local `data` (AAAA-MM-DD) em UTC — os horários estão gravados em UTC. */
 const inicioDoDia = (param = '?') => `CONVERT_TZ(CAST(${param} AS DATETIME), '${FUSO}', '+00:00')`;
 /** Condição "coluna dentro dos dias locais de..até" (inclusive). */
-const noPeriodo = (coluna: string) =>
+export const noPeriodo = (coluna: string) =>
   `${coluna} >= ${inicioDoDia()} AND ${coluna} < ${inicioDoDia()} + INTERVAL 1 DAY`;
 
 /** Acrescenta a condição só quando o filtro foi informado. */
@@ -66,7 +66,7 @@ function filtroPagamentos(f: FiltroPagamentos) {
   return { where: where.join(' AND '), params };
 }
 
-function paraPagamento(l: RowDataPacket): PagamentoRegistro {
+export function paraPagamento(l: RowDataPacket): PagamentoRegistro {
   return {
     id: l.id,
     sessaoId: l.sessao_id,
@@ -102,7 +102,7 @@ export interface FiltroMovimentacoes {
   forma?: string;
 }
 
-function paraMovimentacao(l: RowDataPacket): Movimentacao {
+export function paraMovimentacao(l: RowDataPacket): Movimentacao {
   return {
     id: l.id,
     tipo: l.tipo,
@@ -122,7 +122,7 @@ function paraMovimentacao(l: RowDataPacket): Movimentacao {
   };
 }
 
-const SELECT_MOV = `
+export const SELECT_MOV = `
   SELECT m.*, f.nome AS forma_nome, pt.nome AS posto, s.numero, s.placa, ${nome('m.registrado_por')} AS registrado_por_nome
     FROM movimentacoes_financeiras m
     JOIN formas_pagamento f ON f.codigo = m.forma_codigo
@@ -133,11 +133,11 @@ const SELECT_MOV = `
 // ---------------------------------------------------------------------------
 // Caixas
 // ---------------------------------------------------------------------------
-const SELECT_CAIXA = `
+export const SELECT_CAIXA = `
   SELECT cx.*, pt.nome AS posto, ${nome('cx.operador_id')} AS operador, ${nome('cx.fechado_por')} AS fechado_por_nome
     FROM caixa_sessoes cx JOIN postos pt ON pt.id = cx.posto_id`;
 
-async function montarCaixas(c: Db, linhas: RowDataPacket[]): Promise<CaixaResumo[]> {
+export async function montarCaixas(c: Db, linhas: RowDataPacket[]): Promise<CaixaResumo[]> {
   if (!linhas.length) return [];
   const ids = linhas.map((l) => l.id as string);
   const [porForma] = await c.query<RowDataPacket[]>(

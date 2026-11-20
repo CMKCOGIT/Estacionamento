@@ -3,7 +3,15 @@ import { formatarDataHora } from '../../services/rotulos';
 import { horaCurta } from '../operacao/util';
 import { ROTULO_MOVIMENTACAO } from './rotulos';
 
-export function TabelaMovimentacoes({ itens, semCaixa }: { itens: Movimentacao[]; semCaixa?: boolean }) {
+export function TabelaMovimentacoes({
+  itens,
+  semCaixa,
+  onDetalhe,
+}: {
+  itens: Movimentacao[];
+  semCaixa?: boolean;
+  onDetalhe?: (m: Movimentacao) => void;
+}) {
   if (!itens.length) return <p className="mudo">Nenhuma movimentação.</p>;
   return (
     <div className="tabela-rolagem">
@@ -20,6 +28,11 @@ export function TabelaMovimentacoes({ itens, semCaixa }: { itens: Movimentacao[]
             {!semCaixa && <th scope="col">Caixa</th>}
             <th scope="col">Por</th>
             <th scope="col">Descrição</th>
+            {onDetalhe && (
+              <th scope="col">
+                <span className="sr-only">Detalhes</span>
+              </th>
+            )}
           </tr>
         </thead>
         <tbody>
@@ -42,6 +55,13 @@ export function TabelaMovimentacoes({ itens, semCaixa }: { itens: Movimentacao[]
               {!semCaixa && <td>{m.posto ?? '—'}</td>}
               <td>{m.registradoPor ?? '—'}</td>
               <td>{m.descricao ?? ''}</td>
+              {onDetalhe && (
+                <td>
+                  <button type="button" className="botao-texto" onClick={() => onDetalhe(m)}>
+                    Detalhes
+                  </button>
+                </td>
+              )}
             </tr>
           ))}
         </tbody>
@@ -53,9 +73,11 @@ export function TabelaMovimentacoes({ itens, semCaixa }: { itens: Movimentacao[]
 export function TabelaPagamentos({
   itens,
   onEstornar,
+  onDetalhe,
 }: {
   itens: PagamentoRegistro[];
   onEstornar?: (p: PagamentoRegistro) => void;
+  onDetalhe?: (p: PagamentoRegistro) => void;
 }) {
   if (!itens.length) return <p className="mudo">Nenhum pagamento no período.</p>;
   return (
@@ -110,7 +132,12 @@ export function TabelaPagamentos({
               <td>
                 {p.posto ?? '—'} · {p.registradoPor ?? '—'}
               </td>
-              <td>
+              <td className="sem-quebra">
+                {onDetalhe && (
+                  <button type="button" className="botao-texto" onClick={() => onDetalhe(p)}>
+                    Detalhes
+                  </button>
+                )}{' '}
                 {onEstornar && p.status === 'CONFIRMADO' && p.sessaoStatus === 'ABERTA' && (
                   <button
                     type="button"

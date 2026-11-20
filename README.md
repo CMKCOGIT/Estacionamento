@@ -10,6 +10,7 @@ Sistema de gerenciamento de estacionamento:
 |-----------|----------|
 | [`docs/ARQUITETURA.md`](docs/ARQUITETURA.md) | Arquitetura, sincronização, segurança, tarifas, retenção |
 | [`docs/BANCO_LOCAL.md`](docs/BANCO_LOCAL.md) | Modelo do banco MySQL local e diagramas ER |
+| [`docs/RELATORIOS.md`](docs/RELATORIOS.md) | Faturamento diário/semanal/mensal/por período, formas de pagamento, histórico com detalhe, pendentes e fechamentos de caixa |
 | [`docs/FINANCEIRO.md`](docs/FINANCEIRO.md) | Pagamentos, estorno, proteção contra duplicidade, caixa (abertura, sangria, fechamento) e resumo diário |
 | [`docs/CALCULO.md`](docs/CALCULO.md) | Cálculo automático das estadias (só no backend): valor acumulado, próxima cobrança, saída e testes |
 | [`docs/TARIFAS.md`](docs/TARIFAS.md) | Versões de tarifa, arredondamento, tarifas especiais, simulador e rastreabilidade das cobranças |
@@ -178,6 +179,7 @@ O painel compilado passa a ser servido pelo próprio servidor em **http://localh
 | GET/POST/PATCH/PUT/DELETE | `/api/v1/tarifas...` | Versões de tarifa: rascunho, regras, publicação e arquivamento (ver docs/TARIFAS.md) |
 | GET/POST | `/api/v1/sessoes...` · `/api/v1/caixa...` | Entrada, prévia e registro da saída, cancelamento, novo link e caixa do operador (ver docs/OPERACAO.md e docs/CALCULO.md) |
 | GET/POST | `/api/v1/financeiro...` | Resumo do dia, pagamentos, pendentes, movimentações, caixas e estorno (ver docs/FINANCEIRO.md) |
+| GET | `/api/v1/relatorios...` | Relatórios financeiros e detalhe de movimentações (ver docs/RELATORIOS.md) |
 | GET | `/api/v1/dashboard` | Indicadores, gráficos, alertas e sincronização do painel |
 
 Todas as rotas, exceto `/health` e `/auth/login`, exigem login. Detalhes em [`docs/AUTENTICACAO.md`](docs/AUTENTICACAO.md).

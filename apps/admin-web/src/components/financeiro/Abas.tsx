@@ -15,6 +15,7 @@ import { financeiroApi } from '../../services/financeiro';
 import { formatarDataHora } from '../../services/rotulos';
 import { duracaoCurta } from '../vagas/MapaVagas';
 import { DialogoMotivo } from '../vagas/Dialogos';
+import { DialogoDetalhe } from '../relatorios/DialogoDetalhe';
 import { DialogoCaixa } from './DialogoCaixa';
 import { DialogoReceber } from './DialogoReceber';
 import { hojeLocal, ROTULO_MOVIMENTACAO } from './rotulos';
@@ -509,6 +510,7 @@ export function AbaMovimentacoes({ formas }: { formas: FormaPagamento[] }) {
     [de, ate, tipo, forma, pagina],
   );
   const lista = useCarregar<ListaMovimentacoes>(carregar);
+  const [detalhe, setDetalhe] = useState<string | null>(null);
   const mudar = (f: () => void) => {
     setPagina(1);
     f();
@@ -570,10 +572,11 @@ export function AbaMovimentacoes({ formas }: { formas: FormaPagamento[] }) {
             <strong>{formatarCentavos(d.totais.saidasCentavos)}</strong> · saldo{' '}
             <strong>{formatarCentavos(d.totais.entradasCentavos - d.totais.saidasCentavos)}</strong>
           </p>
-          <TabelaMovimentacoes itens={d.itens} />
+          <TabelaMovimentacoes itens={d.itens} onDetalhe={(m) => setDetalhe(m.id)} />
           <Paginas pagina={pagina} proxima={d.proximaPagina} onIr={setPagina} />
         </section>
       )}
+      {detalhe && <DialogoDetalhe alvo={{ movimentacaoId: detalhe }} onFechar={() => setDetalhe(null)} />}
     </>
   );
 }

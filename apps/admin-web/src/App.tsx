@@ -7,6 +7,7 @@ import { Caixa } from './pages/Caixa';
 import { Dashboard } from './pages/Dashboard';
 import { Login } from './pages/Login';
 import { Operacao } from './pages/Operacao';
+import { Relatorios } from './pages/Relatorios';
 import { Tarifas } from './pages/Tarifas';
 import { TrocarSenha } from './pages/TrocarSenha';
 import { UsuarioForm } from './pages/UsuarioForm';
@@ -34,6 +35,14 @@ export function App() {
           >
             <Route index element={<Dashboard />} />
             <Route path="trocar-senha" element={<TrocarSenha />} />
+            <Route
+              path="relatorios"
+              element={
+                <RotaProtegida permissoes={['relatorio.financeiro', 'caixa.supervisionar']}>
+                  <Relatorios />
+                </RotaProtegida>
+              }
+            />
             <Route
               path="caixa"
               element={

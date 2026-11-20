@@ -1907,3 +1907,47 @@ td .etiqueta--bloqueado {
   white-space: nowrap;
   flex-shrink: 0;
 }
+
+/* ---------- Relatórios ---------- */
+.etiqueta--erro {
+  background: rgba(185, 28, 28, 0.12);
+  color: var(--falha);
+}
+.abas-internas,
+.seletor-periodo__atalhos {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+.abas-internas .chip,
+.seletor-periodo__atalhos .chip {
+  cursor: pointer;
+  padding: 0.35rem 0.8rem;
+}
+.seletor-periodo__atalhos {
+  flex: 1 1 100%;
+}
+.linha-vazia td {
+  color: var(--texto-mudo);
+}
+.grafico__eixo--categoria {
+  fill: var(--texto);
+  font-size: 0.82rem;
+}
+.detalhe-financeiro {
+  display: grid;
+  gap: 0.75rem;
+}
+.detalhe-financeiro h3 {
+  margin: 0 0 0.25rem;
+  font-size: 1rem;
+}
+.detalhe-financeiro section + section {
+  border-top: 1px solid var(--borda);
+  padding-top: 0.75rem;
+}
+/* Números alinhados à direita: valores comparáveis de relance */
+.tabela th.numero,
+.tabela td.numero {
+  text-align: right;
+}

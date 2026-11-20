@@ -36,7 +36,7 @@ const MENU: { rotulo: string; rota: string | null; permissoes: string[] }[] = [
     permissoes: ['caixa.operar', 'caixa.supervisionar', 'relatorio.financeiro', 'pagamento.registrar'],
   },
   { rotulo: 'Tarifas', rota: '/tarifas', permissoes: ['tarifa.ver', 'tarifa.gerenciar', 'tarifa.publicar'] },
-  { rotulo: 'Relatórios', rota: null, permissoes: ['relatorio.operacional', 'relatorio.financeiro'] },
+  { rotulo: 'Relatórios', rota: '/relatorios', permissoes: ['relatorio.financeiro', 'caixa.supervisionar'] },
   { rotulo: 'Funcionários', rota: '/usuarios', permissoes: ['usuario.gerenciar', 'funcionario.gerenciar'] },
   { rotulo: 'Atividades', rota: '/atividades', permissoes: ['auditoria.ver'] },
   { rotulo: 'Configurações', rota: null, permissoes: ['config.gerenciar'] },
