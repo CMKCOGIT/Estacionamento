@@ -9,3 +9,4 @@ export * from './vagas.js';
 export * from './veiculos.js';
 export * from './sessoes.js';
 export * from './tarifas.js';
+export * from './financeiro.js';

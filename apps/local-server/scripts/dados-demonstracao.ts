@@ -246,6 +246,30 @@ for (let d = 6; d >= 0; d--) {
         continue;
       }
       const em = saidaReal.getTime() >= agora.getTime() ? new Date(agora.getTime() - MIN) : saidaReal;
+
+      // Um estorno a cada dois ou três dias: pagamento lançado por engano
+      // (forma errada) e estornado com o veículo ainda no estacionamento.
+      if (!estornou && d % 3 === 1 && em.getTime() - p.entrada.getTime() > 30 * MIN) {
+        const errado = await c.registrarPagamento(con, {
+          siteId,
+          sessaoId,
+          caixaId: caixa,
+          forma: 'CREDITO',
+          valor: 1000,
+          operadorId: usuarioId,
+          em: new Date(p.entrada.getTime() + 20 * MIN),
+        });
+        await c.estornarPagamento(con, {
+          siteId,
+          pagamentoId: errado,
+          caixaId: caixa,
+          operadorId: usuarioId,
+          em: new Date(p.entrada.getTime() + 22 * MIN),
+          motivo: 'Lançado na forma errada (cliente pagou em dinheiro)',
+        });
+        estornou = true;
+      }
+
       await c.registrarSaida(con, {
         ...comum,
         sessaoId,
@@ -256,25 +280,6 @@ for (let d = 6; d >= 0; d--) {
         forma: p.forma,
         modalidade: p.modalidade,
       });
-
-      // Um estorno a cada dois ou três dias (cliente cobrado em duplicidade)
-      if (!estornou && d % 3 === 1) {
-        const [[pg]] = await con.query<RowDataPacket[]>(
-          "SELECT id FROM pagamentos WHERE sessao_id = ? AND status = 'CONFIRMADO' LIMIT 1",
-          [sessaoId],
-        );
-        if (pg) {
-          await c.estornarPagamento(con, {
-            siteId,
-            pagamentoId: String(pg.id),
-            caixaId: caixa,
-            operadorId: usuarioId,
-            em: new Date(em.getTime() + MIN),
-            motivo: 'Cobrado em duplicidade',
-          });
-          estornou = true;
-        }
-      }
     }
 
     if (d > 0) await c.fecharCaixa(con, { caixaId: caixa, em: fimDia, operadorId: usuarioId });

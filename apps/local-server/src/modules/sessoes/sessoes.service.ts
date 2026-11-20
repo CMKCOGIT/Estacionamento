@@ -6,6 +6,8 @@ import {
   formatarPlaca,
   normalizarPlaca,
   type PedidoEntrada,
+  type PedidoPagamento,
+  type ResultadoPagamento,
   type PedidoPreviaSaida,
   type PreviaSaida,
   type PedidoSaida,
@@ -24,6 +26,13 @@ import { gerarToken, montarAcessoCliente } from './acesso-cliente.js';
 import { COLUNAS_REGRA, regraDoTicket } from '../tarifas/regra.js';
 import { escolherTarifa, tarifasDaEntrada } from '../tarifas/selecao.js';
 import { pool } from '../../db/pool.js';
+import {
+  chaveReusada,
+  gravarPagamentos,
+  MINUTOS_SUSPEITA_DUPLICIDADE,
+  pagamentoParecido,
+  pagamentosPorChave,
+} from '../financeiro/pagamentos.js';
 import { calculoDaApi, sessoesRepository as repo } from './sessoes.repository.js';
 
 export interface Ator {
@@ -386,6 +395,173 @@ export const sessoesService = {
     };
   },
 
+  /**
+   * Recebe um pagamento com o veículo ainda no estacionamento (antecipado ou
+   * parcial). Fica associado ao ticket e abate do valor da saída.
+   */
+  async receber(ator: Ator, id: string, pedido: PedidoPagamento): Promise<ResultadoPagamento> {
+    const site = await obterSiteAtual();
+    let pagamentoId = '';
+    let troco = 0;
+    let repetido: boolean = false;
+    await comTransacao({ ...ator.contexto, motivo: 'pagamento antecipado' }, async (c) => {
+      const s = await carregar(site.id, id, c, true);
+
+      // Reenvio da mesma operação: devolve o pagamento já registrado
+      const ja = (await pagamentosPorChave(c, [pedido.chaveIdempotencia])).get(pedido.chaveIdempotencia);
+      if (ja) {
+        const mesmo =
+          ja.sessaoId === id &&
+          ja.forma === pedido.forma &&
+          (pedido.valorCentavos === null || ja.valorCentavos === pedido.valorCentavos);
+        if (!mesmo) throw chaveReusada();
+        pagamentoId = ja.id;
+        troco = ja.trocoCentavos;
+        repetido = true;
+        return;
+      }
+
+      exigirAberta(s, 'receber um pagamento');
+      const caixa = await repo.caixaAbertoDoOperador(c, ator.auth.id);
+      if (!caixa) {
+        throw new AppError(422, 'REGRA_DE_NEGOCIO', 'Abra o seu caixa para receber o pagamento.', {
+          acao: 'ABRIR_CAIXA',
+        });
+      }
+      const { estadia } = await calcularAgora(c, s, { descontoCentavos: 0, acrescimoCentavos: 0 });
+      if (estadia.aPagarCentavos === 0) {
+        throw erros.regraDeNegocio(
+          estadia.valorCalculadoCentavos === 0
+            ? 'Este ticket ainda está dentro da tolerância: não há valor a receber.'
+            : 'Este ticket não tem valor em aberto: o que foi acumulado até agora já está pago.',
+        );
+      }
+      const valor = pedido.valorCentavos ?? estadia.aPagarCentavos;
+      if (valor > estadia.aPagarCentavos) {
+        throw erros.regraDeNegocio(
+          `O pagamento (${formatarCentavos(valor)}) é maior que o valor em aberto agora (${formatarCentavos(estadia.aPagarCentavos)}). Receba no máximo o valor em aberto.`,
+          { aPagarCentavos: estadia.aPagarCentavos },
+        );
+      }
+      const conferencia = conferirPagamentos(
+        valor,
+        [{ ...pedido, valorCentavos: valor }],
+        formasParaConferencia(await repo.formasAtivas(c)),
+      );
+      const problema = conferencia.problemas[0];
+      if (problema) {
+        throw problema.tipo === 'DADOS'
+          ? erros.requisicaoInvalida(problema.mensagem)
+          : erros.regraDeNegocio(problema.mensagem);
+      }
+      const conferido = conferencia.pagamentos[0]!;
+
+      // Mesmo valor e forma neste ticket há poucos minutos: provável lançamento em dobro
+      if (!pedido.confirmarDuplicidade) {
+        const parecido = await pagamentoParecido(c, id, conferido.forma, conferido.valorCentavos);
+        if (parecido) {
+          throw new AppError(
+            409,
+            'CONFLITO',
+            `Já existe um pagamento de ${formatarCentavos(conferido.valorCentavos)} em ${conferido.formaNome} neste ticket, registrado há menos de ${MINUTOS_SUSPEITA_DUPLICIDADE} minutos. Se for mesmo outro pagamento, confirme.`,
+            {
+              motivo: 'POSSIVEL_DUPLICIDADE',
+              pagamentoId: parecido.id,
+              registradoEm: parecido.registradoEm.toISOString(),
+            },
+          );
+        }
+      }
+
+      [pagamentoId] = (await gravarPagamentos(c, {
+        siteId: site.id,
+        sessaoId: id,
+        caixaId: caixa.id,
+        operadorId: ator.auth.id,
+        pagamentos: [
+          {
+            ...conferido,
+            autorizacao: pedido.autorizacao?.trim() || null,
+            chaveIdempotencia: pedido.chaveIdempotencia,
+          },
+        ],
+      })) as [string];
+      troco = conferido.trocoCentavos;
+      await eventoTicket(c, site.id, 'ticket.pagamento', await carregar(site.id, id, c), {
+        pagamento_id: pagamentoId,
+        valor_centavos: conferido.valorCentavos,
+      });
+    });
+    const sessao = await carregar(site.id, id);
+    return {
+      pagamento: sessao.pagamentos.find((p) => p.id === pagamentoId)!,
+      trocoCentavos: troco,
+      sessao,
+      repetido,
+    };
+  },
+
+  /**
+   * Estorna um pagamento de ticket ainda aberto (lançado errado, cobrado em
+   * dobro). O valor sai do caixa aberto de quem estorna.
+   */
+  async estornarPagamento(ator: Ator, pagamentoId: string, motivo: string): Promise<SessaoDetalhe> {
+    const site = await obterSiteAtual();
+    const sessaoId = await comTransacao({ ...ator.contexto, motivo }, async (c) => {
+      const [[p]] = await c.query<RowDataPacket[]>(
+        'SELECT id, sessao_id, forma_codigo, valor_centavos, status FROM pagamentos WHERE id = ? AND site_id = ?',
+        [pagamentoId, site.id],
+      );
+      if (!p) throw erros.naoEncontrado('Pagamento não encontrado');
+      // Trava o ticket antes do pagamento (mesma ordem da saída: evita deadlock)
+      const s = await carregar(site.id, String(p.sessao_id), c, true);
+      const [[atual]] = await c.query<RowDataPacket[]>(
+        'SELECT status FROM pagamentos WHERE id = ? FOR UPDATE',
+        [pagamentoId],
+      );
+      if (atual?.status === 'ESTORNADO') throw erros.conflito('Este pagamento já foi estornado.');
+      if (s.status !== 'ABERTA') {
+        throw erros.regraDeNegocio(
+          `O ticket nº ${s.numero} já foi ${s.status === 'ENCERRADA' ? 'encerrado' : 'cancelado'}: a conta está fechada e o pagamento não pode ser estornado.`,
+        );
+      }
+      const caixa = await repo.caixaAbertoDoOperador(c, ator.auth.id);
+      if (!caixa) {
+        throw new AppError(422, 'REGRA_DE_NEGOCIO', 'Abra o seu caixa para fazer o estorno.', {
+          acao: 'ABRIR_CAIXA',
+        });
+      }
+      const valor = Number(p.valor_centavos);
+      if (p.forma_codigo === 'DINHEIRO') {
+        const [[d]] = await c.query<RowDataPacket[]>(
+          "SELECT COALESCE(SUM(saldo_centavos), 0) AS saldo FROM vw_caixa_resumo WHERE caixa_sessao_id = ? AND forma_codigo = 'DINHEIRO'",
+          [caixa.id],
+        );
+        if (Number(d?.saldo) < valor) {
+          throw erros.regraDeNegocio(
+            `Não há dinheiro suficiente no seu caixa para devolver ${formatarCentavos(valor)} (há ${formatarCentavos(Number(d?.saldo))}).`,
+          );
+        }
+      }
+      await c.query(
+        "UPDATE pagamentos SET status = 'ESTORNADO', estornado_em = NOW(3), estornado_por = ?, motivo_estorno = ? WHERE id = ? AND status = 'CONFIRMADO'",
+        [ator.auth.id, motivo, pagamentoId],
+      );
+      await c.query(
+        `INSERT INTO movimentacoes_financeiras (id, site_id, caixa_sessao_id, tipo, direcao, valor_centavos, forma_codigo,
+                                                pagamento_id, sessao_id, descricao, registrado_por, registrado_em)
+         VALUES (?, ?, ?, 'ESTORNO', 'SAIDA', ?, ?, ?, ?, ?, ?, NOW(3))`,
+        [ulid(), site.id, caixa.id, valor, p.forma_codigo, pagamentoId, s.id, motivo, ator.auth.id],
+      );
+      await eventoTicket(c, site.id, 'ticket.pagamento_estornado', s, {
+        pagamento_id: pagamentoId,
+        valor_centavos: valor,
+      });
+      return s.id;
+    });
+    return carregar(site.id, sessaoId);
+  },
+
   async registrarSaida(ator: Ator, id: string, pedido: PedidoSaida): Promise<ReciboSaida> {
     const site = await obterSiteAtual();
     const desconto = pedido.descontoCentavos ?? 0;
@@ -393,11 +569,23 @@ export const sessoesService = {
     exigirAjustePermitido(ator, desconto, acrescimo, pedido.motivoAjuste);
 
     let troco = 0;
+    let repetido: boolean = false;
     await comTransacao(
       { ...ator.contexto, motivo: pedido.motivoAjuste ?? ator.contexto.motivo },
       async (c) => {
         // Trava o ticket: duas saídas simultâneas do mesmo ticket ficam em fila e a segunda vê "já encerrado"
         const s = await carregar(site.id, id, c, true);
+
+        // Reenvio da MESMA saída (duplo clique, rede caiu antes da resposta): devolve o recibo, não grava de novo
+        const chaves = pedido.pagamentos.map((p) => p.chaveIdempotencia);
+        const jaGravados = await pagamentosPorChave(c, chaves);
+        if (jaGravados.size) {
+          const todosDesta = chaves.every((k) => jaGravados.get(k)?.sessaoId === id);
+          if (!todosDesta || s.status !== 'ENCERRADA') throw chaveReusada();
+          repetido = true;
+          troco = [...jaGravados.values()].reduce((t, p) => t + p.trocoCentavos, 0);
+          return;
+        }
         exigirAberta(s, 'registrar a saída');
 
         // Cobra pela regra gravada no ticket na entrada, nunca pela tabela atual
@@ -446,35 +634,18 @@ export const sessoesService = {
             throw new AppError(422, 'REGRA_DE_NEGOCIO', 'Abra o seu caixa para receber o pagamento.', {
               acao: 'ABRIR_CAIXA',
             });
-          for (const p of conferencia.pagamentos) {
-            const informado = pedido.pagamentos[p.linha]!;
-            const pagamentoId = ulid();
-            troco += p.trocoCentavos;
-            await c.query(
-              `INSERT INTO pagamentos (id, site_id, sessao_id, caixa_sessao_id, forma_codigo, valor_centavos, valor_recebido_centavos,
-                                     troco_centavos, autorizacao, parcelas, chave_idempotencia, registrado_por, registrado_em)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(3))`,
-              [
-                pagamentoId,
-                site.id,
-                id,
-                caixa.id,
-                p.forma,
-                p.valorCentavos,
-                p.valorRecebidoCentavos,
-                p.trocoCentavos,
-                informado.autorizacao?.trim() || null,
-                p.parcelas,
-                informado.chaveIdempotencia,
-                ator.auth.id,
-              ],
-            );
-            await c.query(
-              `INSERT INTO movimentacoes_financeiras (id, site_id, caixa_sessao_id, tipo, direcao, valor_centavos, forma_codigo, pagamento_id, sessao_id, registrado_por, registrado_em)
-             VALUES (?, ?, ?, 'RECEBIMENTO', 'ENTRADA', ?, ?, ?, ?, ?, NOW(3))`,
-              [ulid(), site.id, caixa.id, p.valorCentavos, p.forma, pagamentoId, id, ator.auth.id],
-            );
-          }
+          troco = conferencia.trocoTotalCentavos;
+          await gravarPagamentos(c, {
+            siteId: site.id,
+            sessaoId: id,
+            caixaId: caixa.id,
+            operadorId: ator.auth.id,
+            pagamentos: conferencia.pagamentos.map((p) => ({
+              ...p,
+              autorizacao: pedido.pagamentos[p.linha]!.autorizacao?.trim() || null,
+              chaveIdempotencia: pedido.pagamentos[p.linha]!.chaveIdempotencia,
+            })),
+          });
         }
 
         // Encerra (a condição "status = ABERTA" garante que nunca encerra duas vezes)
@@ -526,7 +697,11 @@ export const sessoesService = {
       },
     );
 
-    return { sessao: await carregar(site.id, id), trocoTotalCentavos: troco };
+    return {
+      sessao: await carregar(site.id, id),
+      trocoTotalCentavos: troco,
+      ...(repetido ? { repetido: true } : {}),
+    };
   },
 
   /** Cancela uma entrada registrada por engano (sem pagamentos). */

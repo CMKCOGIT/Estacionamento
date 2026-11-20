@@ -264,11 +264,16 @@ export const sessoesRepository = {
     return numero;
   },
 
+  /**
+   * Caixa aberto do operador. Dentro de uma transação a leitura trava o caixa
+   * (FOR SHARE): se ele estiver sendo fechado, espera e vê que fechou — um
+   * pagamento nunca entra num caixa que acabou de ser fechado.
+   */
   async caixaAbertoDoOperador(c: Conexao | typeof pool, operadorId: string) {
     const [[l]] = await c.query<RowDataPacket[]>(
       `SELECT cx.id, cx.posto_id, p.nome AS posto, cx.aberto_em, cx.saldo_inicial_centavos
          FROM caixa_sessoes cx JOIN postos p ON p.id = cx.posto_id
-        WHERE cx.operador_aberto_id = ?`,
+        WHERE cx.operador_aberto_id = ?${c === pool ? '' : ' FOR SHARE OF cx'}`,
       [operadorId],
     );
     return l

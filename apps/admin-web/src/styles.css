@@ -1862,3 +1862,48 @@ a:has(> .placa) {
 .fechamento__proxima {
   margin: -0.5rem 0 0.9rem;
 }
+
+/* ---------- Caixa e financeiro ---------- */
+.resumo-linha {
+  margin: 0 0 0.75rem;
+}
+.valor-saida {
+  color: var(--falha);
+}
+td .etiqueta + .pequeno,
+td .etiqueta--bloqueado {
+  margin-left: 0.35rem;
+}
+.barras-hora {
+  display: grid;
+  gap: 0.3rem;
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+}
+.barras-hora__item {
+  display: grid;
+  grid-template-columns: 2.5rem minmax(0, 1fr) 6.5rem;
+  align-items: center;
+  gap: 0.6rem;
+}
+.barras-hora__barra {
+  display: block;
+  height: 0.9rem;
+  border-radius: 3px;
+  background: var(--serie-1);
+}
+.barras-hora__valor {
+  text-align: right;
+}
+.cartoes .indicador-cartao__extra {
+  font-size: 0.8rem;
+}
+/* Abas roláveis quando não cabem (celular) */
+.abas {
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+.abas .aba {
+  white-space: nowrap;
+  flex-shrink: 0;
+}

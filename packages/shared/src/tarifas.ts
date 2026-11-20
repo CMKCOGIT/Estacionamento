@@ -118,7 +118,10 @@ export interface PedidoSimulacao {
   /** Regras já cadastradas (ex.: a mesma tarifa na versão em vigor e na nova)… */
   regraIds?: string[];
   /** …ou uma regra ainda não salva (prévia do formulário). */
-  regra?: Omit<DadosRegra, 'categoriaId' | 'tipo' | 'nome' | 'aplicacao' | 'diasSemana' | 'horaInicio' | 'horaFim' | 'ativo'>;
+  regra?: Omit<
+    DadosRegra,
+    'categoriaId' | 'tipo' | 'nome' | 'aplicacao' | 'diasSemana' | 'horaInicio' | 'horaFim' | 'ativo'
+  >;
   /** Permanências em minutos. */
   duracoes: number[];
   modalidade: 'AVULSO' | 'DIARIA';

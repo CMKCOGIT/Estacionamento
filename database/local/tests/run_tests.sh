@@ -13,7 +13,7 @@ PASS=0; FAIL=0
 run()  { $MYSQL "$DB" 2>&1 | grep -v "Using a password"; }
 
 $MYSQL -e "DROP DATABASE IF EXISTS $DB; CREATE DATABASE $DB CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;" 2>&1 | grep -v "Using a password"
-for f in 001_schema.sql 002_triggers.sql 003_views.sql 004_seed.sql 005_autenticacao.sql 006_usuarios_permissoes.sql 007_vagas.sql 008_veiculos.sql 009_tarifas.sql; do
+for f in 001_schema.sql 002_triggers.sql 003_views.sql 004_seed.sql 005_autenticacao.sql 006_usuarios_permissoes.sql 007_vagas.sql 008_veiculos.sql 009_tarifas.sql 010_financeiro.sql; do
   out=$(run < "$f"); [ -n "$out" ] && { echo "ERRO aplicando $f:"; echo "$out"; exit 1; }
 done
 
@@ -142,10 +142,11 @@ UPDATE sessao_tokens SET expira_em='2026-11-19 14:20:00' WHERE id='K2';"
 fail "alterar sessão encerrada" "UPDATE sessoes_estacionamento SET placa='ZZZ9Z99' WHERE id='S01';" "não pode ser alterada"
 fail "excluir sessão"         "DELETE FROM sessoes_estacionamento WHERE id='S01';" "cancelamento"
 expect "vaga A-01 liberada"   "SELECT estado FROM vw_vagas_situacao WHERE codigo='A-01';" "LIVRE"
-ok   "estorno do Pix"         "SET @app_motivo='cliente pagou em dobro';
-UPDATE pagamentos SET status='ESTORNADO', estornado_em=NOW(3), estornado_por='U1', motivo_estorno='cliente pagou em dobro' WHERE id='PG2';
-INSERT INTO movimentacoes_financeiras (id, site_id, caixa_sessao_id, tipo, direcao, valor_centavos, forma_codigo, pagamento_id, sessao_id, registrado_por, registrado_em)
-VALUES ('M3','S1','C1','ESTORNO','SAIDA',1000,'PIX','PG2','S01','U1',NOW(3));"
+fail "estorno com o ticket já encerrado" "UPDATE pagamentos SET status='ESTORNADO', estornado_em=NOW(3), estornado_por='U1', motivo_estorno='cliente pagou em dobro' WHERE id='PG2';" "ticket encerrado"
+fail "movimentação que não confere com o pagamento" "INSERT INTO movimentacoes_financeiras (id, site_id, caixa_sessao_id, tipo, direcao, valor_centavos, forma_codigo, pagamento_id, sessao_id, registrado_por, registrado_em)
+VALUES ('M3','S1','C1','ESTORNO','SAIDA',999,'PIX','PG2','S01','U1',NOW(3));" "confere com o pagamento"
+fail "sangria em cartão" "INSERT INTO movimentacoes_financeiras (id, site_id, caixa_sessao_id, tipo, direcao, valor_centavos, forma_codigo, descricao, registrado_por, registrado_em)
+VALUES ('M4','S1','C1','SANGRIA','SAIDA',100,'PIX','x','U1',NOW(3));" "sempre em dinheiro"
 fail "estornar duas vezes"    "UPDATE pagamentos SET motivo_estorno='de novo' WHERE id='PG2';" "só admite"
 expect "saldo do caixa em dinheiro" "SELECT saldo_centavos FROM vw_caixa_resumo WHERE caixa_sessao_id='C1' AND forma_codigo='DINHEIRO';" "6000"
 fail "fechar caixa com diferença errada" "UPDATE caixa_sessoes SET status='FECHADO', fechado_em=NOW(3), fechado_por='U1', saldo_esperado_centavos=6000, saldo_contado_centavos=5900, diferenca_centavos=0 WHERE id='C1';" "ck_caixa_diferenca"
@@ -171,7 +172,7 @@ fail "histórico de capacidade imutável" "UPDATE capacidade_alteracoes SET moti
 
 echo "== Histórico e sincronização"
 expect "eventos auditados automaticamente" "SELECT COUNT(DISTINCT acao) >= 10 FROM historico_atividades;" "1"
-expect "motivo gravado no histórico" "SELECT motivo FROM historico_atividades WHERE acao='pagamento.estornado';" "cliente pagou em dobro"
+expect "estorno recusado não deixa histórico" "SELECT COUNT(*) FROM historico_atividades WHERE acao='pagamento.estornado';" "0"
 fail "alterar histórico"      "UPDATE historico_atividades SET acao='x' LIMIT 1;" "somente inserção"
 fail "apagar histórico"       "DELETE FROM historico_atividades LIMIT 1;" "retenção"
 ok   "outbox"                 "INSERT INTO sync_estado (site_id) VALUES ('S1');

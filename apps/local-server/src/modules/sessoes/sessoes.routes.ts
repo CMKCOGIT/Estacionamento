@@ -120,6 +120,26 @@ sessoesRouter.post('/:id/previa-saida', exigirPermissao('sessao.saida'), async (
   res.json(await sessoesService.previaSaida(ator(req, 'prévia de saída'), idDe(req), dados));
 });
 
+/** Recebe um pagamento com o veículo ainda no estacionamento (antecipado/parcial). */
+sessoesRouter.post('/:id/pagamentos', exigirPermissao('pagamento.registrar'), async (req, res) => {
+  const d = z
+    .object({
+      forma: z
+        .string()
+        .regex(/^[A-Z][A-Z0-9_]*$/)
+        .max(20),
+      valorCentavos: centavos.nullable(),
+      valorRecebidoCentavos: centavos.nullish(),
+      autorizacao: z.string().trim().max(40).nullish(),
+      parcelas: z.number().int().min(1).max(24).optional(),
+      chaveIdempotencia: z.uuid('Chave de idempotência inválida'),
+      confirmarDuplicidade: z.boolean().default(false),
+    })
+    .parse(req.body);
+  const r = await sessoesService.receber(ator(req, 'pagamento antecipado'), idDe(req), d);
+  res.status(r.repetido ? 200 : 201).json(r);
+});
+
 sessoesRouter.post('/:id/cancelar', exigirPermissao('sessao.cancelar'), async (req, res) => {
   const { motivo } = z
     .object({ motivo: z.string().trim().min(3, 'Informe o motivo').max(255) })
@@ -165,6 +185,23 @@ caixaRouter.post('/abrir', operaCaixa, async (req, res) => {
       contexto: contextoAuditoria(req),
       postoId,
       saldoInicialCentavos,
+    }),
+  );
+});
+
+caixaRouter.post('/movimentar', exigirPermissao('caixa.sangria'), async (req, res) => {
+  const d = z
+    .object({
+      tipo: z.enum(['SANGRIA', 'SUPRIMENTO']),
+      valorCentavos: centavos.min(1, 'Informe o valor'),
+      descricao: z.string().trim().min(3, 'Informe o motivo').max(255),
+    })
+    .parse(req.body);
+  res.json(
+    await caixaService.movimentar({
+      operadorId: req.auth!.id,
+      contexto: contextoAuditoria(req, d.descricao),
+      ...d,
     }),
   );
 });

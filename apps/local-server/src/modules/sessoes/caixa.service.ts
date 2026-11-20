@@ -4,12 +4,12 @@ import { formatarCentavos, type CaixaAtual, type FormaPagamento, type Posto } fr
 import { obterSiteAtual } from '../../config/site.js';
 import { pool } from '../../db/pool.js';
 import { comTransacao, type ContextoAuditoria } from '../../db/transacao.js';
-import { erros } from '../../http/erros.js';
+import { AppError, erros } from '../../http/erros.js';
 import { sessoesRepository as repo } from './sessoes.repository.js';
 
 /**
- * Caixa do operador — o mínimo para a saída registrar pagamentos.
- * (Sangria, suprimento, conferência e relatórios ficam no módulo de Caixa.)
+ * Caixa do operador: abertura, sangria/suprimento e fechamento com conferência.
+ * Consultas (resumo, movimentações, caixas de todos) ficam em modules/financeiro.
  */
 export const caixaService = {
   async postos(): Promise<Posto[]> {
@@ -70,17 +70,24 @@ export const caixaService = {
     await comTransacao({ ...o.contexto, motivo: 'abertura de caixa' }, async (c) => {
       let postoId = o.postoId ?? null;
       if (!postoId) {
-        const [[p]] = await c.query<RowDataPacket[]>(
-          'SELECT id FROM postos WHERE site_id = ? AND ativo = TRUE ORDER BY nome LIMIT 1',
+        // Primeiro guichê sem caixa aberto; se todos estiverem em uso, cria o próximo ("Guichê 2"...)
+        const [postos] = await c.query<RowDataPacket[]>(
+          `SELECT p.id, p.nome, EXISTS (SELECT 1 FROM caixa_sessoes cx WHERE cx.posto_aberto_id = p.id) AS ocupado
+             FROM postos p WHERE p.site_id = ? AND p.ativo = TRUE ORDER BY LENGTH(p.nome), p.nome FOR UPDATE`,
           [site.id],
         );
-        postoId = (p?.id as string | undefined) ?? null;
+        postoId = (postos.find((p) => !Number(p.ocupado))?.id as string | undefined) ?? null;
         if (!postoId) {
-          // Primeira vez: cria o posto padrão
+          const [todos] = await c.query<RowDataPacket[]>('SELECT nome FROM postos WHERE site_id = ?', [
+            site.id,
+          ]);
+          let n = todos.length + 1;
+          while (todos.some((p) => p.nome === `Guichê ${n}`)) n++;
           postoId = ulid();
-          await c.query("INSERT INTO postos (id, site_id, nome, tipo) VALUES (?, ?, 'Guichê 1', 'GUICHE')", [
+          await c.query("INSERT INTO postos (id, site_id, nome, tipo) VALUES (?, ?, ?, 'GUICHE')", [
             postoId,
             site.id,
+            `Guichê ${n}`,
           ]);
         }
       }
@@ -99,41 +106,115 @@ export const caixaService = {
     return (await this.atual(o.operadorId))!;
   },
 
-  /** Fecha o caixa com o dinheiro contado; a diferença fica registrada. */
+  /** Fecha o próprio caixa com o dinheiro contado; a diferença fica registrada. */
   async fechar(o: {
     operadorId: string;
     contexto: ContextoAuditoria;
     saldoContadoCentavos: number;
     observacao?: string | null;
   }) {
-    const cx = await this.atual(o.operadorId);
+    const cx = await repo.caixaAbertoDoOperador(pool, o.operadorId);
     if (!cx) throw erros.regraDeNegocio('Você não tem caixa aberto.');
-    const diferenca = o.saldoContadoCentavos - cx.dinheiroEsperadoCentavos;
-    if (diferenca !== 0 && !o.observacao?.trim()) {
-      throw erros.requisicaoInvalida(
-        `Há diferença de ${formatarCentavos(diferenca)} no dinheiro. Explique na observação.`,
-        [{ campo: 'observacao', mensagem: 'Obrigatória quando há diferença' }],
-      );
-    }
-    await comTransacao({ ...o.contexto, motivo: o.observacao ?? 'fechamento de caixa' }, (c) =>
-      c.query(
-        `UPDATE caixa_sessoes SET status = 'FECHADO', fechado_em = NOW(3), fechado_por = ?, saldo_esperado_centavos = ?,
+    return this.fecharCaixa({ ...o, caixaId: cx.id, fechadoPor: o.operadorId });
+  },
+
+  /**
+   * Fecha um caixa (o próprio, ou de outro operador por quem supervisiona).
+   * O caixa fica travado durante o fechamento: um pagamento que chegue nesse
+   * instante espera e é recusado ("caixa fechado"), então o esperado é exato.
+   */
+  async fecharCaixa(o: {
+    caixaId: string;
+    fechadoPor: string;
+    contexto: ContextoAuditoria;
+    saldoContadoCentavos: number;
+    observacao?: string | null;
+  }) {
+    const site = await obterSiteAtual();
+    return comTransacao(
+      { ...o.contexto, motivo: o.observacao?.trim() || 'fechamento de caixa' },
+      async (c) => {
+        const [[cx]] = await c.query<RowDataPacket[]>(
+          'SELECT id, status FROM caixa_sessoes WHERE id = ? AND site_id = ? FOR UPDATE',
+          [o.caixaId, site.id],
+        );
+        if (!cx) throw erros.naoEncontrado('Caixa não encontrado');
+        if (cx.status !== 'ABERTO') throw erros.conflito('Este caixa já foi fechado.');
+        const [[d]] = await c.query<RowDataPacket[]>(
+          "SELECT COALESCE(SUM(saldo_centavos), 0) AS saldo FROM vw_caixa_resumo WHERE caixa_sessao_id = ? AND forma_codigo = 'DINHEIRO'",
+          [o.caixaId],
+        );
+        const esperado = Number(d?.saldo ?? 0);
+        const diferenca = o.saldoContadoCentavos - esperado;
+        if (diferenca !== 0 && !o.observacao?.trim()) {
+          throw erros.requisicaoInvalida(
+            `Há diferença de ${formatarCentavos(diferenca)} no dinheiro. Explique na observação.`,
+            [{ campo: 'observacao', mensagem: 'Obrigatória quando há diferença' }],
+          );
+        }
+        await c.query(
+          `UPDATE caixa_sessoes SET status = 'FECHADO', fechado_em = NOW(3), fechado_por = ?, saldo_esperado_centavos = ?,
                 saldo_contado_centavos = ?, diferenca_centavos = ?, observacao_fechamento = ?
           WHERE id = ? AND status = 'ABERTO'`,
-        [
-          o.operadorId,
-          cx.dinheiroEsperadoCentavos,
-          o.saldoContadoCentavos,
-          diferenca,
-          o.observacao?.trim() || null,
-          cx.id,
-        ],
-      ),
+          [
+            o.fechadoPor,
+            esperado,
+            o.saldoContadoCentavos,
+            diferenca,
+            o.observacao?.trim() || null,
+            o.caixaId,
+          ],
+        );
+        return {
+          esperadoCentavos: esperado,
+          contadoCentavos: o.saldoContadoCentavos,
+          diferencaCentavos: diferenca,
+        };
+      },
     );
-    return {
-      esperadoCentavos: cx.dinheiroEsperadoCentavos,
-      contadoCentavos: o.saldoContadoCentavos,
-      diferencaCentavos: diferenca,
-    };
+  },
+
+  /** Sangria (retirada de dinheiro da gaveta) ou suprimento (reforço de troco) no próprio caixa. */
+  async movimentar(o: {
+    operadorId: string;
+    contexto: ContextoAuditoria;
+    tipo: 'SANGRIA' | 'SUPRIMENTO';
+    valorCentavos: number;
+    descricao: string;
+  }) {
+    const site = await obterSiteAtual();
+    await comTransacao({ ...o.contexto, motivo: o.descricao }, async (c) => {
+      const cx = await repo.caixaAbertoDoOperador(c, o.operadorId);
+      if (!cx)
+        throw new AppError(422, 'REGRA_DE_NEGOCIO', 'Abra o seu caixa primeiro.', { acao: 'ABRIR_CAIXA' });
+      await c.query('SELECT id FROM caixa_sessoes WHERE id = ? FOR UPDATE', [cx.id]);
+      if (o.tipo === 'SANGRIA') {
+        const [[d]] = await c.query<RowDataPacket[]>(
+          "SELECT COALESCE(SUM(saldo_centavos), 0) AS saldo FROM vw_caixa_resumo WHERE caixa_sessao_id = ? AND forma_codigo = 'DINHEIRO'",
+          [cx.id],
+        );
+        if (o.valorCentavos > Number(d?.saldo ?? 0)) {
+          throw erros.regraDeNegocio(
+            `A sangria (${formatarCentavos(o.valorCentavos)}) é maior que o dinheiro do caixa (${formatarCentavos(Number(d?.saldo ?? 0))}).`,
+          );
+        }
+      }
+      await c.query(
+        `INSERT INTO movimentacoes_financeiras (id, site_id, caixa_sessao_id, tipo, direcao, valor_centavos, forma_codigo,
+                                                descricao, registrado_por, registrado_em)
+         VALUES (?, ?, ?, ?, ?, ?, 'DINHEIRO', ?, ?, NOW(3))`,
+        [
+          ulid(),
+          site.id,
+          cx.id,
+          o.tipo,
+          o.tipo === 'SANGRIA' ? 'SAIDA' : 'ENTRADA',
+          o.valorCentavos,
+          o.descricao,
+          o.operadorId,
+        ],
+      );
+    });
+    return (await this.atual(o.operadorId))!;
   },
 };

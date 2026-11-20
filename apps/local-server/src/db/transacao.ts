@@ -17,7 +17,8 @@ const LIMPAR_VARIAVEIS =
 
 /** Deadlock: o MySQL desfaz uma das transações e recomenda repeti-la. */
 const ER_LOCK_DEADLOCK = 1213;
-export const TENTATIVAS_DEADLOCK = 3;
+/** Vários guichês ao mesmo tempo (ex.: pico de entradas) podem colidir mais de uma vez. */
+export const TENTATIVAS_DEADLOCK = 6;
 
 /**
  * Executa `fn` dentro de uma transação, com as variáveis de auditoria definidas.
@@ -37,7 +38,8 @@ export async function comTransacao<T>(
       const deadlock = (erro as { errno?: number }).errno === ER_LOCK_DEADLOCK;
       if (!deadlock || tentativa >= TENTATIVAS_DEADLOCK) throw erro;
       logger.warn({ tentativa }, 'Deadlock no MySQL: repetindo a transação');
-      await new Promise((r) => setTimeout(r, 20 * tentativa + Math.random() * 30));
+      // Espera crescente e aleatória: as transações que colidiram não voltam juntas
+      await new Promise((r) => setTimeout(r, 25 * 2 ** (tentativa - 1) + Math.random() * 50));
     }
   }
 }

@@ -68,7 +68,7 @@ Para receber pagamentos, o operador precisa estar com o **caixa aberto**. A barr
 | **Fechar caixa** | Informa o dinheiro contado. Se houver diferença, a observação é obrigatória e fica registrada. |
 | Saída com caixa fechado | A tela oferece **Abrir caixa agora** e depois conclui a saída. |
 
-Sangria, suprimento e a supervisão de vários caixas ficam para o módulo de Caixa.
+Sangria, suprimento, recebimento antecipado, estorno, consultas e o resumo do dia ficam no menu **Caixa**: ver [FINANCEIRO.md](FINANCEIRO.md).
 
 ## Validações (o que o sistema impede)
 

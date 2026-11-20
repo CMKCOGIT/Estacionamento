@@ -8,6 +8,7 @@
 | `002_triggers.sql` | 39 triggers: regras de integridade e histórico automático |
 | `003_views.sql` | 6 views: ocupação, mapa de vagas, sessões abertas, caixa, tarifa vigente, sincronização |
 | `004_seed.sql` | Formas de pagamento, permissões e perfis padrão. Pode ser executado de novo sem duplicar nada |
+| `010_financeiro.sql` | Estorno só com ticket aberto, movimentação de recebimento/estorno conferida com o pagamento, sangria/suprimento sempre em dinheiro e no histórico, índices das consultas financeiras |
 | `009_tarifas.sql` | Tarifas especiais e regra de arredondamento (carência) nas regras, uma padrão por categoria em cada versão, publicação não retroativa, vigente não arquivável, e a tarifa aplicada + cálculo detalhado gravados no ticket (imutáveis) |
 | `008_veiculos.sql` | Observações e autor do cadastro de veículo, coerência ticket ↔ veículo (mesma placa e site), primeira/última visita automáticas e histórico de cadastro e correção de placa |
 | `007_vagas.sql` | Registro do bloqueio manual (motivo, quando, quem), formato do código da vaga, proteção de categorias com vagas e histórico de capacidade |

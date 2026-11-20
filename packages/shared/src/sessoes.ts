@@ -108,6 +108,8 @@ export interface PedidoSaida {
 export interface ReciboSaida {
   sessao: SessaoDetalhe;
   trocoTotalCentavos: number;
+  /** true = a saída já tinha sido registrada com estes pagamentos (reenvio); nada foi gravado de novo. */
+  repetido?: boolean;
 }
 
 export interface CaixaAtual {

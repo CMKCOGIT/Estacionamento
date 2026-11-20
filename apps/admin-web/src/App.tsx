@@ -3,6 +3,7 @@ import { AuthProvider } from './auth/AuthProvider';
 import { RotaProtegida } from './auth/RotaProtegida';
 import { Layout } from './components/Layout';
 import { Atividades } from './pages/Atividades';
+import { Caixa } from './pages/Caixa';
 import { Dashboard } from './pages/Dashboard';
 import { Login } from './pages/Login';
 import { Operacao } from './pages/Operacao';
@@ -33,6 +34,21 @@ export function App() {
           >
             <Route index element={<Dashboard />} />
             <Route path="trocar-senha" element={<TrocarSenha />} />
+            <Route
+              path="caixa"
+              element={
+                <RotaProtegida
+                  permissoes={[
+                    'caixa.operar',
+                    'caixa.supervisionar',
+                    'relatorio.financeiro',
+                    'pagamento.registrar',
+                  ]}
+                >
+                  <Caixa />
+                </RotaProtegida>
+              }
+            />
             <Route
               path="tarifas"
               element={
