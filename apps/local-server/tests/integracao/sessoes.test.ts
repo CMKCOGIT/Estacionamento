@@ -381,6 +381,51 @@ describe('cancelamento e novo link do cliente', () => {
   });
 });
 
+describe('política de encerramento do link do cliente', () => {
+  const saidaSemCobranca = async (placa: string) => {
+    const e = (await entrada({ placa, categoriaId: base.categorias.carro }).expect(201))
+      .body as ResultadoEntrada;
+    await admin
+      .post(`/api/v1/sessoes/${e.sessao.id}/saida`)
+      .send({ valorEsperadoCentavos: 0, pagamentos: [] })
+      .expect(200);
+    const [[t]] = await pool.query<RowDataPacket[]>(
+      'SELECT TIMESTAMPDIFF(SECOND, NOW(3), expira_em) AS s FROM sessao_tokens WHERE sessao_id = ? AND revogado_em IS NULL',
+      [e.sessao.id],
+    );
+    return Number(t?.s);
+  };
+
+  it('padrão 24h; o administrador altera e a próxima saída segue a nova política', async () => {
+    expect((await admin.get('/api/v1/configuracoes/acesso-cliente').expect(200)).body).toEqual({
+      horasAposSaida: 24,
+    });
+    await admin.put('/api/v1/configuracoes/acesso-cliente').send({ horasAposSaida: 2 }).expect(200);
+    const s2h = await saidaSemCobranca('POL2H22');
+    expect(s2h).toBeGreaterThan(2 * 3600 - 60);
+    expect(s2h).toBeLessThanOrEqual(2 * 3600);
+
+    // 0 = o acesso termina na saída
+    await admin.put('/api/v1/configuracoes/acesso-cliente').send({ horasAposSaida: 0 }).expect(200);
+    expect(await saidaSemCobranca('POL0H00')).toBeLessThanOrEqual(0);
+
+    await admin.put('/api/v1/configuracoes/acesso-cliente').send({ horasAposSaida: 500 }).expect(400);
+    await admin.put('/api/v1/configuracoes/acesso-cliente').send({ horasAposSaida: 1.5 }).expect(400);
+    const [[h]] = await pool.query<RowDataPacket[]>(
+      "SELECT COUNT(*) AS n FROM historico_atividades WHERE acao = 'config.alterada' AND entidade_id = 'acesso_cliente'",
+    );
+    expect(Number(h?.n)).toBeGreaterThanOrEqual(1); // alteração auditada
+    await admin.put('/api/v1/configuracoes/acesso-cliente').send({ horasAposSaida: 24 }).expect(200);
+  });
+
+  it('só quem gerencia configurações altera a política', async () => {
+    await criarUsuario({ login: 'caixa-pol', senha: 'Senha12345', permissoes: ['sessao.saida'] });
+    const caixa = await entrar(app, 'caixa-pol', 'Senha12345');
+    await caixa.get('/api/v1/configuracoes/acesso-cliente').expect(403);
+    await caixa.put('/api/v1/configuracoes/acesso-cliente').send({ horasAposSaida: 1 }).expect(403);
+  });
+});
+
 describe('caixa e permissões', () => {
   it('fechar o caixa com diferença exige explicação', async () => {
     const atual = (await admin.get('/api/v1/caixa/atual')).body.caixa;

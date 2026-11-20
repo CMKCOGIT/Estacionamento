@@ -39,3 +39,15 @@ export function haQuanto(iso: string, agora = Date.now()): string {
   const h = Math.floor(min / 60);
   return h < 24 ? `há ${h} h` : `há ${Math.floor(h / 24)} dia(s)`;
 }
+
+/** "20/11/2026 às 14:32:05" — data e horário completos da última atualização. */
+export function dataHoraCompleta(iso: string): string {
+  const d = new Date(iso);
+  return `${d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })} às ${d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`;
+}
+
+/** "24 horas", "1 hora", "7 dias". */
+export function horasPorExtenso(h: number): string {
+  if (h % 24 === 0 && h >= 48) return `${h / 24} dias`;
+  return h === 1 ? '1 hora' : `${h} horas`;
+}

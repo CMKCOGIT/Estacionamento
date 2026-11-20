@@ -13,7 +13,7 @@
 | Acesso do cliente | **Sem conta**: link individual ou QR Code com token seguro | Solicitação de cadastro de mensalista |
 | Entrega do QR | **Tela do operador** e/ou **monitor voltado ao cliente**, mais **link para compartilhar pelo WhatsApp**. Sem impressora | Impressora térmica |
 | Tarifas | **Configuráveis no painel**: fração de hora, hora cheia, diária, tolerância, diária máxima, valores por categoria de veículo (§8) | Pernoite, convênios, mensalista |
-| Retenção | Link expira **24h após a saída**; ticket na nuvem por **30 dias**; histórico local por política própria (§9) | — |
+| Retenção | Link expira **N horas após a saída** (Configurações → Link do cliente; padrão 24h); ticket na nuvem por **30 dias**; histórico local por política própria (§9) | — |
 | Domínio | **Subdomínios do provedor** de hospedagem (§10) | Domínio próprio, só por configuração |
 | O que o cliente vê | Disponibilidade geral de vagas, tabela de tarifas, o próprio ticket (placa, entrada, permanência, valor acumulado) | — |
 | Pagamento | **Só presencial**, registrado pelo funcionário: dinheiro, Pix, débito, crédito | Pix online pelo PWA |
@@ -160,7 +160,7 @@ sequenceDiagram
 1. O operador busca o ticket e o servidor local calcula o valor final com a função compartilhada.
 2. O operador registra um ou mais pagamentos. Quando a soma cobre o valor, o ticket é fechado e a vaga liberada.
 3. Eventos gerados: `pagamento.registrado` (×N), `ticket.fechado` e `vaga.liberada`.
-4. O PWA passa a mostrar “Pago / Encerrado”. O link **expira 24h após a saída**. O histórico continua guardado (§9).
+4. O PWA passa a mostrar “Pago / Encerrado”. O link **expira N horas após a saída** (política configurável; padrão 24h). O histórico continua guardado (§9).
 
 ### 3.3 Quando a internet cai
 1. A operação continua normalmente e os eventos se acumulam na outbox.
@@ -360,7 +360,7 @@ Formato:
 - **Só o hash SHA-256** fica guardado (local e nuvem). Quem copiar o banco não consegue montar links válidos.
 - Vai **depois do `#`** no link (`https://estacionamento.pages.dev/t#<token>`). O navegador não envia essa parte ao servidor, então ela não aparece em logs, proxies nem no cabeçalho *Referer*. O PWA manda o token no header `Authorization`.
 - Dá acesso **somente** àquele ticket e apenas para leitura.
-- Expira 24h após a saída. O operador pode **revogar e gerar um QR novo** se o cliente perder ou compartilhar o link.
+- Expira N horas após a saída (política em Configurações → Link do cliente; padrão 24h, 0 a 168). O operador pode **revogar e gerar um QR novo** se o cliente perder ou compartilhar o link.
 - Limite de requisições por IP no `/v1/ticket`, e resposta idêntica para token inválido ou expirado.
 - O pacote de “prévia” (§2.8) é **assinado** pelo servidor local com Ed25519. O PWA verifica a assinatura com a chave pública, então ninguém consegue forjar uma prévia.
 
@@ -441,7 +441,7 @@ custo_horas(r):
 
 | Onde | O quê | Prazo | O que acontece |
 |------|-------|-------|----------------|
-| Nuvem | **Acesso pelo link** | 24h após a saída | `/v1/ticket` responde “acesso expirado”. O registro continua lá |
+| Nuvem | **Acesso pelo link** | N horas após a saída (padrão 24h) | `/v1/ticket` responde “não encontrado”. O registro continua lá |
 | Nuvem | Registro público do ticket | 30 dias após a saída | Apagado por uma rotina diária |
 | Local | Outbox de sincronização (já enviada) | 30 dias | Apagada (é só fila de transporte) |
 | Local | **Tickets, pagamentos, caixa, auditoria** | **Política própria, configurável. Padrão: 5 anos** | Não são apagados automaticamente. Após o prazo podem ser **arquivados** (exportados) ou **anonimizados** (a placa é trocada por um hash), mantendo os valores para os relatórios |

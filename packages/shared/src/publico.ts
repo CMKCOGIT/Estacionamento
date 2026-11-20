@@ -58,15 +58,22 @@ export interface TicketPublico {
   aPagarCentavos: number;
   /** Tarifa gravada na entrada, em texto. */
   tarifa: string;
+  /**
+   * Tabela de preços DESTE ticket: a regra gravada na entrada (uma mudança
+   * de preço depois da entrada não altera este ticket).
+   */
+  tabelaTarifa: { nome: string; categoria: string; linhas: string[] };
   itens: ItemCalculo[];
   /** Estacionado: quando o valor sobe e para quanto. */
   proximaCobranca: { em: string; valorCentavos: number } | null;
-  /** Instante do cálculo (relógio do servidor). */
+  /** Instante do cálculo (relógio do servidor) = última atualização da consulta. */
   calculadoEm: string;
   /** Última vez que o servidor local atualizou este ticket na nuvem. */
   sincronizadoEm: string;
-  /** O link deixa de funcionar (24h após a saída). */
+  /** Quando o link deixa de funcionar (definido na saída, pela política). */
   acessoExpiraEm: string | null;
+  /** Política de encerramento do estacionamento (para explicar ao cliente). */
+  politicaAcesso: { horasAposSaida: number };
 }
 
 /** Resposta de erro da API pública (sem detalhes internos). */

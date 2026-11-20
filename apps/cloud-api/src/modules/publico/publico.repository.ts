@@ -1,4 +1,4 @@
-import type { RowDataPacket } from 'mysql2/promise';
+import type { ResultSetHeader, RowDataPacket } from 'mysql2/promise';
 import type { EstacionamentoPublico, ItemCalculo, RegraTarifa } from '@estacionamento/shared';
 import { pool } from '../../db/pool.js';
 
@@ -27,6 +27,8 @@ export interface TicketLido {
   saidaEm: Date | null;
   regra: RegraTarifa;
   tarifaDescricao: string;
+  tarifaNome: string | null;
+  horasAcessoAposSaida: number;
   valorFinalCentavos: number | null;
   itensFinal: ItemCalculo[] | null;
   pagoCentavos: number;
@@ -34,6 +36,9 @@ export interface TicketLido {
   sincronizadoEm: Date;
   agora: Date;
 }
+
+/** Registro público do ticket na nuvem: 30 dias após a saída (ARQUITETURA §9). */
+export const DIAS_RETENCAO_NUVEM = 30;
 
 export const publicoRepository = {
   async site(slug: string): Promise<(EstacionamentoPublico & { id: string }) | null> {
@@ -77,7 +82,8 @@ export const publicoRepository = {
    */
   async ticketPorToken(hash: Buffer): Promise<TicketLido | null> {
     const [[l]] = await pool.query<RowDataPacket[]>(
-      `SELECT t.*, s.slug, s.nome, s.endereco, s.telefone, s.sincronizado_em AS site_sincronizado_em, NOW(3) AS agora
+      `SELECT t.*, s.slug, s.nome, s.endereco, s.telefone, s.horas_acesso_apos_saida,
+              s.sincronizado_em AS site_sincronizado_em, NOW(3) AS agora
          FROM tickets_tokens k
          JOIN tickets_publicos t ON t.id = k.ticket_id
          JOIN sites_publicos s ON s.id = t.site_id AND s.ativo
@@ -98,6 +104,8 @@ export const publicoRepository = {
       saidaEm: (l.saida_em as Date | null) ?? null,
       regra: json<RegraTarifa>(l.regra),
       tarifaDescricao: String(l.tarifa_descricao),
+      tarifaNome: (l.tarifa_nome as string | null) ?? null,
+      horasAcessoAposSaida: Number(l.horas_acesso_apos_saida),
       valorFinalCentavos: l.valor_final_centavos === null ? null : Number(l.valor_final_centavos),
       itensFinal: l.itens_final === null ? null : json<ItemCalculo[]>(l.itens_final),
       pagoCentavos: Number(l.pago_centavos),
@@ -105,5 +113,21 @@ export const publicoRepository = {
       sincronizadoEm: l.sincronizado_em as Date,
       agora: l.agora as Date,
     };
+  },
+
+  /**
+   * Retenção (ARQUITETURA §9): o acesso pelo link termina no prazo da
+   * política (a consulta acima já recusa), e o registro público é APAGADO
+   * 30 dias após a saída/cancelamento (placa é dado pessoal; o servidor
+   * local continua com o histórico). Devolve quantos tickets saíram.
+   */
+  async apagarRegistrosVencidos(): Promise<number> {
+    const vencido = `t.acesso_expira_em IS NOT NULL
+      AND COALESCE(t.saida_em, t.acesso_expira_em) <= NOW(3) - INTERVAL ${DIAS_RETENCAO_NUVEM} DAY`;
+    await pool.query(
+      `DELETE k FROM tickets_tokens k JOIN tickets_publicos t ON t.id = k.ticket_id WHERE ${vencido}`,
+    );
+    const [r] = await pool.query<ResultSetHeader>(`DELETE t FROM tickets_publicos t WHERE ${vencido}`);
+    return r.affectedRows;
   },
 };

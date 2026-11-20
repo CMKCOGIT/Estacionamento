@@ -62,6 +62,46 @@ export function atualizarUltimo(token: string, ticket: TicketPublico, agora = ne
   );
 }
 
+/**
+ * O acesso terminou (a API não reconhece mais o link): apaga do celular a
+ * placa, a vaga e os valores, mantendo só o aviso de "acesso encerrado".
+ */
+export function apagarDadosPessoais(token: string) {
+  gravar(
+    lerTickets().map((t) =>
+      t.token === token && t.ultimo
+        ? {
+            ...t,
+            ultimo: {
+              ...t.ultimo,
+              placa: '',
+              vaga: null,
+              itens: [],
+              valorCentavos: 0,
+              pagoCentavos: 0,
+              aPagarCentavos: 0,
+              proximaCobranca: null,
+            },
+          }
+        : t,
+    ),
+  );
+}
+
+/**
+ * Política de encerramento: tickets cujo acesso já terminou saem do celular
+ * (a placa é dado pessoal). Devolve a lista restante e quantos saíram.
+ */
+export function removerEncerrados(agora = Date.now()): { lista: TicketSalvo[]; removidos: number } {
+  const atual = lerTickets();
+  const lista = atual.filter((t) => {
+    const expira = t.ultimo?.acessoExpiraEm;
+    return !(expira && Date.parse(expira) <= agora);
+  });
+  if (lista.length !== atual.length) gravar(lista);
+  return { lista, removidos: atual.length - lista.length };
+}
+
 export function esquecer(token: string): TicketSalvo[] {
   const lista = lerTickets().filter((t) => t.token !== token);
   gravar(lista);

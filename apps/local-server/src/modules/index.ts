@@ -1,6 +1,7 @@
 import type { Router } from 'express';
 import { atividadesRouter } from './atividades/atividades.routes.js';
 import { authRouter } from './auth/auth.routes.js';
+import { configuracoesRouter } from './configuracoes/configuracoes.routes.js';
 import { dashboardRouter } from './dashboard/dashboard.routes.js';
 import { relatoriosRouter } from './relatorios/relatorios.routes.js';
 import { financeiroRouter } from './financeiro/financeiro.routes.js';
@@ -50,4 +51,5 @@ export const modulos: ModuloApi[] = [
   { caminho: '/usuarios', router: usuariosRouter },
   { caminho: '/permissoes', router: permissoesRouter },
   { caminho: '/atividades', router: atividadesRouter },
+  { caminho: '/configuracoes', router: configuracoesRouter },
 ];

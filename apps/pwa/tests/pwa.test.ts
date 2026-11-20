@@ -1,7 +1,14 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { TicketPublico } from '@estacionamento/shared';
-import { atualizarUltimo, esquecer, lerTickets, salvarToken } from '../src/armazenamento';
-import { duracao, haQuanto } from '../src/formato';
+import {
+  apagarDadosPessoais,
+  atualizarUltimo,
+  esquecer,
+  lerTickets,
+  removerEncerrados,
+  salvarToken,
+} from '../src/armazenamento';
+import { dataHoraCompleta, duracao, haQuanto, horasPorExtenso } from '../src/formato';
 import { estrategiaPara } from '../src/sw-regras';
 import { tokenDoLink } from '../src/token';
 
@@ -50,6 +57,40 @@ describe('tickets guardados no celular', () => {
     salvarToken(TOKEN);
     atualizarUltimo(TOKEN, { numero: '7' } as TicketPublico, new Date('2026-11-20T10:00:00Z'));
     expect(lerTickets()[0]).toMatchObject({ ultimo: { numero: '7' }, ultimoEm: '2026-11-20T10:00:00.000Z' });
+  });
+
+  it('política de encerramento: tickets com acesso vencido saem do celular', () => {
+    const agora = Date.parse('2026-11-20T12:00:00Z');
+    const vencido = 'v'.repeat(43);
+    const valendo = 'w'.repeat(43);
+    const aberto = 'x'.repeat(43);
+    for (const t of [vencido, valendo, aberto]) salvarToken(t);
+    atualizarUltimo(vencido, { acessoExpiraEm: '2026-11-20T11:59:00Z' } as TicketPublico);
+    atualizarUltimo(valendo, { acessoExpiraEm: '2026-11-21T08:00:00Z' } as TicketPublico);
+    atualizarUltimo(aberto, { acessoExpiraEm: null } as TicketPublico);
+    const r = removerEncerrados(agora);
+    expect(r.removidos).toBe(1);
+    expect(r.lista.map((t) => t.token).sort()).toEqual([aberto, valendo].sort());
+    expect(lerTickets()).toHaveLength(2);
+  });
+
+  it('acesso encerrado: apaga placa e valores guardados', () => {
+    salvarToken(TOKEN);
+    atualizarUltimo(TOKEN, {
+      numero: '9',
+      placa: 'ABC1D23',
+      vaga: 'A-01',
+      valorCentavos: 1400,
+      itens: [{ descricao: '1ª hora' }],
+    } as TicketPublico);
+    apagarDadosPessoais(TOKEN);
+    expect(lerTickets()[0]!.ultimo).toMatchObject({
+      numero: '9',
+      placa: '',
+      vaga: null,
+      valorCentavos: 0,
+      itens: [],
+    });
   });
 
   it('sem localStorage (modo privado/bloqueado) não quebra o app', () => {
@@ -106,5 +147,15 @@ describe('formatos', () => {
     const agora = Date.parse('2026-11-20T12:00:00Z');
     expect(haQuanto('2026-11-20T11:59:30Z', agora)).toBe('agora');
     expect(haQuanto('2026-11-20T11:45:00Z', agora)).toBe('há 15 min');
+  });
+});
+
+describe('textos da consulta do ticket', () => {
+  it('data e horário completos da última atualização; prazos por extenso', () => {
+    expect(dataHoraCompleta('2026-11-20T14:32:05')).toMatch(/^20\/11\/2026 às 14:32:05$/);
+    expect(horasPorExtenso(1)).toBe('1 hora');
+    expect(horasPorExtenso(24)).toBe('24 horas');
+    expect(horasPorExtenso(72)).toBe('3 dias');
+    expect(horasPorExtenso(168)).toBe('7 dias');
   });
 });

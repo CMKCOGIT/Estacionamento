@@ -1,15 +1,36 @@
 import { useCallback, useEffect, useState } from 'react';
+import { Link } from 'react-router';
 import type { TicketPublico } from '@estacionamento/shared';
 import { api, ErroApi } from '../api';
-import { atualizarUltimo, type TicketSalvo } from '../armazenamento';
+import { apagarDadosPessoais, atualizarUltimo, esquecer, type TicketSalvo } from '../armazenamento';
 import { Placa } from '../componentes/Placa';
-import { dataHora, dinheiro, duracao, haQuanto, hora } from '../formato';
+import { dataHora, dataHoraCompleta, dinheiro, duracao, haQuanto, hora, horasPorExtenso } from '../formato';
 
-const SITUACAO: Record<TicketPublico['situacao'], { texto: string; classe: string }> = {
+const SELO: Record<TicketPublico['situacao'], { texto: string; classe: string }> = {
   ESTACIONADO: { texto: 'Estacionado', classe: 'selo--ativo' },
-  ENCERRADO: { texto: 'Saída registrada', classe: 'selo--concluido' },
-  CANCELADO: { texto: 'Ticket cancelado', classe: 'selo--cancelado' },
+  ENCERRADO: { texto: 'Encerrado', classe: 'selo--concluido' },
+  CANCELADO: { texto: 'Cancelado', classe: 'selo--cancelado' },
 };
+
+/** Situação atual da sessão, em uma frase. */
+function situacaoAtual(t: TicketPublico): string {
+  if (t.situacao === 'CANCELADO') return 'Ticket cancelado no caixa. Nada a pagar.';
+  if (t.situacao === 'ENCERRADO')
+    return t.saidaEm ? `Saída registrada ${dataHora(t.saidaEm)}.` : 'Saída registrada.';
+  if (t.valorCentavos === 0)
+    return 'Veículo no estacionamento, dentro da tolerância (sem cobrança até agora).';
+  if (t.pagoCentavos > 0 && t.aPagarCentavos === 0) return 'Veículo no estacionamento. Pago até agora.';
+  return 'Veículo no estacionamento. Pagamento no caixa, na saída.';
+}
+
+/** O que acontece com este link (política de encerramento do estacionamento). */
+function politicaDoLink(t: TicketPublico): string {
+  if (t.acessoExpiraEm) return `Este link funciona até ${dataHoraCompleta(t.acessoExpiraEm)}.`;
+  const h = t.politicaAcesso.horasAposSaida;
+  return h === 0
+    ? 'Este link deixa de funcionar quando a saída for registrada.'
+    : `Depois da saída, este link continua funcionando por ${horasPorExtenso(h)}.`;
+}
 
 /**
  * Um ticket do cliente. Busca na API só pelo token deste ticket; sem
@@ -17,25 +38,32 @@ const SITUACAO: Record<TicketPublico['situacao'], { texto: string; classe: strin
  */
 export function CartaoTicket({ salvo, onEsquecer }: { salvo: TicketSalvo; onEsquecer: () => void }) {
   const [ticket, setTicket] = useState<TicketPublico | null>(salvo.ultimo);
-  const [recebidoEm, setRecebidoEm] = useState<string | null>(salvo.ultimoEm);
   const [falha, setFalha] = useState<ErroApi | null>(null);
   const [agora, setAgora] = useState(() => Date.now());
   const [detalhes, setDetalhes] = useState(false);
   const [confirmar, setConfirmar] = useState(false);
 
+  const jaFuncionou = salvo.ultimo !== null;
   const buscar = useCallback(
     () =>
       api.ticket(salvo.token).then(
         (t) => {
           setTicket(t);
-          setRecebidoEm(new Date().toISOString());
           setFalha(null);
+          setAgora(Date.now());
           atualizarUltimo(salvo.token, t);
         },
-        (e: unknown) =>
-          setFalha(e instanceof ErroApi ? e : new ErroApi('INDISPONIVEL', 'Não foi possível atualizar.')),
+        (e: unknown) => {
+          const erro = e instanceof ErroApi ? e : new ErroApi('INDISPONIVEL', 'Não foi possível atualizar.');
+          if (erro.tipo === 'NAO_ENCONTRADO') {
+            // Link que nunca funcionou (digitado/alterado): não fica guardado; os que já funcionaram perdem os dados pessoais
+            if (jaFuncionou) apagarDadosPessoais(salvo.token);
+            else esquecer(salvo.token);
+          }
+          setFalha(erro);
+        },
       ),
-    [salvo.token],
+    [salvo.token, jaFuncionou],
   );
 
   // Busca ao abrir, ao voltar para o app e quando a internet volta
@@ -53,15 +81,15 @@ export function CartaoTicket({ salvo, onEsquecer }: { salvo: TicketSalvo; onEsqu
   // Estacionado: atualiza o valor quando ele sobe (ou a cada minuto) e o relógio a cada segundo
   const estacionado = ticket?.situacao === 'ESTACIONADO';
   const proxima = ticket?.proximaCobranca?.em ?? null;
+  const calculadoEm = ticket?.calculadoEm ?? null;
   useEffect(() => {
     if (!estacionado) return;
     const ate = proxima ? Date.parse(proxima) - Date.now() + 1000 : 60_000;
     const t = setTimeout(() => void buscar(), Math.min(Math.max(ate, 5000), 60_000));
     return () => clearTimeout(t);
-  }, [estacionado, proxima, buscar, recebidoEm]);
+  }, [estacionado, proxima, buscar, calculadoEm]);
   useEffect(() => {
-    if (!estacionado) return;
-    const t = setInterval(() => setAgora(Date.now()), 1000);
+    const t = setInterval(() => setAgora(Date.now()), estacionado ? 1000 : 30_000);
     return () => clearInterval(t);
   }, [estacionado]);
 
@@ -77,9 +105,26 @@ export function CartaoTicket({ salvo, onEsquecer }: { salvo: TicketSalvo; onEsqu
     );
   }
 
-  const s = SITUACAO[ticket.situacao];
-  const tempoMs = (ticket.saidaEm ? Date.parse(ticket.saidaEm) : agora) - Date.parse(ticket.entradaEm);
-  const expirado = falha?.tipo === 'NAO_ENCONTRADO';
+  // Acesso encerrado (prazo após a saída, novo link ou cancelamento): não mostra mais os dados
+  const encerrado =
+    falha?.tipo === 'NAO_ENCONTRADO' ||
+    (ticket.acessoExpiraEm !== null && Date.parse(ticket.acessoExpiraEm) <= agora);
+  if (encerrado) {
+    return (
+      <AcessoEncerrado
+        ticket={ticket}
+        expirou={ticket.acessoExpiraEm !== null && Date.parse(ticket.acessoExpiraEm) <= agora}
+        onEsquecer={onEsquecer}
+      />
+    );
+  }
+
+  const s = SELO[ticket.situacao];
+  // Relógio: a partir do tempo calculado pelo servidor (não depende do relógio do celular estar certo)
+  const decorridoMs = estacionado ? Math.max(0, agora - Date.parse(ticket.calculadoEm)) : 0;
+  const tempoMs = ticket.saidaEm
+    ? Date.parse(ticket.saidaEm) - Date.parse(ticket.entradaEm)
+    : Date.parse(ticket.calculadoEm) - Date.parse(ticket.entradaEm) + decorridoMs;
   return (
     <section className="cartao ticket" aria-label={`Ticket nº ${ticket.numero}`}>
       <div className="ticket__cabeca">
@@ -96,6 +141,10 @@ export function CartaoTicket({ salvo, onEsquecer }: { salvo: TicketSalvo; onEsqu
           {ticket.vaga ? ` · vaga ${ticket.vaga}` : ''}
         </span>
       </div>
+      <p className="ticket__situacao">
+        <span className="mudo pequeno">Situação atual</span>
+        {situacaoAtual(ticket)}
+      </p>
 
       <div className="ticket__picote" aria-hidden="true" />
 
@@ -105,28 +154,24 @@ export function CartaoTicket({ salvo, onEsquecer }: { salvo: TicketSalvo; onEsqu
           <dd>{dataHora(ticket.entradaEm)}</dd>
         </div>
         <div>
-          <dt>{estacionado ? 'Tempo' : 'Saída'}</dt>
+          <dt>Tempo de permanência</dt>
           <dd>
-            {estacionado ? (
-              <span className="relogio">{duracao(tempoMs)}</span>
-            ) : ticket.saidaEm ? (
-              dataHora(ticket.saidaEm)
-            ) : (
-              '—'
-            )}
+            <span className="relogio" aria-live="off">
+              {duracao(tempoMs, estacionado)}
+            </span>
           </dd>
         </div>
-        {!estacionado && (
+        {ticket.saidaEm && (
           <div>
-            <dt>Permanência</dt>
-            <dd>{duracao(tempoMs, false)}</dd>
+            <dt>Saída</dt>
+            <dd>{dataHora(ticket.saidaEm)}</dd>
           </div>
         )}
       </dl>
 
       {ticket.situacao !== 'CANCELADO' && (
         <div className={`ticket__valor${estacionado ? '' : ' ticket__valor--final'}`}>
-          <span>{estacionado ? 'Valor até agora' : 'Valor total'}</span>
+          <span>{estacionado ? 'Valor acumulado até agora' : 'Valor total'}</span>
           <strong>{dinheiro(ticket.valorCentavos)}</strong>
           {ticket.pagoCentavos > 0 && (
             <small>
@@ -140,12 +185,6 @@ export function CartaoTicket({ salvo, onEsquecer }: { salvo: TicketSalvo; onEsqu
             </small>
           )}
         </div>
-      )}
-      {estacionado && (
-        <p className="dica">O pagamento é feito no caixa, na saída: dinheiro, Pix ou cartão.</p>
-      )}
-      {ticket.situacao === 'CANCELADO' && (
-        <p className="dica">Este ticket foi cancelado no caixa. Nada a pagar.</p>
       )}
 
       {ticket.itens.length > 0 && (
@@ -166,44 +205,110 @@ export function CartaoTicket({ salvo, onEsquecer }: { salvo: TicketSalvo; onEsqu
               </li>
             ))}
           </ul>
-          <p className="mudo pequeno">Tarifa da sua entrada: {ticket.tarifa}</p>
         </details>
       )}
 
-      <p className={`atualizacao${falha ? ' atualizacao--alerta' : ''}`} role="status">
-        {expirado
-          ? 'Este link expirou ou foi substituído por um novo no caixa.'
-          : falha
-            ? `${falha.message} Mostrando o que foi recebido ${recebidoEm ? `às ${hora(recebidoEm)} (${haQuanto(recebidoEm)})` : 'antes'}.`
-            : `Atualizado ${recebidoEm ? haQuanto(recebidoEm) : 'agora'}`}
-        {!expirado && agora - Date.parse(ticket.sincronizadoEm) > 5 * 60_000 && (
-          <> · o estacionamento enviou dados {haQuanto(ticket.sincronizadoEm)}</>
+      <section className="ticket__tarifa" aria-labelledby={`tarifa-${ticket.numero}`}>
+        <h2 id={`tarifa-${ticket.numero}`}>Tabela de tarifas do seu ticket</h2>
+        <p className="mudo pequeno">
+          {ticket.tabelaTarifa.categoria} · {ticket.tabelaTarifa.nome}. Preços gravados na sua entrada: uma
+          mudança na tabela depois disso não altera este ticket.
+        </p>
+        <ul>
+          {ticket.tabelaTarifa.linhas.map((l) => (
+            <li key={l}>{l}</li>
+          ))}
+        </ul>
+        <Link to={`/s/${ticket.estacionamento.slug}`} className="botao-texto">
+          Ver todos os preços do estacionamento
+        </Link>
+      </section>
+
+      <div className={`atualizacao${falha ? ' atualizacao--alerta' : ''}`} role="status">
+        <p>
+          <span className="mudo">Última atualização: </span>
+          <time dateTime={ticket.calculadoEm}>{dataHoraCompleta(ticket.calculadoEm)}</time> (
+          {haQuanto(ticket.calculadoEm, agora)})
+        </p>
+        {falha && <p>{falha.message} Mostrando a última informação recebida.</p>}
+        {agora - Date.parse(ticket.sincronizadoEm) > 5 * 60_000 && (
+          <p>
+            Dados enviados pelo estacionamento em {dataHoraCompleta(ticket.sincronizadoEm)}. O valor pode
+            estar desatualizado; o caixa confirma na saída.
+          </p>
         )}
-      </p>
-      {ticket.acessoExpiraEm && !expirado && (
-        <p className="mudo pequeno">Este link funciona até {dataHora(ticket.acessoExpiraEm)}.</p>
-      )}
+      </div>
+      <p className="mudo pequeno">{politicaDoLink(ticket)}</p>
 
       <div className="ticket__acoes">
         <button type="button" className="botao botao--secundario" onClick={() => void buscar()}>
           Atualizar
         </button>
-        {confirmar ? (
-          <span className="confirmar">
-            Tirar este ticket do celular?{' '}
-            <button type="button" className="botao-texto botao-texto--perigo" onClick={onEsquecer}>
-              Sim, esquecer
-            </button>{' '}
-            <button type="button" className="botao-texto" onClick={() => setConfirmar(false)}>
-              Não
-            </button>
-          </span>
-        ) : (
-          <button type="button" className="botao-texto" onClick={() => setConfirmar(true)}>
-            Esquecer este ticket
-          </button>
-        )}
+        <Esquecer confirmar={confirmar} setConfirmar={setConfirmar} onEsquecer={onEsquecer} />
       </div>
+    </section>
+  );
+}
+
+function Esquecer({
+  confirmar,
+  setConfirmar,
+  onEsquecer,
+}: {
+  confirmar: boolean;
+  setConfirmar: (v: boolean) => void;
+  onEsquecer: () => void;
+}) {
+  return confirmar ? (
+    <span className="confirmar">
+      Tirar este ticket do celular?{' '}
+      <button type="button" className="botao-texto botao-texto--perigo" onClick={onEsquecer}>
+        Sim, esquecer
+      </button>{' '}
+      <button type="button" className="botao-texto" onClick={() => setConfirmar(false)}>
+        Não
+      </button>
+    </span>
+  ) : (
+    <button type="button" className="botao-texto" onClick={() => setConfirmar(true)}>
+      Esquecer este ticket
+    </button>
+  );
+}
+
+/** Depois do encerramento o app não mostra mais placa nem valores (só avisa). */
+function AcessoEncerrado({
+  ticket,
+  expirou,
+  onEsquecer,
+}: {
+  ticket: TicketPublico;
+  expirou: boolean;
+  onEsquecer: () => void;
+}) {
+  const h = ticket.politicaAcesso.horasAposSaida;
+  return (
+    <section className="cartao ticket ticket--encerrado" aria-label={`Ticket nº ${ticket.numero}`}>
+      <div className="ticket__cabeca">
+        <div>
+          <p className="ticket__local">{ticket.estacionamento.nome}</p>
+          <p className="mudo pequeno">Ticket nº {ticket.numero}</p>
+        </div>
+        <span className="selo selo--cancelado">Acesso encerrado</span>
+      </div>
+      <p>
+        {expirou && ticket.acessoExpiraEm
+          ? `O acesso a este ticket terminou em ${dataHoraCompleta(ticket.acessoExpiraEm)}. ${
+              h === 0
+                ? 'Neste estacionamento, o link deixa de funcionar na saída.'
+                : `Neste estacionamento, o link funciona por ${horasPorExtenso(h)} depois da saída.`
+            }`
+          : 'Este link não funciona mais: ele foi trocado por um novo no caixa, o ticket foi cancelado ou o prazo depois da saída terminou.'}
+      </p>
+      <p className="mudo pequeno">Dúvidas sobre o valor pago? Fale com o caixa do estacionamento.</p>
+      <button type="button" className="botao botao--secundario" onClick={onEsquecer}>
+        Tirar este ticket do celular
+      </button>
     </section>
   );
 }
@@ -213,7 +318,7 @@ function ErroTicket({ falha, onEsquecer }: { falha: ErroApi; onEsquecer: () => v
     <>
       <p className="alerta">
         {falha.tipo === 'NAO_ENCONTRADO'
-          ? 'Não encontramos este ticket. O link pode ter expirado (24 horas depois da saída) ou ter sido trocado por um novo no caixa.'
+          ? 'Não encontramos este ticket. Confira o link ou peça um novo QR Code no caixa. Depois da saída, o link funciona só pelo prazo definido pelo estacionamento.'
           : falha.message}
       </p>
       <button type="button" className="botao-texto" onClick={onEsquecer}>

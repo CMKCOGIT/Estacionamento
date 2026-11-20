@@ -47,14 +47,19 @@ async function espelhar() {
   const local = await mysql.createConnection({ ...LOCAL, timezone: 'Z' });
   try {
     const [sites] = await local.query<RowDataPacket[]>(
-      'SELECT id, slug, nome, endereco, telefone FROM sites WHERE ativo',
+      `SELECT s.id, s.slug, s.nome, s.endereco, s.telefone, c.valor AS politica
+         FROM sites s LEFT JOIN configuracoes c ON c.site_id = s.id AND c.chave = 'acesso_cliente'
+        WHERE s.ativo`,
     );
     for (const s of sites) {
+      // Política de encerramento do link (Configurações → Link do cliente; padrão 24h)
+      const horas = json<{ horasAposSaida?: number }>(s.politica)?.horasAposSaida ?? 24;
       await pool.query(
-        `INSERT INTO sites_publicos (id, slug, nome, endereco, telefone, sincronizado_em) VALUES (?, ?, ?, ?, ?, NOW(3))
-         ON DUPLICATE KEY UPDATE slug = VALUES(slug), nome = VALUES(nome), endereco = VALUES(endereco),
-                                 telefone = VALUES(telefone), sincronizado_em = NOW(3)`,
-        [s.id, s.slug, s.nome, s.endereco, s.telefone],
+        `INSERT INTO sites_publicos (id, slug, nome, endereco, telefone, horas_acesso_apos_saida, sincronizado_em)
+         VALUES (?, ?, ?, ?, ?, ?, NOW(3))
+         ON DUPLICATE KEY UPDATE slug = VALUES(slug), nome = VALUES(nome), endereco = VALUES(endereco), telefone = VALUES(telefone),
+                                 horas_acesso_apos_saida = VALUES(horas_acesso_apos_saida), sincronizado_em = NOW(3)`,
+        [s.id, s.slug, s.nome, s.endereco, s.telefone, horas],
       );
 
       // Vagas: total = em uso (livres + ocupadas + bloqueadas); livres = ativas sem veículo
@@ -110,7 +115,7 @@ async function espelhar() {
         );
       }
 
-      // Tickets: abertos e os que saíram/foram cancelados nas últimas 24h
+      // Tickets: abertos e os encerrados cujo link ainda funciona (política de encerramento)
       const [tickets] = await local.query<RowDataPacket[]>(
         `SELECT s.*, c.nome AS categoria, v.codigo AS vaga_codigo,
                 r.tolerancia_min, r.primeira_hora_centavos, r.hora_adicional_centavos, r.fracao_min, r.fracao_centavos,
@@ -121,24 +126,25 @@ async function espelhar() {
            JOIN categorias_veiculo c ON c.id = s.categoria_id
            JOIN tarifa_regras r ON r.id = s.tarifa_regra_id
            LEFT JOIN vagas v ON v.id = s.vaga_id
-          WHERE s.site_id = ? AND (s.status = 'ABERTA' OR COALESCE(s.saida_em, s.cancelado_em) >= NOW(3) - INTERVAL 24 HOUR)`,
+          WHERE s.site_id = ? AND (s.status = 'ABERTA'
+                -- recém-encerrados/cancelados sempre vão (para a nuvem saber que acabou)
+                OR COALESCE(s.saida_em, s.cancelado_em) >= NOW(3) - INTERVAL 1 HOUR
+                OR EXISTS (SELECT 1 FROM sessao_tokens k WHERE k.sessao_id = s.id AND k.revogado_em IS NULL AND k.expira_em > NOW(3)))`,
         [s.id],
       );
       for (const t of tickets) {
-        const aplicada = json<{ regra: RegraTarifa }>(t.tarifa_aplicada);
+        const aplicada = json<{ regra: RegraTarifa; tipo: string; nome: string }>(t.tarifa_aplicada);
         const regra = aplicada?.regra ?? regraDaLinha(t);
         const situacao =
           t.status === 'ABERTA' ? 'ESTACIONADO' : t.status === 'ENCERRADA' ? 'ENCERRADO' : 'CANCELADO';
         const expira =
-          t.status === 'ABERTA'
-            ? null
-            : (t.expira_em ?? new Date((t.saida_em ?? t.cancelado_em).getTime() + 24 * 3600_000));
+          t.status === 'ABERTA' ? null : (t.expira_em ?? new Date((t.saida_em ?? t.cancelado_em).getTime()));
         await pool.query(
           `INSERT INTO tickets_publicos (id, site_id, numero, placa, categoria, vaga, modalidade, situacao, entrada_em, saida_em, regra,
-                                         tarifa_descricao, valor_final_centavos, itens_final, pago_centavos, acesso_expira_em, sincronizado_em)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(3))
+                                         tarifa_descricao, tarifa_nome, valor_final_centavos, itens_final, pago_centavos, acesso_expira_em, sincronizado_em)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(3))
            ON DUPLICATE KEY UPDATE placa = VALUES(placa), categoria = VALUES(categoria), vaga = VALUES(vaga), situacao = VALUES(situacao),
-             saida_em = VALUES(saida_em), valor_final_centavos = VALUES(valor_final_centavos), itens_final = VALUES(itens_final),
+             saida_em = VALUES(saida_em), tarifa_nome = VALUES(tarifa_nome), valor_final_centavos = VALUES(valor_final_centavos), itens_final = VALUES(itens_final),
              pago_centavos = VALUES(pago_centavos), acesso_expira_em = VALUES(acesso_expira_em), sincronizado_em = NOW(3)`,
           [
             t.id,
@@ -153,6 +159,7 @@ async function espelhar() {
             t.saida_em,
             JSON.stringify(regra),
             descreverRegra(regra, t.modalidade),
+            aplicada?.tipo === 'ESPECIAL' ? aplicada.nome : 'Padrão',
             t.valor_final_centavos,
             t.status === 'ENCERRADA'
               ? JSON.stringify(json<{ itens: unknown[] }>(t.calculo_detalhe)?.itens ?? [])

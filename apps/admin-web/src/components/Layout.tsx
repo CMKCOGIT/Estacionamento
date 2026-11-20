@@ -39,7 +39,7 @@ const MENU: { rotulo: string; rota: string | null; permissoes: string[] }[] = [
   { rotulo: 'Relatórios', rota: '/relatorios', permissoes: ['relatorio.financeiro', 'caixa.supervisionar'] },
   { rotulo: 'Funcionários', rota: '/usuarios', permissoes: ['usuario.gerenciar', 'funcionario.gerenciar'] },
   { rotulo: 'Atividades', rota: '/atividades', permissoes: ['auditoria.ver'] },
-  { rotulo: 'Configurações', rota: null, permissoes: ['config.gerenciar'] },
+  { rotulo: 'Configurações', rota: '/configuracoes', permissoes: ['config.gerenciar'] },
 ];
 
 export function Layout() {

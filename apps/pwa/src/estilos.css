@@ -617,3 +617,47 @@ a {
     }
   }
 }
+
+/* ---------- Consulta individual: situação, tarifa do ticket, atualização ---------- */
+.alerta--info {
+  background: var(--superficie-2);
+  color: var(--texto);
+  border-color: var(--borda);
+}
+.ticket__situacao {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  margin: 0.4rem 0 0;
+  font-weight: 600;
+}
+.ticket__tarifa {
+  border-top: 1px solid var(--borda);
+  margin-top: 0.6rem;
+  padding-top: 0.75rem;
+}
+.ticket__tarifa h2 {
+  font-size: 1rem;
+  margin: 0 0 0.25rem;
+}
+.ticket__tarifa ul {
+  margin: 0.4rem 0 0.5rem;
+  padding-left: 1.1rem;
+}
+.ticket__tarifa li {
+  padding: 0.12rem 0;
+}
+.atualizacao p {
+  margin: 0 0 0.2rem;
+}
+.atualizacao time {
+  font-variant-numeric: tabular-nums;
+  color: var(--texto);
+  font-weight: 600;
+}
+.atualizacao--alerta time {
+  color: inherit;
+}
+.ticket--encerrado p {
+  margin: 0.75rem 0;
+}

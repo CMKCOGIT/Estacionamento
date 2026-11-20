@@ -8,6 +8,7 @@ import {
 } from '@estacionamento/shared';
 import { ErroApiPublica, ticketNaoEncontrado } from '../../http/erros.js';
 import { publicoRepository as repo } from './publico.repository.js';
+import { linhasPublicasDaRegra } from './texto.js';
 
 const naoEncontrado = () => new ErroApiPublica(404, 'NAO_ENCONTRADO', 'Estacionamento não encontrado.');
 
@@ -99,9 +100,18 @@ export const publicoService = {
       saidaEm: t.saidaEm?.toISOString() ?? null,
       ...calculo,
       tarifa: t.tarifaDescricao,
+      tabelaTarifa: {
+        nome: t.tarifaNome ?? 'Padrão',
+        categoria: t.categoria,
+        linhas:
+          t.modalidade === 'DIARIA'
+            ? [t.tarifaDescricao, ...linhasPublicasDaRegra(t.regra).filter((l) => l.startsWith('Tolerância'))]
+            : linhasPublicasDaRegra(t.regra),
+      },
       calculadoEm: t.agora.toISOString(),
       sincronizadoEm: t.sincronizadoEm.toISOString(),
       acessoExpiraEm: t.acessoExpiraEm?.toISOString() ?? null,
+      politicaAcesso: { horasAposSaida: t.horasAcessoAposSaida },
     };
   },
 };

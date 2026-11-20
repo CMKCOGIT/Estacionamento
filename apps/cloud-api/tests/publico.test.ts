@@ -9,6 +9,7 @@ import { env } from '../src/config/env.js';
 import { fecharPool, pool } from '../src/db/pool.js';
 import { migrarBancoNuvem } from '../src/db/migrar.js';
 import { exigirHttps } from '../src/http/middlewares/https.js';
+import { publicoRepository } from '../src/modules/publico/publico.repository.js';
 import { limitadorTicket } from '../src/modules/publico/publico.routes.js';
 
 const app = criarApp();
@@ -180,6 +181,88 @@ describe('ticket do cliente (pelo token do link)', () => {
     for (let i = 0; i < 10; i++) r.push((await ticket(novoToken())).status);
     expect(r.slice(0, 8).every((s) => s === 404)).toBe(true);
     expect(r.slice(8)).toEqual([429, 429]);
+  });
+
+  it('tabela de tarifas do próprio ticket (regra gravada na entrada) e política de encerramento', async () => {
+    const t = (await ticket(tokens['01JTICKETABERTO00000000000']!).expect(200)).body as TicketPublico;
+    // A tabela em vigor hoje só tem "1ª hora: R$ 10,00"; o ticket mostra a regra gravada nele
+    const espacos = (l: string[]) => l.map((x) => x.replace(/\s/g, ' '));
+    expect({ ...t.tabelaTarifa, linhas: espacos(t.tabelaTarifa.linhas) }).toEqual({
+      nome: 'Padrão',
+      categoria: 'Carro',
+      linhas: [
+        '1ª hora: R$ 10,00',
+        'Hora adicional: R$ 6,00',
+        'Depois da 1ª hora, fração de 15 min: R$ 2,00',
+        'Máximo de R$ 40,00 a cada 24h',
+        'Diária: R$ 35,00',
+        'Tolerância: até 10 min sem cobrança',
+      ],
+    });
+    expect(t.politicaAcesso).toEqual({ horasAposSaida: 24 });
+    expect(Date.parse(t.calculadoEm)).toBeGreaterThan(Date.now() - 60_000);
+    await pool.query('UPDATE sites_publicos SET horas_acesso_apos_saida = 2 WHERE id = ?', [SITE]);
+    const t2 = (await ticket(tokens['01JTICKETABERTO00000000000']!).expect(200)).body as TicketPublico;
+    expect(t2.politicaAcesso).toEqual({ horasAposSaida: 2 });
+    await pool.query('UPDATE sites_publicos SET horas_acesso_apos_saida = 24 WHERE id = ?', [SITE]);
+  });
+
+  it('alterar o código manualmente não dá acesso a outro ticket', async () => {
+    const valido = tokens['01JTICKETABERTO00000000000']!;
+    // Troca de um caractere em cada posição: nunca abre outro ticket
+    const alterados = [0, 10, 21, 42].map((i) => {
+      const c = valido[i] === 'A' ? 'B' : 'A';
+      return valido.slice(0, i) + c + valido.slice(i + 1);
+    });
+    // (o limite por IP é zerado a cada tentativa: aqui testamos o token, não o limitador)
+    const tentar = (tk: string) => (limitadorTicket.limpar(), ticket(tk).expect(404));
+    for (const a of alterados) await tentar(a);
+    // Número do ticket, placa ou identificador no lugar do token / na URL
+    for (const tentativa of [
+      '41',
+      'ABC1D23',
+      '01JTICKETABERTO00000000000',
+      `${valido}x`,
+      valido.slice(0, 42),
+    ]) {
+      await tentar(tentativa);
+    }
+    for (const rota of [
+      '/v1/ticket/41',
+      '/v1/ticket/01JTICKETABERTO00000000000',
+      '/v1/tickets?placa=ABC1D23',
+      '/v1/sites/centro/tickets',
+    ]) {
+      limitadorTicket.limpar();
+      await request(app).get(rota).set('Authorization', `Ticket ${valido}`).expect(404);
+    }
+    // Cada token devolve só o seu ticket
+    limitadorTicket.limpar();
+    const outro = (await ticket(tokens['01JTICKETFECHADO0000000000']!).expect(200)).body as TicketPublico;
+    expect(outro.placa).toBe('XYZ9A87');
+  });
+
+  it('retenção: acesso encerrado responde 404; o registro é apagado 30 dias após a saída', async () => {
+    await criarTicket('01JTICKETANTIGO00000000000', {
+      numero: 45,
+      placa: 'ANT1G00',
+      situacao: 'ENCERRADO',
+      minutos: 60 * 24 * 32,
+      saida: new Date(Date.now() - 31 * 24 * 3600_000),
+      final: 1000,
+      pago: 1000,
+      expira: new Date(Date.now() - 30 * 24 * 3600_000),
+    });
+    expect(await publicoRepository.apagarRegistrosVencidos()).toBe(1);
+    const [restantes] = await pool.query<mysql.RowDataPacket[]>('SELECT placa FROM tickets_publicos');
+    const placas = restantes.map((x) => x.placa);
+    expect(placas).not.toContain('ANT1G00');
+    expect(placas).toContain('OLD1A11'); // acesso já encerrado, registro ainda dentro dos 30 dias
+    await ticket(tokens['01JTICKETEXPIRADO000000000']!).expect(404);
+    const [[k]] = await pool.query<mysql.RowDataPacket[]>(
+      "SELECT COUNT(*) AS n FROM tickets_tokens WHERE ticket_id = '01JTICKETANTIGO00000000000'",
+    );
+    expect(Number(k?.n)).toBe(0);
   });
 
   it('o token não aparece na URL: na query string ele é ignorado', async () => {

@@ -33,6 +33,7 @@ import {
   pagamentoParecido,
   pagamentosPorChave,
 } from '../financeiro/pagamentos.js';
+import { configuracoesService } from '../configuracoes/configuracoes.service.js';
 import { calculoDaApi, sessoesRepository as repo } from './sessoes.repository.js';
 
 export interface Ator {
@@ -41,9 +42,6 @@ export interface Ator {
   /** "http://servidor:8080" — base do link do cliente enquanto o PWA não existe. */
   origem: string;
 }
-
-/** Validade do link do cliente depois da saída (docs/ARQUITETURA.md §9). */
-const HORAS_LINK_APOS_SAIDA = 24;
 
 const hora = (d: Date | string) =>
   new Date(d).toLocaleString('pt-BR', {
@@ -682,10 +680,11 @@ export const sessoesService = {
         if (r.affectedRows !== 1)
           throw new AppError(409, 'CONFLITO', 'Este ticket já foi encerrado por outro operador.');
 
-        // Link do cliente continua valendo por 24h após a saída
+        // Link do cliente: segue a política de encerramento (Configurações → Link do cliente)
+        const politica = await configuracoesService.politicaAcessoCliente(site.id, c);
         await c.query(
           'UPDATE sessao_tokens SET expira_em = ? + INTERVAL ? HOUR WHERE sessao_id = ? AND revogado_em IS NULL',
-          [agora, HORAS_LINK_APOS_SAIDA, id],
+          [agora, politica.horasAposSaida, id],
         );
 
         const fechada = await carregar(site.id, id, c);

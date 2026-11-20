@@ -23,7 +23,7 @@ Telas:
 |------|------|----------|
 | **Vagas e preços** | `/` (ou `/s/<slug>`) | Nome e endereço do estacionamento, vagas livres agora (total e por categoria) e a tabela de preços, inclusive as tarifas especiais. Atualiza a cada 30 s |
 | **Abrir o link do ticket** | `/t#<token>` | O link do QR Code. Guarda o ticket no celular e vai para "Meu ticket" |
-| **Meu ticket** | `/ticket` | Placa, nº do ticket, vaga, entrada, **tempo correndo**, **valor até agora**, quando o valor sobe, o cálculo item a item, quanto já foi pago; depois da saída, o valor total e até quando o link funciona |
+| **Meu ticket** | `/ticket` | A consulta individual da sessão (ver abaixo) |
 | **Privacidade** | `/privacidade` | Quais dados aparecem, como o ticket é protegido e o que fica no celular |
 
 - **Valor:** o valor vem sempre da API, calculado pelo mesmo motor do caixa. O app atualiza quando o valor sobe, a cada minuto, ao voltar para o app e quando a internet volta. O relógio de permanência anda a cada segundo, só para exibição.
@@ -59,13 +59,43 @@ O app tem tema claro e escuro, botões de pelo menos 44 px e navegação inferio
   - Android e computador mostram o botão "Instalar";
   - no iPhone aparece a instrução "Compartilhar → Adicionar à Tela de Início", porque o Safari não tem esse botão.
 
+## Consulta individual da sessão (tela "Meu ticket")
+
+O cliente lê o QR Code ou abre o link recebido na entrada. Não há conta, cadastro nem senha: o link é a chave.
+
+| Item | Como aparece |
+|------|--------------|
+| **Placa** | Placa no estilo Mercosul, com categoria e vaga |
+| **Horário de entrada** | "hoje, 14:05" (ou a data) |
+| **Tempo de permanência** | Relógio correndo (estacionado) ou o tempo total (após a saída). Parte do horário do servidor, então não depende do relógio do celular |
+| **Valor acumulado** | Calculado pela API com o motor do caixa. Mostra também "Passa a R$ X às HH:MM", quanto já foi pago e o que falta. Após a saída, o valor total |
+| **Tabela de tarifas** | A tarifa **gravada neste ticket na entrada** (nome, categoria e linhas de preço). Uma mudança na tabela depois da entrada não altera o ticket. Há um link para todos os preços do estacionamento |
+| **Situação atual** | Selo (Estacionado, Encerrado ou Cancelado) e uma frase: dentro da tolerância, pagamento na saída, pago até agora, saída registrada às HH:MM |
+| **Última atualização** | "20/11/2026 às 14:32:05 (há 1 min)", o horário do cálculo no servidor. Sem internet ou com dados antigos do estacionamento, o app avisa |
+
+O app atualiza sozinho: quando o valor sobe, a cada minuto, ao voltar para o app e quando a internet volta.
+
+### Política de encerramento do acesso
+
+Definida no painel, em **Configurações → Link do cliente**. Exige a permissão `config.gerenciar`, e cada alteração fica no histórico de atividades.
+
+| Momento | O que acontece com o link |
+|---------|---------------------------|
+| Veículo no estacionamento | Sempre funciona |
+| Saída registrada | Funciona por mais **N horas**: padrão 24, de 0 ("encerrar na saída") até 168 (7 dias). O prazo é calculado **na saída**; mudar a política depois vale só para as próximas saídas |
+| Ticket cancelado ou "novo link" no caixa | O link antigo para na hora |
+| Prazo terminou | A API responde "não encontrado". O app apaga placa e valores do celular, mostra "Acesso encerrado" e tira o ticket da lista na próxima abertura. Na nuvem, o registro é **apagado 30 dias após a saída** (rotina de hora em hora); o histórico continua no servidor local |
+
+A tela informa a regra ao cliente: "Depois da saída, este link continua funcionando por 24 horas" e, após a saída, "Este link funciona até 21/11/2026 às 14:32:05".
+
 ## Cada cliente vê só o próprio ticket
 
 1. Na entrada, o servidor local gera um **token aleatório de 32 bytes** e guarda **só o hash** dele. O link é `https://<app>/t#<token>`.
 2. O token fica **depois do `#`**, parte que o navegador não envia a servidor nenhum ao abrir a página. O app tira o `#` da barra de endereço logo em seguida, para o token não ir junto num print ou ao copiar o link.
 3. O app pede o ticket com o cabeçalho `Authorization: Ticket <token>`. A API calcula o hash e procura **aquele** ticket. A resposta traz só os dados dele, sem identificadores internos.
 4. Não existe rota que liste tickets ou busque por placa ou número. Sem o token, não há como ver um ticket.
-5. Token inexistente, revogado ("novo link" no caixa) ou expirado (24h após a saída) recebem **a mesma resposta 404**. Há também um limite de 30 consultas por minuto por IP contra quem tenta adivinhar links.
+5. **Alterar o código não abre outro ticket.** Os 43 caracteres são aleatórios (2²⁵⁶ combinações) e não têm relação com o número do ticket, a placa ou a vaga. Trocar um caractere gera outro código que não existe. Número, placa ou identificador no lugar do token não são aceitos, e não há rota `/v1/ticket/<número>`. Um link que nunca funcionou nem fica guardado no celular.
+6. Token inexistente, revogado ("novo link" no caixa) ou expirado (24h após a saída) recebem **a mesma resposta 404**. Há também um limite de 30 consultas por minuto por IP contra quem tenta adivinhar links.
 
 ## API pública (`apps/cloud-api`)
 
@@ -132,5 +162,6 @@ Nunca copia usuários, caixa ou pagamentos individuais. A sincronização vai al
 
 | Onde | O que cobre |
 |------|-------------|
-| `apps/cloud-api/tests/publico.test.ts` (11) | Valor acumulado e final; resposta sem dados internos; 404 igual para token errado, revogado ou expirado; limite por IP; token na URL ignorado; nenhuma rota administrativa e só leitura; CORS só para o app; cabeçalhos de segurança; redirecionamento para HTTPS |
-| `apps/pwa/tests/pwa.test.ts` (9) | Leitura do token do link; tickets guardados (limite, esquecer, sem armazenamento, dados corrompidos); regras do service worker (ticket nunca em cache); formatos |
+| `apps/cloud-api/tests/publico.test.ts` (14) | Tabela de tarifas do próprio ticket e política; código alterado em várias posições, número, placa e identificador no lugar do token: sempre 404; registro apagado da nuvem 30 dias após a saída; valor acumulado e final; resposta sem dados internos; 404 igual para token errado, revogado ou expirado; limite por IP; token na URL ignorado; nenhuma rota administrativa e só leitura; CORS só para o app; cabeçalhos de segurança; redirecionamento para HTTPS |
+| `apps/local-server/tests/integracao/sessoes.test.ts` | Política de encerramento: padrão 24h, alteração vale na próxima saída, 0 = encerra na saída, limites, auditoria, permissão |
+| `apps/pwa/tests/pwa.test.ts` (12) | Remoção de tickets vencidos e dos dados pessoais; data e hora completas; leitura do token do link; tickets guardados (limite, esquecer, sem armazenamento, dados corrompidos); regras do service worker (ticket nunca em cache); formatos |
