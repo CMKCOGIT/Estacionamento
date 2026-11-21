@@ -48,6 +48,7 @@ const MENU: { rotulo: string; rota: string | null; permissoes: string[] }[] = [
   },
   { rotulo: 'Funcionários', rota: '/usuarios', permissoes: ['usuario.gerenciar', 'funcionario.gerenciar'] },
   { rotulo: 'Atividades', rota: '/atividades', permissoes: ['auditoria.ver'] },
+  { rotulo: 'Monitoramento', rota: '/monitoramento', permissoes: ['sistema.monitorar'] },
   { rotulo: 'Backups', rota: '/backups', permissoes: ['backup.gerenciar'] },
   { rotulo: 'Privacidade (LGPD)', rota: '/privacidade', permissoes: ['lgpd.atender'] },
   { rotulo: 'Configurações', rota: '/configuracoes', permissoes: ['config.gerenciar'] },

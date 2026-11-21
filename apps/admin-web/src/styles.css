@@ -2029,3 +2029,169 @@ td .etiqueta--bloqueado {
 .linha-apagada td {
   opacity: 0.55;
 }
+
+/* ---------- Monitoramento ---------- */
+:root {
+  --mon-ok: #15803d;
+  --mon-atencao: #b45309;
+  --mon-falha: #b91c1c;
+  --mon-desligado: #64748b;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --mon-ok: #4ade80;
+    --mon-atencao: #fbbf24;
+    --mon-falha: #f87171;
+    --mon-desligado: #94a3b8;
+  }
+}
+.mon-topo {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+}
+.mon-controles {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  font-size: 0.9rem;
+}
+.mon-geral {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  margin: 0.75rem 0;
+  padding: 0.9rem 1rem;
+  border-radius: var(--raio);
+  border: 1px solid var(--borda);
+  border-left: 6px solid var(--cor-nivel);
+}
+.mon-geral div {
+  display: flex;
+  flex-direction: column;
+}
+.mon-geral strong {
+  font-size: 1.1rem;
+}
+.mon-geral-icone {
+  display: grid;
+  place-items: center;
+  width: 2.4rem;
+  height: 2.4rem;
+  border-radius: 50%;
+  background: var(--cor-nivel);
+  color: var(--superficie);
+  font-weight: 700;
+  font-size: 1.2rem;
+}
+.mon-geral--ok,
+.mon-cartao--ok,
+.mon-nivel--ok,
+.mon-alerta--ok {
+  --cor-nivel: var(--mon-ok);
+}
+.mon-geral--atencao,
+.mon-cartao--atencao,
+.mon-nivel--atencao,
+.mon-alerta--atencao {
+  --cor-nivel: var(--mon-atencao);
+}
+.mon-geral--falha,
+.mon-cartao--falha,
+.mon-nivel--falha,
+.mon-alerta--falha {
+  --cor-nivel: var(--mon-falha);
+}
+.mon-geral--desligado,
+.mon-cartao--desligado,
+.mon-nivel--desligado,
+.mon-alerta--desligado {
+  --cor-nivel: var(--mon-desligado);
+}
+.mon-nivel {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.1rem 0.55rem;
+  border-radius: 999px;
+  border: 1px solid var(--cor-nivel);
+  color: var(--cor-nivel);
+  font-size: 0.8rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.mon-alertas {
+  list-style: none;
+  margin: 0 0 1rem;
+  padding: 0;
+  display: grid;
+  gap: 0.4rem;
+}
+.mon-alerta {
+  padding: 0.55rem 0.75rem;
+  border-radius: 8px;
+  border-left: 4px solid var(--cor-nivel);
+  background: var(--fundo);
+  font-size: 0.9rem;
+}
+.mon-grade {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 0.75rem;
+}
+.mon-cartao {
+  border: 1px solid var(--borda);
+  border-top: 4px solid var(--cor-nivel);
+  border-radius: var(--raio);
+  padding: 0.75rem 0.9rem;
+  background: var(--superficie);
+  min-width: 0;
+}
+.mon-cartao header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+}
+.mon-cartao h2 {
+  margin: 0;
+  font-size: 1rem;
+}
+.mon-resumo {
+  margin: 0.5rem 0 0.25rem;
+  font-weight: 600;
+}
+.mon-acao {
+  margin: 0.25rem 0;
+  font-size: 0.85rem;
+  color: var(--texto-mudo);
+}
+.mon-cartao details summary {
+  cursor: pointer;
+  font-size: 0.85rem;
+  color: var(--texto-mudo);
+}
+.mon-cartao dd {
+  overflow-wrap: anywhere;
+}
+.mon-numeros {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 0.75rem;
+  margin: 1rem 0;
+}
+.mon-numeros > div {
+  display: flex;
+  flex-direction: column;
+  padding: 0.6rem 0.8rem;
+  border: 1px solid var(--borda);
+  border-radius: var(--raio);
+}
+.mon-numero {
+  font-size: 1.4rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}

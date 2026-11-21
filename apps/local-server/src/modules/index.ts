@@ -13,6 +13,7 @@ import { healthRouter } from './health/health.routes.js';
 import { caixaRouter, sessoesRouter } from './sessoes/sessoes.routes.js';
 import { syncRouter } from './sync/sync.routes.js';
 import { tarifasRouter } from './tarifas/tarifas.routes.js';
+import { monitoramentoRouter } from './monitoramento/monitoramento.routes.js';
 import { permissoesRouter } from './usuarios/permissoes.routes.js';
 import { usuariosRouter } from './usuarios/usuarios.routes.js';
 import { categoriasRouter, vagasRouter } from './vagas/vagas.routes.js';
@@ -60,4 +61,5 @@ export const modulos: ModuloApi[] = [
   { caminho: '/sync', router: syncRouter },
   { caminho: '/privacidade', router: privacidadeRouter },
   { caminho: '/backups', router: backupRouter },
+  { caminho: '/monitoramento', router: monitoramentoRouter },
 ];

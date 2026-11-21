@@ -4,6 +4,7 @@ import { RotaProtegida } from './auth/RotaProtegida';
 import { Layout } from './components/Layout';
 import { Atividades } from './pages/Atividades';
 import { Backups } from './pages/Backups';
+import { Monitoramento } from './pages/Monitoramento';
 import { Caixa } from './pages/Caixa';
 import { Configuracoes } from './pages/Configuracoes';
 import { Dashboard } from './pages/Dashboard';
@@ -171,6 +172,14 @@ export function App() {
               element={
                 <RotaProtegida permissoes={['backup.gerenciar']}>
                   <Backups />
+                </RotaProtegida>
+              }
+            />
+            <Route
+              path="monitoramento"
+              element={
+                <RotaProtegida permissoes={['sistema.monitorar']}>
+                  <Monitoramento />
                 </RotaProtegida>
               }
             />

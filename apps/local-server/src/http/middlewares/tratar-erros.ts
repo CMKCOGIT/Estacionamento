@@ -3,6 +3,7 @@ import { ZodError } from 'zod';
 import { ErroCalculo } from '@estacionamento/calculo';
 import type { ErroApi } from '@estacionamento/shared';
 import { emProducao } from '../../config/env.js';
+import { registrarErroSistema } from '../../monitoramento/erros.js';
 import { AppError } from '../erros.js';
 import { traduzirErroMysql } from '../erros-mysql.js';
 
@@ -56,8 +57,19 @@ export const tratarErros: ErrorRequestHandler = (erro, req, res, next) => {
 
   const appErro = normalizarErro(erro);
 
-  if (appErro.status >= 500) req.log.error({ err: erro }, appErro.message);
-  else req.log.warn({ codigo: appErro.codigo, status: appErro.status }, appErro.message);
+  if (appErro.status >= 500) {
+    req.log.error({ err: erro }, appErro.message);
+    // Banco fora do ar não vai para a tabela (ela está no banco); o monitoramento mede o banco direto
+    if (appErro.codigo !== 'BANCO_INDISPONIVEL')
+      registrarErroSistema({
+        origem: 'API',
+        codigo: appErro.codigo,
+        mensagem: (erro as Error)?.message ?? appErro.message,
+        metodo: req.method,
+        rota: req.originalUrl,
+        requisicaoId: String(req.id),
+      });
+  } else req.log.warn({ codigo: appErro.codigo, status: appErro.status }, appErro.message);
 
   const corpo: ErroApi = {
     erro: {

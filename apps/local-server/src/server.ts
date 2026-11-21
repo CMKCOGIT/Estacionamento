@@ -162,9 +162,15 @@ async function iniciar(): Promise<void> {
 
   process.on('SIGINT', () => encerrar('SIGINT'));
   process.on('SIGTERM', () => encerrar('SIGTERM'));
-  process.on('unhandledRejection', (motivo) =>
-    logger.error({ err: motivo }, 'Promise rejeitada sem tratamento'),
-  );
+  const { registrarErroSistema } = await import('./monitoramento/erros.js');
+  process.on('unhandledRejection', (motivo) => {
+    logger.error({ err: motivo }, 'Promise rejeitada sem tratamento');
+    registrarErroSistema({
+      origem: 'PROCESSO',
+      codigo: 'PROMISE_REJEITADA',
+      mensagem: String((motivo as Error)?.message ?? motivo),
+    });
+  });
   process.on('uncaughtException', (erro) => {
     logger.fatal({ err: erro }, 'Exceção não tratada — encerrando');
     process.exit(1);
