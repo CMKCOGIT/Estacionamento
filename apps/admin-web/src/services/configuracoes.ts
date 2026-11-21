@@ -21,9 +21,27 @@ export interface StatusSync {
   falhasSeguidas: number;
   ultimoErro: string | null;
   ultimoErroEm: string | null;
+  marcasPendentes: number;
+  ultimaConferenciaEm: string | null;
+  ultimaConferenciaDivergencias: number | null;
+  conferenciaPendente: boolean;
+  resumo: { origem: string; resultado: string; total: number }[];
+  historico: {
+    id: number;
+    tipo: string;
+    iniciadoEm: string | null;
+    sucesso: boolean;
+    itens: number;
+    duracaoMs: number | null;
+    httpStatus: number | null;
+    erro: string | null;
+    requisicaoId: string | null;
+    detalhes: Record<string, unknown> | null;
+  }[];
 }
 
 export const syncApi = {
   status: () => api<StatusSync>('/sync/status'),
   ressincronizar: () => api<StatusSync>('/sync/ressincronizar', { method: 'POST', corpo: {} }),
+  conferir: () => api<StatusSync>('/sync/conferir', { method: 'POST', corpo: {} }),
 };

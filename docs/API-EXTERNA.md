@@ -25,6 +25,7 @@ Especificação técnica das rotas (OpenAPI 3.1): [`apps/cloud-api/openapi.yaml`
 | GET | `/v1/ticket` | App do cliente | `Authorization: Ticket <token>` | O ticket do token: placa, entrada, tempo, valor acumulado, tarifa, situação |
 | POST | `/sync/v1/push` | Servidor local | HMAC (escopo `sync:escrever`) | Recebe um lote de até 100 eventos. Lote vazio = sinal de vida |
 | POST | `/sync/v1/snapshot` | Servidor local | HMAC (escopo `sync:escrever`) | Carga completa do estado atual, em partes |
+| POST | `/sync/v1/conferir` | Servidor local | HMAC (escopo `sync:ler`) | Conferência entre os bancos: o que está diferente, ausente ou sobrando na nuvem ([SINCRONIZACAO.md](SINCRONIZACAO.md#6-evitar-inconsistências-entre-os-bancos)) |
 | GET | `/sync/v1/status` | Servidor local | HMAC (escopo `sync:ler`) | Último `seq` aplicado e último contato |
 
 Comportamento geral:
@@ -174,6 +175,8 @@ Nada se perde: a operação do estacionamento nunca espera a nuvem, e o que não
 | `tarifa.publicada` | `tabela_tarifa` | Tabela publicada, para agora ou para uma data futura |
 | `tarifa.arquivada` | `tabela_tarifa_arquivada` | Agendamento cancelado |
 | `site.atualizado` | `site` | Mudança na política do link do cliente |
+| `ticket.alterado`, `*.corrigido` | (o do item) | Alteração detectada no banco local; correção pedida pela conferência |
+| `ticket.removido` | `ticket_removido` | O ticket não existe mais no local (ex.: banco restaurado): a nuvem apaga |
 
 ## Registro de erros e requisições
 

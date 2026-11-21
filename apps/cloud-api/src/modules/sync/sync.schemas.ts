@@ -106,6 +106,7 @@ export const schemaDados = z.discriminatedUnion('tipo', [
   z.object({ tipo: z.literal('tabela_tarifa'), tabela: schemaTabela }),
   z.object({ tipo: z.literal('tabela_tarifa_arquivada'), tabelaId: ulid }),
   z.object({ tipo: z.literal('ticket'), ticket: schemaTicket }),
+  z.object({ tipo: z.literal('ticket_removido'), ticketId: ulid }),
 ]);
 
 /** Envelope do evento: validado primeiro; os `dados` são validados um a um (rejeição individual). */
@@ -137,4 +138,17 @@ export const schemaParteSnapshot = z.object({
   disponibilidade: schemaDisponibilidade.optional(),
   tabelas: z.array(schemaTabela).max(20).optional(),
   tickets: z.array(schemaTicket).max(200).optional(),
+});
+
+export const schemaConferencia = z.object({
+  siteId: ulid,
+  itens: z
+    .array(
+      z.object({
+        tipo: z.enum(['site', 'disponibilidade', 'tabela_tarifa', 'ticket']),
+        id: ulid,
+        hash: z.string().regex(/^[0-9a-f]{64}$/),
+      }),
+    )
+    .max(20_000),
 });

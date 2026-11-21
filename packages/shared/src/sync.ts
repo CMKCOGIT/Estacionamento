@@ -78,7 +78,9 @@ export type DadosEventoSync =
   | { tipo: 'disponibilidade'; disponibilidade: ProjecaoDisponibilidade }
   | { tipo: 'tabela_tarifa'; tabela: ProjecaoTabelaTarifa }
   | { tipo: 'tabela_tarifa_arquivada'; tabelaId: string }
-  | { tipo: 'ticket'; ticket: ProjecaoTicket };
+  | { tipo: 'ticket'; ticket: ProjecaoTicket }
+  /** O ticket não existe mais no servidor local (ex.: banco restaurado de backup): a nuvem apaga. */
+  | { tipo: 'ticket_removido'; ticketId: string };
 
 export interface EventoSync {
   eventId: string;
@@ -106,8 +108,63 @@ export interface RespostaPushSync {
   superados: number;
   /** Inválidos: o servidor local os separa (dead-letter) e avisa no painel. */
   rejeitados: { eventId: string; motivo: string }[];
+  /** Resultado de cada evento (registrado no servidor local, evento a evento). */
+  resultados?: { eventId: string; resultado: ResultadoEventoSync }[];
   ultimoSeq: number;
   recebidoEm: string;
+}
+
+export type ResultadoEventoSync = 'APLICADO' | 'REPETIDO' | 'SUPERADO' | 'REJEITADO';
+
+/**
+ * POST /sync/v1/conferir — conferência entre os bancos. O servidor local
+ * manda a "impressão digital" (hash) do estado atual de cada item visível; a
+ * nuvem compara com o que tem e devolve o que está diferente, faltando ou
+ * sobrando. O servidor local, fonte da verdade, então reenvia ou remove.
+ */
+export type TipoItemConferencia = 'site' | 'disponibilidade' | 'tabela_tarifa' | 'ticket';
+export interface PedidoConferenciaSync {
+  siteId: string;
+  itens: { tipo: TipoItemConferencia; id: string; hash: string }[];
+}
+export interface RespostaConferenciaSync {
+  /** Na nuvem com conteúdo diferente, ou ausentes. */
+  divergentes: { tipo: TipoItemConferencia; id: string; motivo: 'DIFERENTE' | 'AUSENTE' }[];
+  /** Na nuvem (visíveis ao cliente), mas não na lista do servidor local. */
+  sobrando: { tipo: TipoItemConferencia; id: string }[];
+  conferidos: number;
+}
+
+/**
+ * JSON canônico (chaves em ordem alfabética, sem espaços): o mesmo objeto gera
+ * sempre o mesmo texto, nos dois lados. Base do hash da conferência.
+ */
+export function jsonCanonico(v: unknown): string {
+  if (v === null || typeof v !== 'object') return JSON.stringify(v ?? null);
+  if (Array.isArray(v)) return `[${v.map(jsonCanonico).join(',')}]`;
+  const o = v as Record<string, unknown>;
+  return `{${Object.keys(o)
+    .filter((k) => o[k] !== undefined)
+    .sort()
+    .map((k) => `${JSON.stringify(k)}:${jsonCanonico(o[k])}`)
+    .join(',')}}`;
+}
+
+/**
+ * Forma canônica de um item para a conferência: as listas sem ordem própria
+ * (tokens, categorias, tarifas) são ordenadas, para que o servidor local
+ * (que lê do banco dele) e a nuvem (que remonta do banco dela) cheguem ao
+ * mesmo texto quando o conteúdo é o mesmo.
+ */
+export function formaDeConferencia(tipo: TipoItemConferencia, dados: unknown): string {
+  const d = structuredClone(dados) as Record<string, unknown>;
+  const porId = (a: unknown) =>
+    Array.isArray(a) ? [...a].sort((x, y) => String(x.id).localeCompare(String(y.id))) : a;
+  if (tipo === 'ticket' && Array.isArray(d.tokens))
+    d.tokens = [...d.tokens].sort((x, y) => String(x.hash).localeCompare(String(y.hash)));
+  if (tipo === 'disponibilidade') d.categorias = porId(d.categorias);
+  if (tipo === 'tabela_tarifa') d.tarifas = porId(d.tarifas);
+  return jsonCanonico(d);
 }
 
 /** POST /sync/v1/snapshot — ressincronização completa, em partes. */

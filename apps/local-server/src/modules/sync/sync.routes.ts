@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { exigirPermissao } from '../../http/middlewares/autenticacao.js';
 import { registrarAtividade } from '../../db/atividades.js';
 import { obterSiteAtual } from '../../config/site.js';
-import { pedirRessincronizacao, statusSync } from '../../sync/index.js';
+import { pedirConferencia, pedirRessincronizacao, statusSync } from '../../sync/index.js';
 
 /** Situação da sincronização com a nuvem (painel → Configurações). */
 export const syncRouter = Router();
@@ -16,6 +16,20 @@ syncRouter.post('/ressincronizar', exigirPermissao('config.gerenciar'), async (r
   const site = await obterSiteAtual();
   await registrarAtividade({
     acao: 'sync.ressincronizar',
+    siteId: site.id,
+    usuarioId: req.auth!.id,
+    entidade: 'sync_estado',
+    entidadeId: site.id,
+    ip: req.ip ?? null,
+  });
+  res.json(await statusSync());
+});
+
+syncRouter.post('/conferir', exigirPermissao('config.gerenciar'), async (req, res) => {
+  await pedirConferencia();
+  const site = await obterSiteAtual();
+  await registrarAtividade({
+    acao: 'sync.conferir',
     siteId: site.id,
     usuarioId: req.auth!.id,
     entidade: 'sync_estado',

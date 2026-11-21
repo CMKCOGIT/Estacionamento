@@ -1967,3 +1967,23 @@ td .etiqueta--bloqueado {
   margin: 0;
   font-weight: 600;
 }
+.historico-sync {
+  margin-top: 1rem;
+}
+.historico-sync summary {
+  cursor: pointer;
+  font-weight: 600;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+}
+.detalhe-sync small {
+  margin-left: 0.5rem;
+  color: var(--texto-mudo);
+  font-family: ui-monospace, monospace;
+}
+.secao-sync {
+  margin-top: 2rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--borda);
+}

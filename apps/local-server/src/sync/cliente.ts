@@ -12,6 +12,8 @@ export interface RespostaNuvem<T> {
   corpo: T | null;
   /** Mensagem de erro da API (quando houver). */
   erro: string | null;
+  /** X-Request-Id da nuvem: o mesmo id aparece no registro de lá (rastreio entre os dois bancos). */
+  requisicaoId: string | null;
 }
 
 /** Falha de rede/tempo: nada chegou do outro lado (tenta de novo depois). */
@@ -79,5 +81,10 @@ export async function chamarNuvem<T>(
       ((json as { erro?: { detalhes?: string[] } } | null)?.erro?.detalhes?.length
         ? ` (${(json as { erro: { detalhes: string[] } }).erro.detalhes.join('; ')})`
         : '');
-  return { status: r.status, corpo: r.ok ? (json as T) : null, erro };
+  return {
+    status: r.status,
+    corpo: r.ok ? (json as T) : null,
+    erro,
+    requisicaoId: r.headers.get('x-request-id'),
+  };
 }

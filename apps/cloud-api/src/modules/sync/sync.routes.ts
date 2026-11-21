@@ -91,6 +91,21 @@ syncRouter.post('/snapshot', ...corpo('2mb'), autenticarIntegracao('sync:escreve
   res.json(resposta);
 });
 
+/** Conferência entre os bancos: o que está diferente, faltando ou sobrando na nuvem. */
+syncRouter.post('/conferir', ...corpo('2mb'), autenticarIntegracao('sync:ler'), async (req, res) => {
+  const integracao = req.integracao!;
+  const r = await syncService.conferir(integracao, lerJson(req));
+  await registrar(req, {
+    nivel: r.divergentes.length || r.sobrando.length ? 'warn' : 'info',
+    tipo: 'sync.conferencia',
+    status: 200,
+    integracaoId: integracao.id,
+    siteId: integracao.siteId,
+    detalhes: { conferidos: r.conferidos, divergentes: r.divergentes.length, sobrando: r.sobrando.length },
+  });
+  res.json(r);
+});
+
 /** Último seq aplicado e último contato (o servidor local confere ao iniciar). */
 syncRouter.get('/status', ...corpo('1kb'), autenticarIntegracao('sync:ler'), async (req, res) => {
   res.set('Cache-Control', 'no-store').json(await syncService.status(req.integracao!));

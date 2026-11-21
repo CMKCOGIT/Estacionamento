@@ -1,12 +1,22 @@
 import type { PoolConnection, ResultSetHeader, RowDataPacket } from 'mysql2/promise';
 import type { z } from 'zod';
-import type { RespostaPushSync, RespostaSnapshotSync, StatusSync } from '@estacionamento/shared';
+import { createHash } from 'node:crypto';
+import {
+  formaDeConferencia,
+  type PedidoConferenciaSync,
+  type RespostaConferenciaSync,
+  type RespostaPushSync,
+  type RespostaSnapshotSync,
+  type ResultadoEventoSync,
+  type StatusSync,
+  type TipoItemConferencia,
+} from '@estacionamento/shared';
 import { pool } from '../../db/pool.js';
 import { ErroApiPublica } from '../../http/erros.js';
 import type { Integracao } from '../../integracoes/credenciais.js';
 import { integracoesRepository } from '../../integracoes/credenciais.js';
 import type { schemaDisponibilidade, schemaSite, schemaTabela, schemaTicket } from './sync.schemas.js';
-import { schemaDados, schemaLote, schemaParteSnapshot } from './sync.schemas.js';
+import { schemaConferencia, schemaDados, schemaLote, schemaParteSnapshot } from './sync.schemas.js';
 
 type Site = z.infer<typeof schemaSite>;
 type Disponibilidade = z.infer<typeof schemaDisponibilidade>;
@@ -132,6 +142,20 @@ const aplicar = {
     return r.affectedRows > 0 ? 'APLICADO' : 'SUPERADO';
   },
 
+  /** O servidor local (fonte da verdade) não tem mais este ticket: sai da nuvem. */
+  async ticketRemovido(c: PoolConnection, siteId: string, ticketId: string, seq: number): Promise<Resultado> {
+    const [[atual]] = await c.query<RowDataPacket[]>(
+      'SELECT site_id, seq_aplicado FROM tickets_publicos WHERE id = ? FOR UPDATE',
+      [ticketId],
+    );
+    if (!atual) return 'SUPERADO';
+    if (atual.site_id !== siteId) throw new Rejeicao('ticket pertence a outro estacionamento');
+    if (Number(atual.seq_aplicado) >= seq) return 'SUPERADO';
+    await c.query('DELETE FROM tickets_tokens WHERE ticket_id = ?', [ticketId]);
+    await c.query('DELETE FROM tickets_publicos WHERE id = ?', [ticketId]);
+    return 'APLICADO';
+  },
+
   async ticket(
     c: PoolConnection,
     siteId: string,
@@ -204,6 +228,12 @@ const aplicar = {
   },
 };
 
+/** Impressão digital de um item (a mesma conta do servidor local). */
+const impressao = (tipo: TipoItemConferencia, dados: unknown) =>
+  createHash('sha256').update(formaDeConferencia(tipo, dados)).digest('hex');
+const iso = (v: unknown) => (v instanceof Date ? v.toISOString() : null);
+const json = <T>(v: unknown): T => (typeof v === 'string' ? JSON.parse(v) : v) as T;
+
 function novo(aplicado: number, seq: number, snapshot: boolean) {
   return snapshot ? seq >= aplicado : seq > aplicado;
 }
@@ -272,6 +302,7 @@ export const syncService = {
         rejeitados: [],
         ultimoSeq: 0,
         recebidoEm: new Date().toISOString(),
+        resultados: [],
       };
       for (const e of eventos) {
         const [[ja]] = await c.query<RowDataPacket[]>(
@@ -280,6 +311,7 @@ export const syncService = {
         );
         if (ja) {
           r.repetidos++;
+          r.resultados!.push({ eventId: e.eventId, resultado: 'REPETIDO' });
           continue;
         }
         let resultado: Resultado | 'REJEITADO';
@@ -312,7 +344,9 @@ export const syncService = {
                     ? await aplicar.tabela(c, lote.siteId, d.tabela, e.seq)
                     : d.tipo === 'tabela_tarifa_arquivada'
                       ? await aplicar.tabelaArquivada(c, lote.siteId, d.tabelaId, e.seq)
-                      : await aplicar.ticket(c, lote.siteId, d.ticket, e.seq);
+                      : d.tipo === 'ticket_removido'
+                        ? await aplicar.ticketRemovido(c, lote.siteId, d.ticketId, e.seq)
+                        : await aplicar.ticket(c, lote.siteId, d.ticket, e.seq);
             await c.query('RELEASE SAVEPOINT evento');
           } catch (erro) {
             if (!(erro instanceof Rejeicao)) throw erro;
@@ -321,6 +355,7 @@ export const syncService = {
             r.rejeitados.push({ eventId: e.eventId, motivo: erro.message });
           }
         }
+        r.resultados!.push({ eventId: e.eventId, resultado: resultado as ResultadoEventoSync });
         if (resultado === 'APLICADO') r.aplicados++;
         else if (resultado === 'SUPERADO') r.superados++;
         await c.query(
@@ -429,6 +464,132 @@ export const syncService = {
         tickets: p.tickets?.length ?? 0,
       };
     });
+  },
+
+  /**
+   * Conferência: compara a impressão digital de cada item do servidor local
+   * com a da nuvem. Não altera nada aqui; o servidor local corrige reenviando
+   * (ele é a fonte da verdade).
+   */
+  async conferir(integracao: Integracao, corpo: unknown): Promise<RespostaConferenciaSync> {
+    const p: PedidoConferenciaSync = schemaConferencia.parse(corpo);
+    await siteDaIntegracao(integracao, p.siteId);
+    const s = p.siteId;
+    // Remonta cada item a partir do que está gravado AGORA na nuvem
+    const naNuvem = new Map<string, string>();
+    const [[site]] = await pool.query<RowDataPacket[]>('SELECT * FROM sites_publicos WHERE id = ?', [s]);
+    if (site) {
+      naNuvem.set(
+        `site:${s}`,
+        impressao('site', {
+          slug: site.slug,
+          nome: site.nome,
+          endereco: site.endereco ?? null,
+          telefone: site.telefone ?? null,
+          horasAcessoAposSaida: Number(site.horas_acesso_apos_saida),
+        }),
+      );
+      const [cats] = await pool.query<RowDataPacket[]>(
+        'SELECT * FROM disponibilidade_publica WHERE site_id = ?',
+        [s],
+      );
+      naNuvem.set(
+        `disponibilidade:${s}`,
+        impressao('disponibilidade', {
+          categorias: cats.map((k) => ({
+            id: k.categoria_id,
+            nome: k.categoria,
+            ordem: Number(k.ordem),
+            total: Number(k.total),
+            livres: Number(k.livres),
+          })),
+        }),
+      );
+    }
+    const [regras] = await pool.query<RowDataPacket[]>(
+      'SELECT * FROM tarifas_publicas WHERE site_id = ? AND tabela_id IS NOT NULL',
+      [s],
+    );
+    const tabelas = new Map<string, RowDataPacket[]>();
+    for (const x of regras)
+      tabelas.set(String(x.tabela_id), [...(tabelas.get(String(x.tabela_id)) ?? []), x]);
+    for (const [id, linhas] of tabelas)
+      naNuvem.set(
+        `tabela_tarifa:${id}`,
+        impressao('tabela_tarifa', {
+          tabelaId: id,
+          versao: Number(linhas[0]!.tabela_versao),
+          vigenteDesde: iso(linhas[0]!.vigente_desde),
+          tarifas: linhas.map((x) => ({
+            id: x.id,
+            categoria: x.categoria,
+            ordem: Number(x.ordem),
+            nome: x.nome,
+            especial: Boolean(Number(x.especial)),
+            condicao: x.condicao ?? null,
+            linhas: json<string[]>(x.linhas),
+          })),
+        }),
+      );
+    const [tickets] = await pool.query<RowDataPacket[]>(
+      `SELECT t.*, (t.situacao = 'ESTACIONADO' OR t.acesso_expira_em > NOW(3)) AS visivel
+         FROM tickets_publicos t WHERE t.site_id = ?`,
+      [s],
+    );
+    const [tokens] = await pool.query<RowDataPacket[]>(
+      `SELECT k.ticket_id, k.token_hash, k.revogado_em
+         FROM tickets_tokens k JOIN tickets_publicos t ON t.id = k.ticket_id WHERE t.site_id = ?`,
+      [s],
+    );
+    const tokensDo = new Map<string, { hash: string; revogadoEm: string | null }[]>();
+    for (const k of tokens)
+      tokensDo.set(String(k.ticket_id), [
+        ...(tokensDo.get(String(k.ticket_id)) ?? []),
+        { hash: (k.token_hash as Buffer).toString('hex'), revogadoEm: iso(k.revogado_em) },
+      ]);
+    for (const t of tickets)
+      naNuvem.set(
+        `ticket:${t.id}`,
+        impressao('ticket', {
+          id: t.id,
+          numero: Number(t.numero),
+          placa: t.placa,
+          categoria: t.categoria,
+          vaga: t.vaga ?? null,
+          modalidade: t.modalidade,
+          situacao: t.situacao,
+          entradaEm: iso(t.entrada_em),
+          saidaEm: iso(t.saida_em),
+          regra: json(t.regra),
+          tarifaNome: t.tarifa_nome,
+          tarifaDescricao: t.tarifa_descricao,
+          valorFinalCentavos: t.valor_final_centavos === null ? null : Number(t.valor_final_centavos),
+          itensFinal: t.itens_final === null ? null : json(t.itens_final),
+          pagoCentavos: Number(t.pago_centavos),
+          acessoExpiraEm: iso(t.acesso_expira_em),
+          tokens: tokensDo.get(String(t.id)) ?? [],
+        }),
+      );
+
+    const r: RespostaConferenciaSync = { divergentes: [], sobrando: [], conferidos: p.itens.length };
+    const listados = new Set<string>();
+    for (const item of p.itens) {
+      const chave = `${item.tipo}:${item.id}`;
+      listados.add(chave);
+      if (!naNuvem.has(chave)) r.divergentes.push({ tipo: item.tipo, id: item.id, motivo: 'AUSENTE' });
+      else if (naNuvem.get(chave) !== item.hash)
+        r.divergentes.push({ tipo: item.tipo, id: item.id, motivo: 'DIFERENTE' });
+    }
+    for (const t of tickets)
+      if (Number(t.visivel) && !listados.has(`ticket:${t.id}`))
+        r.sobrando.push({ tipo: 'ticket', id: String(t.id) });
+    for (const id of tabelas.keys())
+      if (!listados.has(`tabela_tarifa:${id}`)) r.sobrando.push({ tipo: 'tabela_tarifa', id });
+    await pool.query(
+      'UPDATE sync_estado SET ultima_conferencia_em = NOW(3), ultimo_contato_em = NOW(3) WHERE site_id = ?',
+      [s],
+    );
+    return r;
   },
 
   async status(integracao: Integracao): Promise<StatusSync> {

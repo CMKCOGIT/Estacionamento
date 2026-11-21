@@ -12,6 +12,7 @@ import { pool } from './db/pool.js';
 export type TipoRegistro =
   | 'sync.lote'
   | 'sync.snapshot'
+  | 'sync.conferencia'
   | 'sync.rejeitado'
   | 'sync.vinculado'
   | 'auth.recusada'

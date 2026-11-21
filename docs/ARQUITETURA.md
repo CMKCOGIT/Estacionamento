@@ -89,6 +89,8 @@ flowchart LR
 - Roda como **serviço do Windows**: inicia sozinho com o PC e reinicia se travar.
 
 ### 2.3 Worker de Sincronização
+
+> Implementado: ver [SINCRONIZACAO.md](SINCRONIZACAO.md). Roda dentro do servidor local, isolado (uma falha nele não afeta a API); a separação num serviço do Windows próprio fica para quando houver necessidade.
 - Serviço do Windows **separado** da API: uma falha na sincronização não derruba a operação.
 - **Push** dos eventos para a nuvem, em lotes e em ordem.
 - **Pull** da inbox: já vem implementado, mas fica desligado na v1 (será usado por mensalistas e Pix online).

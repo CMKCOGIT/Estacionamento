@@ -3,6 +3,7 @@ import mysql, { type RowDataPacket } from 'mysql2/promise';
 import request from 'supertest';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
+  formaDeConferencia,
   textoParaAssinar,
   type EventoSync,
   type ParteSnapshotSync,
@@ -317,6 +318,75 @@ describe('recebimento dos dados do servidor local', () => {
       [TICKET_B],
     );
     expect(Number(n?.n)).toBe(0);
+  });
+});
+
+describe('conferência entre os bancos e remoção', () => {
+  const impressao = (v: unknown) =>
+    createHash('sha256').update(formaDeConferencia('ticket', v)).digest('hex');
+  const conferir = (itens: { tipo: string; id: string; hash: string }[]) =>
+    enviar('POST', '/sync/v1/conferir', { siteId: SITE, itens });
+  const TICKET_C = ulid();
+  const tokenC = randomBytes(32).toString('base64url');
+  const projC = ticket(TICKET_C, {
+    numero: 9,
+    placa: 'CNF1A11',
+    tokens: [{ hash: hashHex(tokenC), revogadoEm: null }],
+  });
+
+  it('cada evento tem o seu resultado na resposta (aplicado, repetido...)', async () => {
+    const ev = evento({ tipo: 'ticket', ticket: projC }, 'ticket.aberto', 5000);
+    expect((await push([ev]).expect(200)).body.resultados).toEqual([
+      { eventId: ev.eventId, resultado: 'APLICADO' },
+    ]);
+    expect((await push([ev]).expect(200)).body.resultados).toEqual([
+      { eventId: ev.eventId, resultado: 'REPETIDO' },
+    ]);
+  });
+
+  it('aponta o que está igual, diferente, ausente e sobrando (sem alterar nada)', async () => {
+    const ausente = ulid();
+    const r = (
+      await conferir([
+        { tipo: 'ticket', id: TICKET_C, hash: impressao(projC) },
+        { tipo: 'ticket', id: ausente, hash: impressao({ x: 1 }) },
+        { tipo: 'site', id: SITE, hash: impressao({ outro: 'site' }) },
+      ]).expect(200)
+    ).body;
+    expect(r.conferidos).toBe(3);
+    expect(r.divergentes).toEqual(
+      expect.arrayContaining([
+        { tipo: 'ticket', id: ausente, motivo: 'AUSENTE' },
+        { tipo: 'site', id: SITE, motivo: 'DIFERENTE' },
+      ]),
+    );
+    expect(r.divergentes.some((d: { id: string }) => d.id === TICKET_C)).toBe(false); // igual
+    // TICKET_A está visível na nuvem e não foi listado: sobrando
+    expect(r.sobrando).toEqual(expect.arrayContaining([{ tipo: 'ticket', id: TICKET_A }]));
+    await consultar(tokenC).expect(200); // conferir não muda nada
+  });
+
+  it('dado alterado direto no banco da nuvem também aparece como diferente', async () => {
+    await pool.query('UPDATE tickets_publicos SET pago_centavos = 999 WHERE id = ?', [TICKET_C]);
+    const r = (await conferir([{ tipo: 'ticket', id: TICKET_C, hash: impressao(projC) }]).expect(200)).body;
+    expect(r.divergentes).toEqual([{ tipo: 'ticket', id: TICKET_C, motivo: 'DIFERENTE' }]);
+    await pool.query('UPDATE tickets_publicos SET pago_centavos = 0 WHERE id = ?', [TICKET_C]);
+  });
+
+  it('ticket que não existe mais no local é removido da nuvem (o local é a fonte da verdade)', async () => {
+    const ev = evento({ tipo: 'ticket_removido', ticketId: TICKET_C }, 'ticket.removido', 5001);
+    expect((await push([ev]).expect(200)).body.aplicados).toBe(1);
+    await consultar(tokenC).expect(404);
+    const [[n]] = await pool.query<RowDataPacket[]>(
+      'SELECT COUNT(*) AS n FROM tickets_tokens WHERE ticket_id = ?',
+      [TICKET_C],
+    );
+    expect(Number(n?.n)).toBe(0);
+  });
+
+  it('conferência exige credencial e é do próprio estacionamento', async () => {
+    await request(app).post('/sync/v1/conferir').send({ siteId: SITE, itens: [] }).expect(401);
+    await enviar('POST', '/sync/v1/conferir', { siteId: OUTRO_SITE, itens: [] }).expect(403);
   });
 });
 

@@ -53,7 +53,7 @@ export function Configuracoes() {
   }
 
   return (
-    <section className="cartao cartao--estreito">
+    <section className="cartao">
       <h1>Configurações</h1>
       <h2>Link do cliente (app Meu Ticket)</h2>
       <p>

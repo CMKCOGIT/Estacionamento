@@ -20,15 +20,46 @@ export async function registrarEvento(
     agregadoTipo: string;
     agregadoId: string;
     payload: DadosEventoSync;
+    /** Quem gerou: o serviço (padrão), a detecção pelo banco ou a conferência com a nuvem. */
+    origem?: 'APLICACAO' | 'DETECCAO' | 'CONFERENCIA';
   },
 ): Promise<string> {
-  const eventId = ulid();
+  const eventId = ulid(); // identificador único do evento: base da idempotência na nuvem
   await c.query(
-    `INSERT INTO sync_outbox (event_id, site_id, tipo, versao, agregado_tipo, agregado_id, payload, ocorrido_em)
-     VALUES (?, ?, ?, ?, ?, ?, ?, NOW(3))`,
-    [eventId, e.siteId, e.tipo, VERSAO_EVENTOS_SYNC, e.agregadoTipo, e.agregadoId, JSON.stringify(e.payload)],
+    `INSERT INTO sync_outbox (event_id, site_id, tipo, versao, origem, agregado_tipo, agregado_id, payload, ocorrido_em)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW(3))`,
+    [
+      eventId,
+      e.siteId,
+      e.tipo,
+      VERSAO_EVENTOS_SYNC,
+      e.origem ?? 'APLICACAO',
+      e.agregadoTipo,
+      e.agregadoId,
+      JSON.stringify(e.payload),
+    ],
   );
+  // O evento cobre a alteração: a marca da detecção pelo banco (012) não precisa mais gerar outro
+  const marca = marcaDoEvento(e.siteId, e.payload);
+  await c.query('DELETE FROM sync_marcas WHERE tipo = ? AND agregado_id = ?', marca);
   return eventId;
+}
+
+function marcaDoEvento(siteId: string, d: DadosEventoSync): [string, string] {
+  switch (d.tipo) {
+    case 'ticket':
+      return ['ticket', d.ticket.id];
+    case 'ticket_removido':
+      return ['ticket', d.ticketId];
+    case 'tabela_tarifa':
+      return ['tabela_tarifa', d.tabela.tabelaId];
+    case 'tabela_tarifa_arquivada':
+      return ['tabela_tarifa', d.tabelaId];
+    case 'disponibilidade':
+      return ['disponibilidade', siteId];
+    case 'site':
+      return ['site', siteId];
+  }
 }
 
 /** Evento do ticket (aberto, pagamento, fechado, cancelado, novo link...) com o estado público atual. */
@@ -37,9 +68,11 @@ export async function publicarTicket(
   siteId: string,
   tipo: string,
   sessaoId: string,
+  origem?: 'APLICACAO' | 'DETECCAO' | 'CONFERENCIA',
 ): Promise<void> {
   await registrarEvento(c, {
     siteId,
+    origem,
     tipo,
     agregadoTipo: 'ticket',
     agregadoId: sessaoId,
@@ -48,9 +81,14 @@ export async function publicarTicket(
 }
 
 /** Evento `vagas.disponibilidade`: totais por categoria, para o PWA dos clientes. */
-export async function publicarDisponibilidade(c: Conexao, siteId: string): Promise<void> {
+export async function publicarDisponibilidade(
+  c: Conexao,
+  siteId: string,
+  origem?: 'APLICACAO' | 'DETECCAO' | 'CONFERENCIA',
+): Promise<void> {
   await registrarEvento(c, {
     siteId,
+    origem,
     tipo: 'vagas.disponibilidade',
     agregadoTipo: 'site',
     agregadoId: siteId,
@@ -59,9 +97,15 @@ export async function publicarDisponibilidade(c: Conexao, siteId: string): Promi
 }
 
 /** Tabela de tarifas publicada (preços mostrados ao cliente). */
-export async function publicarTabelaTarifa(c: Conexao, siteId: string, tabelaId: string): Promise<void> {
+export async function publicarTabelaTarifa(
+  c: Conexao,
+  siteId: string,
+  tabelaId: string,
+  origem?: 'APLICACAO' | 'DETECCAO' | 'CONFERENCIA',
+): Promise<void> {
   await registrarEvento(c, {
     siteId,
+    origem,
     tipo: 'tarifa.publicada',
     agregadoTipo: 'tabela_tarifa',
     agregadoId: tabelaId,
@@ -70,9 +114,14 @@ export async function publicarTabelaTarifa(c: Conexao, siteId: string, tabelaId:
 }
 
 /** Dados do estacionamento e política do link do cliente. */
-export async function publicarSite(c: Conexao, siteId: string): Promise<void> {
+export async function publicarSite(
+  c: Conexao,
+  siteId: string,
+  origem?: 'APLICACAO' | 'DETECCAO' | 'CONFERENCIA',
+): Promise<void> {
   await registrarEvento(c, {
     siteId,
+    origem,
     tipo: 'site.atualizado',
     agregadoTipo: 'site',
     agregadoId: siteId,

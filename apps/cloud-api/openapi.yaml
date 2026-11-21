@@ -124,6 +124,61 @@ paths:
         '409':
           description: Carga desconhecida ou substituída. Recomece pela parte 1.
 
+  /sync/v1/conferir:
+    post:
+      tags: [Sincronização]
+      summary: Conferência entre os bancos (servidor local × nuvem)
+      description: |
+        O servidor local envia a impressão digital (SHA-256 do JSON canônico)
+        do estado atual de cada item visível. A nuvem responde o que está
+        diferente, ausente ou sobrando; não altera nada. O servidor local,
+        fonte da verdade, corrige reenviando ou removendo.
+      security: [{ Integracao: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [siteId, itens]
+              properties:
+                siteId: { type: string }
+                itens:
+                  type: array
+                  maxItems: 20000
+                  items:
+                    type: object
+                    properties:
+                      tipo: { enum: [site, disponibilidade, tabela_tarifa, ticket] }
+                      id: { type: string }
+                      hash: { type: string, pattern: '^[0-9a-f]{64}$' }
+      responses:
+        '200':
+          description: Diferenças encontradas
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  divergentes:
+                    type: array
+                    items:
+                      {
+                        type: object,
+                        properties:
+                          {
+                            tipo: { type: string },
+                            id: { type: string },
+                            motivo: { enum: [DIFERENTE, AUSENTE] },
+                          },
+                      }
+                  sobrando:
+                    type: array
+                    items: { type: object, properties: { tipo: { type: string }, id: { type: string } } }
+                  conferidos: { type: integer }
+        '401': { $ref: '#/components/responses/NaoAutorizado' }
+        '403': { $ref: '#/components/responses/Proibido' }
+
   /sync/v1/status:
     get:
       tags: [Sincronização]
@@ -385,6 +440,14 @@ components:
             type: array,
             items: { type: object, properties: { eventId: { type: string }, motivo: { type: string } } },
           }
+        resultados:
+          type: array
+          items:
+            {
+              type: object,
+              properties:
+                { eventId: { type: string }, resultado: { enum: [APLICADO, REPETIDO, SUPERADO, REJEITADO] } },
+            }
         ultimoSeq: { type: integer }
         recebidoEm: { type: string, format: date-time }
 

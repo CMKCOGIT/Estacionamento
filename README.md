@@ -10,6 +10,7 @@ Sistema de gerenciamento de estacionamento:
 |-----------|----------|
 | [`docs/ARQUITETURA.md`](docs/ARQUITETURA.md) | Arquitetura, sincronização, segurança, tarifas, retenção |
 | [`docs/BANCO_LOCAL.md`](docs/BANCO_LOCAL.md) | Modelo do banco MySQL local e diagramas ER |
+| [`docs/SINCRONIZACAO.md`](docs/SINCRONIZACAO.md) | Sincronização local → nuvem: detecção de alterações, fila, envio, falhas e reenvio, idempotência, conferência entre os bancos, status |
 | [`docs/API-EXTERNA.md`](docs/API-EXTERNA.md) | API externa: rotas, dados públicos, sincronização com o servidor local, autenticação HMAC, registro, HTTPS |
 | [`docs/PWA.md`](docs/PWA.md) | App do cliente (PWA) e API pública: telas, instalação, service worker, HTTPS, acesso só ao próprio ticket |
 | [`docs/RELATORIOS.md`](docs/RELATORIOS.md) | Faturamento diário/semanal/mensal/por período, formas de pagamento, histórico com detalhe, pendentes e fechamentos de caixa |
