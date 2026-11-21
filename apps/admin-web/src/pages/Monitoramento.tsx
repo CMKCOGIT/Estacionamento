@@ -110,9 +110,9 @@ export function Monitoramento() {
   const [carregando, setCarregando] = useState(false);
 
   const carregar = useCallback(
-    () =>
+    (forcar = false) =>
       monitoramentoApi
-        .painel()
+        .painel(forcar)
         .then(
           (r) => {
             setP(r);
@@ -146,7 +146,7 @@ export function Monitoramento() {
             className="botao botao--secundario"
             onClick={() => {
               setCarregando(true);
-              void carregar();
+              void carregar(true);
             }}
             disabled={carregando}
           >

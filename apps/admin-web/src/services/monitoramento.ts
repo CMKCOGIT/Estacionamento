@@ -31,5 +31,5 @@ export interface PainelMonitoramento {
 }
 
 export const monitoramentoApi = {
-  painel: () => api<PainelMonitoramento>('/monitoramento'),
+  painel: (forcar = false) => api<PainelMonitoramento>(`/monitoramento${forcar ? '?forcar=1' : ''}`),
 };

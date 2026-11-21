@@ -1,4 +1,7 @@
+import { env } from '../config/env.js';
 import { logger } from '../config/logger.js';
+import { requisicaoExpirada } from '../http/contexto-requisicao.js';
+import { AppError } from '../http/erros.js';
 import { pool, type Conexao } from './pool.js';
 
 /**
@@ -35,10 +38,11 @@ export const TENTATIVAS_DEADLOCK = 6;
 export async function comTransacao<T>(
   contexto: ContextoAuditoria,
   fn: (conexao: Conexao) => Promise<T>,
+  opcoes: { limiteMs?: number } = {},
 ): Promise<T> {
   for (let tentativa = 1; ; tentativa++) {
     try {
-      return await executarTransacao(contexto, fn);
+      return await executarTransacao(contexto, fn, opcoes.limiteMs ?? env.DB_TRANSACAO_LIMITE_MS);
     } catch (erro) {
       const deadlock = (erro as { errno?: number }).errno === ER_LOCK_DEADLOCK;
       if (!deadlock || tentativa >= TENTATIVAS_DEADLOCK) throw erro;
@@ -54,10 +58,20 @@ export async function comTransacao<T>(
  * limpa as variáveis antes de devolver a conexão ao pool (evita vazar o
  * usuário de uma requisição para outra).
  */
+const respondidaComErro = () =>
+  new AppError(
+    503,
+    'BANCO_INDISPONIVEL',
+    'O banco de dados não respondeu a tempo. A operação foi desfeita; tente de novo.',
+  );
+
 async function executarTransacao<T>(
   contexto: ContextoAuditoria,
   fn: (conexao: Conexao) => Promise<T>,
+  limiteMs: number,
 ): Promise<T> {
+  // A tela já recebeu "não respondeu a tempo": não grava mais nada desta requisição
+  if (requisicaoExpirada()) throw respondidaComErro();
   const conexao = await pool.getConnection();
   let conexaoSegura = true;
   try {
@@ -72,23 +86,42 @@ async function executarTransacao<T>(
       ],
     );
     await conexao.beginTransaction();
+    let limite: NodeJS.Timeout | undefined;
     try {
-      const resultado = await fn(conexao);
-      await conexao.commit();
-      return resultado;
+      const trabalho = (async () => {
+        const resultado = await fn(conexao);
+        if (requisicaoExpirada()) throw respondidaComErro(); // desfaz (ROLLBACK)
+        await conexao.commit();
+        return resultado;
+      })();
+      // Banco travado (não caído): sem limite, a tela do caixa ficaria esperando para sempre.
+      // Descartar a conexão faz o MySQL desfazer a transação quando voltar.
+      const estouro = new Promise<never>((_, falhar) => {
+        limite = setTimeout(() => {
+          conexaoSegura = false;
+          conexao.destroy();
+          falhar(respondidaComErro());
+        }, limiteMs);
+      });
+      trabalho.catch(() => undefined); // depois do estouro, o erro da conexão descartada não importa
+      return await Promise.race([trabalho, estouro]);
     } catch (erro) {
+      if (!conexaoSegura) throw erro;
       await conexao.rollback().catch((e: unknown) => {
         conexaoSegura = false;
         logger.error({ err: e }, 'Falha no ROLLBACK');
       });
       throw erro;
+    } finally {
+      clearTimeout(limite);
     }
   } finally {
-    try {
-      await conexao.query(LIMPAR_VARIAVEIS);
-    } catch {
-      conexaoSegura = false;
-    }
+    if (conexaoSegura)
+      try {
+        await conexao.query(LIMPAR_VARIAVEIS);
+      } catch {
+        conexaoSegura = false;
+      }
     if (conexaoSegura) conexao.release();
     else conexao.destroy();
   }

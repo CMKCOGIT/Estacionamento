@@ -73,7 +73,7 @@ O que o app recebe em `GET /v1/ticket` está descrito em `TicketPublico` (`packa
 - **Onde o token trafega:** vai depois do `#` no link (não aparece em logs nem no *Referer*) e no cabeçalho `Authorization: Ticket <token>`. Na URL, ele é ignorado.
 - **Respostas e limites:**
   - token inexistente, alterado, revogado ou expirado recebe a **mesma resposta 404**;
-  - há um limite de 30 consultas por minuto por IP;
+  - limites por minuto: 30 consultas **que falham** por IP (quem tenta adivinhar links), 12 consultas por ticket e um teto de 1200 por IP. Consultas que dão certo não contam no limite por IP, porque muitos clientes podem chegar pelo mesmo IP (NAT da operadora de celular, wi-fi do estacionamento);
   - a resposta usa `Cache-Control: no-store`.
 - **Encerramento:** depois da saída, o link vale pelo prazo definido no painel (Configurações → Link do cliente). Detalhes em [PWA.md](PWA.md).
 

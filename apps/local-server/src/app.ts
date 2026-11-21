@@ -1,3 +1,4 @@
+import { limiteDeTempo } from './http/middlewares/limite-tempo.js';
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -69,6 +70,7 @@ export function criarApp(): Express {
   app.use(express.json({ limit: '100kb' }));
   app.use(cookieParser());
   app.use('/api', verificarOrigem);
+  app.use('/api', limiteDeTempo);
 
   app.use('/api/v1', criarRotasApi());
   app.use('/api', rotaNaoEncontrada); // /api sem versão ou versão inexistente

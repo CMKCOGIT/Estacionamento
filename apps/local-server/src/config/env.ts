@@ -32,6 +32,13 @@ const schemaEnv = z.object({
   DB_PASSWORD: z.string().default(''),
   DB_NAME: z.string().min(1).default('estacionamento'),
   DB_POOL_SIZE: z.coerce.number().int().min(1).max(100).default(10),
+  /**
+   * Tempo máximo de uma transação (ms). Se o MySQL travar (disco, bloqueio),
+   * a conexão é descartada e o MySQL desfaz a transação — nada é gravado pela metade.
+   */
+  DB_TRANSACAO_LIMITE_MS: z.coerce.number().int().min(1000).max(600_000).default(12_000),
+  /** Tempo máximo de resposta da API (ms): depois disso a tela recebe 503 em vez de ficar travada. */
+  REQUISICAO_LIMITE_MS: z.coerce.number().int().min(1000).max(600_000).default(15_000),
 
   // Fuso do estacionamento para "hoje", relatórios e gráficos. Offset fixo
   // (o Brasil não tem horário de verão desde 2019; não depende das tabelas de

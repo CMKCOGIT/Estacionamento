@@ -17,6 +17,11 @@ const MENSAGENS_UNICIDADE: Record<string, string> = {
   uq_categorias_codigo: 'Já existe uma categoria com este código.',
   uq_pagamentos_idempotencia: 'Este pagamento já foi registrado.',
   uq_usuarios_login: 'Este login já está em uso.',
+  uq_usuarios_email: 'Este e-mail já está em uso por outro usuário.',
+  uq_funcionarios_cpf: 'Já existe um funcionário cadastrado com este CPF.',
+  uq_clientes_documento: 'Já existe um cliente cadastrado com este CPF/CNPJ.',
+  uq_postos_nome: 'Já existe um posto com este nome.',
+  uq_sites_slug: 'Este endereço do estacionamento já está em uso.',
   uq_caixa_posto_aberto: 'Já existe um caixa aberto neste posto.',
   uq_caixa_operador_aberto: 'Você já tem um caixa aberto.',
   uq_regras_padrao:

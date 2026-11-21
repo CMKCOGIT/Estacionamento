@@ -176,6 +176,23 @@ describe('ticket do cliente (pelo token do link)', () => {
     expect(new Set(respostas.map((x) => JSON.stringify(x.body))).size).toBe(1);
   });
 
+  it('muitos clientes no mesmo IP (NAT da operadora) acompanham seus tickets sem bloqueio', async () => {
+    const valido = tokens['01JTICKETABERTO00000000000']!;
+    const outro = tokens['01JTICKETFECHADO0000000000']!;
+    // 2 tickets × 10 consultas pelo mesmo IP: passa do antigo limite de 8/IP, mas é uso normal
+    const r = [];
+    for (let i = 0; i < 10; i++) r.push((await ticket(valido)).status, (await ticket(outro)).status);
+    expect(r.every((s) => s === 200)).toBe(true);
+  });
+
+  it('limita as consultas de um mesmo ticket', async () => {
+    const valido = tokens['01JTICKETABERTO00000000000']!;
+    const r = [];
+    for (let i = 0; i < 14; i++) r.push((await ticket(valido)).status);
+    expect(r.slice(0, 12).every((s) => s === 200)).toBe(true);
+    expect(r.slice(12)).toEqual([429, 429]);
+  });
+
   it('limita as tentativas por IP (quem tenta adivinhar links)', async () => {
     const r = [];
     for (let i = 0; i < 10; i++) r.push((await ticket(novoToken())).status);

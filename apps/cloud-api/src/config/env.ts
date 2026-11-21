@@ -34,7 +34,12 @@ const schema = z.object({
   FORCAR_HTTPS: booleano.optional(),
   /** Quantos proxies confiar para o IP e o protocolo (provedores usam 1). */
   CONFIAR_PROXY: z.coerce.number().int().min(0).max(5).default(0),
+  /** Consultas de ticket que FALHAM, por IP e por minuto (contra quem tenta adivinhar links). */
   LIMITE_TICKET_POR_MINUTO: z.coerce.number().int().min(1).max(1000).default(30),
+  /** Consultas por ticket e por minuto (o app consulta a cada 30 s). */
+  LIMITE_TICKET_POR_TOKEN_POR_MINUTO: z.coerce.number().int().min(2).max(1000).default(12),
+  /** Teto de consultas por IP e por minuto (muitos clientes podem dividir o mesmo IP). */
+  LIMITE_TICKET_TETO_POR_IP_POR_MINUTO: z.coerce.number().int().min(10).max(100_000).default(1200),
 
   /**
    * Chave mestra das integrações (servidor local de cada estacionamento).

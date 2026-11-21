@@ -4,6 +4,12 @@ import { logger } from './config/logger.js';
 import { fecharPool, pool } from './db/pool.js';
 import { publicoRepository } from './modules/publico/publico.repository.js';
 
+if (env.NODE_ENV === 'production' && env.CONFIAR_PROXY === 0)
+  logger.warn(
+    'CONFIAR_PROXY=0 em produção: atrás do proxy do provedor, todos os clientes parecem vir do mesmo IP ' +
+      '(limites e registros ficam errados). Use CONFIAR_PROXY=1.',
+  );
+
 /**
  * Retenção: tickets encerrados há mais de 30 dias, nonces com mais de 10 min
  * (a janela da assinatura é de 5), confirmações de sincronização com mais

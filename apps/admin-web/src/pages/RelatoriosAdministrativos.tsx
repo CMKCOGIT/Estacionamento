@@ -589,26 +589,28 @@ function AbaOcupacao({ f }: { f: FiltrosAdm }) {
           </section>
           <section className="cartao">
             <h2>Por categoria</h2>
-            <table className="tabela tabela--compacta">
-              <thead>
-                <tr>
-                  <th>Categoria</th>
-                  <th className="numero">Vagas ativas</th>
-                  <th className="numero">Média ocupada</th>
-                  <th className="numero">Pico</th>
-                </tr>
-              </thead>
-              <tbody>
-                {d.porCategoria.map((c) => (
-                  <tr key={c.categoria}>
-                    <td>{c.categoria}</td>
-                    <td className="numero">{c.capacidade}</td>
-                    <td className="numero">{c.mediaOcupadas.toLocaleString('pt-BR')}</td>
-                    <td className="numero">{c.picoOcupadas}</td>
+            <div className="tabela-rolagem">
+              <table className="tabela tabela--compacta">
+                <thead>
+                  <tr>
+                    <th>Categoria</th>
+                    <th className="numero">Vagas ativas</th>
+                    <th className="numero">Média ocupada</th>
+                    <th className="numero">Pico</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {d.porCategoria.map((c) => (
+                    <tr key={c.categoria}>
+                      <td>{c.categoria}</td>
+                      <td className="numero">{c.capacidade}</td>
+                      <td className="numero">{c.mediaOcupadas.toLocaleString('pt-BR')}</td>
+                      <td className="numero">{c.picoOcupadas}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </section>
         </>
       )}
@@ -631,60 +633,64 @@ function AbaBloqueios({ f }: { f: FiltrosAdm }) {
             <h2>Bloqueadas agora ({d.atuais.length})</h2>
             <Estado erro={null} carregando={false} vazio={!d.atuais.length} />
             {d.atuais.length > 0 && (
-              <table className="tabela tabela--compacta">
-                <thead>
-                  <tr>
-                    <th>Vaga</th>
-                    <th>Categoria</th>
-                    <th>Motivo</th>
-                    <th>Desde</th>
-                    <th className="numero">Dias</th>
-                    <th>Bloqueada por</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {d.atuais.map((v) => (
-                    <tr key={v.id}>
-                      <td>{v.codigo}</td>
-                      <td>{v.categoria}</td>
-                      <td>{v.motivo ?? '—'}</td>
-                      <td>{dh(v.desde)}</td>
-                      <td className={`numero${v.diasBloqueada >= 7 ? ' texto-falha' : ''}`}>
-                        {v.diasBloqueada}
-                      </td>
-                      <td>{v.bloqueadaPor ?? '—'}</td>
+              <div className="tabela-rolagem">
+                <table className="tabela tabela--compacta">
+                  <thead>
+                    <tr>
+                      <th>Vaga</th>
+                      <th>Categoria</th>
+                      <th>Motivo</th>
+                      <th>Desde</th>
+                      <th className="numero">Dias</th>
+                      <th>Bloqueada por</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {d.atuais.map((v) => (
+                      <tr key={v.id}>
+                        <td>{v.codigo}</td>
+                        <td>{v.categoria}</td>
+                        <td>{v.motivo ?? '—'}</td>
+                        <td>{dh(v.desde)}</td>
+                        <td className={`numero${v.diasBloqueada >= 7 ? ' texto-falha' : ''}`}>
+                          {v.diasBloqueada}
+                        </td>
+                        <td>{v.bloqueadaPor ?? '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
           </section>
           <section className="cartao">
             <h2>Bloqueios e liberações · {intervaloBr(f.de, f.ate)}</h2>
             <Estado erro={null} carregando={false} vazio={!d.historico.length} />
             {d.historico.length > 0 && (
-              <table className="tabela tabela--compacta">
-                <thead>
-                  <tr>
-                    <th>Quando</th>
-                    <th>Vaga</th>
-                    <th>O que</th>
-                    <th>Motivo</th>
-                    <th>Por</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {d.historico.map((h, i) => (
-                    <tr key={i}>
-                      <td>{dh(h.em)}</td>
-                      <td>{h.vaga}</td>
-                      <td>{h.acao === 'BLOQUEADA' ? 'Bloqueada' : 'Liberada'}</td>
-                      <td>{h.motivo ?? '—'}</td>
-                      <td>{h.usuario ?? '—'}</td>
+              <div className="tabela-rolagem">
+                <table className="tabela tabela--compacta">
+                  <thead>
+                    <tr>
+                      <th>Quando</th>
+                      <th>Vaga</th>
+                      <th>O que</th>
+                      <th>Motivo</th>
+                      <th>Por</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {d.historico.map((h, i) => (
+                      <tr key={i}>
+                        <td>{dh(h.em)}</td>
+                        <td>{h.vaga}</td>
+                        <td>{h.acao === 'BLOQUEADA' ? 'Bloqueada' : 'Liberada'}</td>
+                        <td>{h.motivo ?? '—'}</td>
+                        <td>{h.usuario ?? '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
           </section>
         </>
