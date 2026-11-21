@@ -1,4 +1,8 @@
-import type { Server } from 'node:http';
+import { readFileSync } from 'node:fs';
+import { isAbsolute, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { createServer as criarServidorHttp, type Server } from 'node:http';
+import { createServer as criarServidorHttps } from 'node:https';
 
 /**
  * Ponto de entrada do servidor local.
@@ -54,15 +58,62 @@ async function iniciar(): Promise<void> {
   if (banco.ok) logger.info({ versao: banco.versao, banco: banco.nome }, 'MySQL conectado');
   else logger.warn({ motivo: banco.erro }, 'MySQL indisponível — a API responderá 503 até o banco voltar');
 
-  const servidor: Server = criarApp().listen(env.PORT, env.HOST, () => {
+  // HTTPS na rede local (certificado em HTTPS_CERT_FILE/HTTPS_KEY_FILE) ou HTTP
+  const app = criarApp();
+  // Caminho relativo = relativo a apps/local-server (vale em src/ e em dist/)
+  const pastaServidor = fileURLToPath(new URL('../', import.meta.url));
+  const arquivo = (f: string) => (isAbsolute(f) ? f : resolve(pastaServidor, f));
+  let servidor: Server;
+  try {
+    servidor = env.HTTPS
+      ? (criarServidorHttps(
+          {
+            cert: readFileSync(arquivo(env.HTTPS_CERT_FILE!)),
+            key: readFileSync(arquivo(env.HTTPS_KEY_FILE!)),
+            minVersion: 'TLSv1.2',
+          },
+          app,
+        ) as unknown as Server)
+      : criarServidorHttp(app);
+  } catch (erro) {
+    logger.fatal(
+      { err: erro },
+      'Não foi possível ler o certificado HTTPS (HTTPS_CERT_FILE / HTTPS_KEY_FILE)',
+    );
+    process.exit(1);
+  }
+  servidor.listen(env.PORT, env.HOST, () => {
     logger.info(
       { versao: appInfo.versao, ambiente: env.NODE_ENV },
-      `Servidor local ouvindo em http://${env.HOST === '0.0.0.0' ? 'localhost' : env.HOST}:${env.PORT}`,
+      `Servidor local ouvindo em ${env.HTTPS ? 'https' : 'http'}://${env.HOST === '0.0.0.0' ? 'localhost' : env.HOST}:${env.PORT}`,
     );
+    if (!env.HTTPS && env.NODE_ENV === 'production')
+      logger.warn(
+        'Painel sem HTTPS: na rede local as senhas trafegam sem criptografia. Gere um certificado (npm run https:certificado) e configure HTTPS_CERT_FILE e HTTPS_KEY_FILE.',
+      );
   });
+  // Porta HTTP que só redireciona para o HTTPS (quem digitar http:// cai no endereço seguro)
+  if (env.HTTPS && env.HTTP_REDIRECIONAR_PORTA) {
+    criarServidorHttp((req, res) => {
+      const host = (req.headers.host ?? 'localhost').replace(/:\d+$/, '');
+      res.writeHead(301, { Location: `https://${host}:${env.PORT}${req.url ?? '/'}` }).end();
+    })
+      .on('error', (e) => logger.warn({ err: e }, 'Porta de redirecionamento HTTP indisponível'))
+      .listen(env.HTTP_REDIRECIONAR_PORTA, env.HOST);
+  }
 
   // Envio dos dados para a API externa (nuvem), se configurado no .env
   sync.iniciarSync();
+
+  // LGPD: política de retenção aplicada todo dia (a primeira 5 min depois de iniciar)
+  const { privacidadeService } = await import('./modules/privacidade/privacidade.service.js');
+  const reter = () =>
+    privacidadeService
+      .executarRetencao()
+      .then((r) => logger.info({ ...r }, 'Retenção de dados pessoais aplicada'))
+      .catch((e: unknown) => logger.warn({ err: e }, 'Falha na retenção de dados (tenta de novo amanhã)'));
+  setTimeout(reter, 5 * 60_000).unref();
+  setInterval(reter, 24 * 3_600_000).unref();
 
   servidor.on('error', (erro: NodeJS.ErrnoException) => {
     if (erro.code === 'EADDRINUSE') {

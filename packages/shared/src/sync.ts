@@ -21,6 +21,8 @@ export interface ProjecaoSite {
   telefone: string | null;
   /** Política de encerramento do link do cliente. */
   horasAcessoAposSaida: number;
+  /** Contato do encarregado de dados (LGPD art. 41), mostrado no app do cliente. */
+  contatoPrivacidade?: string | null;
 }
 
 export interface ProjecaoDisponibilidade {

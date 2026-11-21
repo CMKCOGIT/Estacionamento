@@ -12,6 +12,8 @@ export interface EstacionamentoPublico {
   telefone: string | null;
   /** Quando o servidor local enviou estes dados pela última vez. */
   sincronizadoEm: string | null;
+  /** Encarregado de dados (LGPD art. 41): como o cliente exerce os direitos dele. */
+  contatoPrivacidade?: string | null;
 }
 
 export interface DisponibilidadePublica {

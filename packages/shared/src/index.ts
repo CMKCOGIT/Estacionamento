@@ -15,3 +15,5 @@ export * from './publico.js';
 export * from './configuracoes.js';
 export * from './sync.js';
 export * from './texto-publico.js';
+export * from './privacidade.js';
+export * from './lgpd.js';

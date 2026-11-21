@@ -3,6 +3,7 @@ import { atividadesRouter } from './atividades/atividades.routes.js';
 import { authRouter } from './auth/auth.routes.js';
 import { configuracoesRouter } from './configuracoes/configuracoes.routes.js';
 import { dashboardRouter } from './dashboard/dashboard.routes.js';
+import { privacidadeRouter } from './privacidade/privacidade.routes.js';
 import { relatoriosRouter } from './relatorios/relatorios.routes.js';
 import { financeiroRouter } from './financeiro/financeiro.routes.js';
 import { formasPagamentoRouter } from './formas-pagamento/formas-pagamento.routes.js';
@@ -54,4 +55,5 @@ export const modulos: ModuloApi[] = [
   { caminho: '/atividades', router: atividadesRouter },
   { caminho: '/configuracoes', router: configuracoesRouter },
   { caminho: '/sync', router: syncRouter },
+  { caminho: '/privacidade', router: privacidadeRouter },
 ];

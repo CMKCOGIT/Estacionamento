@@ -32,7 +32,7 @@ export function criarApp(): Express {
   // do helmet para HTTPS (upgrade-insecure-requests e HSTS) fariam o navegador
   // de OUTROS computadores buscar os arquivos do painel via https:// — e a
   // página ficaria em branco. Só são ativados quando o acesso é por HTTPS.
-  const usaHttps = env.COOKIE_SECURE;
+  const usaHttps = env.HTTPS || env.COOKIE_SECURE;
   app.use(
     helmet({
       contentSecurityPolicy: { directives: { upgradeInsecureRequests: usaHttps ? [] : null } },
@@ -53,6 +53,16 @@ export function criarApp(): Express {
       autoLogging: { ignore: (req) => req.url === '/api/v1/health/live' },
       customLogLevel: (_req, res, erro) =>
         erro || res.statusCode >= 500 ? 'error' : res.statusCode >= 400 ? 'warn' : 'info',
+      // Só método e caminho (sem query string: ?termo= pode ser uma placa) e o IP de origem
+      serializers: {
+        req: (req: { id: string; method: string; url: string; remoteAddress?: string }) => ({
+          id: req.id,
+          method: req.method,
+          url: req.url.split('?')[0],
+          remoteAddress: req.remoteAddress,
+        }),
+        res: (res: { statusCode: number }) => ({ statusCode: res.statusCode }),
+      },
     }),
   );
 

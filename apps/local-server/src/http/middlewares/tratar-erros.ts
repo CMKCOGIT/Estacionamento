@@ -8,7 +8,8 @@ import { traduzirErroMysql } from '../erros-mysql.js';
 
 /** 404 para qualquer rota /api inexistente. */
 export const rotaNaoEncontrada: RequestHandler = (req, _res, next) => {
-  next(new AppError(404, 'ROTA_NAO_ENCONTRADA', `Rota não encontrada: ${req.method} ${req.originalUrl}`));
+  // Sem a query string: ela pode trazer dados pessoais (ex.: ?termo=<placa>)
+  next(new AppError(404, 'ROTA_NAO_ENCONTRADA', `Rota não encontrada: ${req.method} ${req.path}`));
 };
 
 function normalizarErro(erro: unknown): AppError {

@@ -12,6 +12,7 @@ function estacionamento(l: RowDataPacket): EstacionamentoPublico {
     endereco: (l.endereco as string | null) ?? null,
     telefone: (l.telefone as string | null) ?? null,
     sincronizadoEm: iso(l.site_sincronizado_em ?? l.sincronizado_em),
+    contatoPrivacidade: (l.contato_privacidade as string | null) ?? null,
   };
 }
 
@@ -90,7 +91,7 @@ export const publicoRepository = {
    */
   async ticketPorToken(hash: Buffer): Promise<TicketLido | null> {
     const [[l]] = await pool.query<RowDataPacket[]>(
-      `SELECT t.*, s.slug, s.nome, s.endereco, s.telefone, s.horas_acesso_apos_saida,
+      `SELECT t.*, s.slug, s.nome, s.endereco, s.telefone, s.horas_acesso_apos_saida, s.contato_privacidade,
               s.sincronizado_em AS site_sincronizado_em, NOW(3) AS agora
          FROM tickets_tokens k
          JOIN tickets_publicos t ON t.id = k.ticket_id

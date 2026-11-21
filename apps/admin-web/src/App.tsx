@@ -8,6 +8,7 @@ import { Configuracoes } from './pages/Configuracoes';
 import { Dashboard } from './pages/Dashboard';
 import { Login } from './pages/Login';
 import { Operacao } from './pages/Operacao';
+import { Privacidade } from './pages/Privacidade';
 import { Relatorios } from './pages/Relatorios';
 import { Tarifas } from './pages/Tarifas';
 import { TrocarSenha } from './pages/TrocarSenha';
@@ -152,6 +153,14 @@ export function App() {
               element={
                 <RotaProtegida permissoes={['auditoria.ver']}>
                   <Atividades />
+                </RotaProtegida>
+              }
+            />
+            <Route
+              path="privacidade"
+              element={
+                <RotaProtegida permissoes={['lgpd.atender']}>
+                  <Privacidade />
                 </RotaProtegida>
               }
             />

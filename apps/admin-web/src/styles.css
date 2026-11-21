@@ -1987,3 +1987,42 @@ td .etiqueta--bloqueado {
   padding-top: 1.25rem;
   border-top: 1px solid var(--borda);
 }
+
+/* Privacidade (LGPD) */
+.formulario-lgpd,
+.relatorio-titular {
+  margin: 1rem 0 1.5rem;
+}
+.grade-2 {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  gap: 0 1rem;
+}
+.busca-titular {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.75rem;
+}
+.atender-lgpd {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.75rem;
+  align-items: center;
+}
+.atender-lgpd input {
+  min-width: 12rem;
+}
+.bloco {
+  display: block;
+}
+.texto-falha {
+  color: var(--falha);
+  font-weight: 600;
+}
+.zona-perigo {
+  margin-top: 1.5rem;
+  padding: 1rem;
+  border: 1px solid var(--falha);
+  border-radius: var(--raio);
+}

@@ -10,6 +10,11 @@ export interface ContextoAuditoria {
   motivo?: string | null;
   postoId?: string | null;
   correlacaoId?: string | null;
+  /**
+   * SOMENTE a rotina de retenção/anonimização (LGPD): libera as travas que
+   * protegem tickets encerrados e o histórico, para remover dados pessoais.
+   */
+  retencao?: boolean;
 }
 
 const LIMPAR_VARIAVEIS =
@@ -57,12 +62,13 @@ async function executarTransacao<T>(
   let conexaoSegura = true;
   try {
     await conexao.query(
-      'SET @app_usuario_id = ?, @app_motivo = ?, @app_posto_id = ?, @app_correlacao_id = ?',
+      'SET @app_usuario_id = ?, @app_motivo = ?, @app_posto_id = ?, @app_correlacao_id = ?, @app_retencao = ?',
       [
         contexto.usuarioId ?? null,
         contexto.motivo ?? null,
         contexto.postoId ?? null,
         contexto.correlacaoId ?? null,
+        contexto.retencao ? 1 : null,
       ],
     );
     await conexao.beginTransaction();

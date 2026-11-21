@@ -20,3 +20,6 @@ Thumbs.db
 .vscode/*
 !.vscode/extensions.json
 .idea/
+
+# Certificados HTTPS do servidor local (chave privada)
+apps/local-server/certificados/

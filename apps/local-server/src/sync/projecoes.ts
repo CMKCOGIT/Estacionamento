@@ -28,19 +28,24 @@ const hhmm = (v: unknown) => (v ? String(v).slice(0, 5) : null);
 
 export async function projecaoSite(c: Leitor, siteId: string): Promise<ProjecaoSite> {
   const [[s]] = await c.query<RowDataPacket[]>(
-    `SELECT s.slug, s.nome, s.endereco, s.telefone, cfg.valor AS politica
-       FROM sites s LEFT JOIN configuracoes cfg ON cfg.site_id = s.id AND cfg.chave = 'acesso_cliente'
+    `SELECT s.slug, s.nome, s.endereco, s.telefone, cfg.valor AS politica, enc.valor AS encarregado
+       FROM sites s
+       LEFT JOIN configuracoes cfg ON cfg.site_id = s.id AND cfg.chave = 'acesso_cliente'
+       LEFT JOIN configuracoes enc ON enc.site_id = s.id AND enc.chave = 'encarregado_dados'
       WHERE s.id = ?`,
     [siteId],
   );
   if (!s) throw new Error(`Estacionamento ${siteId} não encontrado`);
   const horas = lerJson<{ horasAposSaida?: number }>(s.politica)?.horasAposSaida;
+  const enc = lerJson<{ nome?: string | null; contato?: string | null }>(s.encarregado);
+  const contato = [enc?.nome, enc?.contato].filter(Boolean).join(' — ') || null;
   return {
     slug: String(s.slug),
     nome: String(s.nome),
     endereco: (s.endereco as string | null) ?? null,
     telefone: (s.telefone as string | null) ?? null,
     horasAcessoAposSaida: Number.isInteger(horas) ? Number(horas) : POLITICA_ACESSO_PADRAO.horasAposSaida,
+    contatoPrivacidade: contato ? contato.slice(0, 200) : null,
   };
 }
 

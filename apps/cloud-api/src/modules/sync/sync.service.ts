@@ -47,11 +47,20 @@ const aplicar = {
     );
     if (outro) throw new Rejeicao(`o endereço (slug) "${s.slug}" já é de outro estacionamento`);
     await c.query(
-      `INSERT INTO sites_publicos (id, slug, nome, endereco, telefone, horas_acesso_apos_saida, sincronizado_em, seq_aplicado)
-       VALUES (?, ?, ?, ?, ?, ?, NOW(3), ?)
+      `INSERT INTO sites_publicos (id, slug, nome, endereco, telefone, horas_acesso_apos_saida, contato_privacidade, sincronizado_em, seq_aplicado)
+       VALUES (?, ?, ?, ?, ?, ?, ?, NOW(3), ?)
        ON DUPLICATE KEY UPDATE slug = VALUES(slug), nome = VALUES(nome), endereco = VALUES(endereco), telefone = VALUES(telefone),
-         horas_acesso_apos_saida = VALUES(horas_acesso_apos_saida), sincronizado_em = NOW(3), seq_aplicado = VALUES(seq_aplicado)`,
-      [siteId, s.slug, s.nome, s.endereco, s.telefone, s.horasAcessoAposSaida, seq],
+         horas_acesso_apos_saida = VALUES(horas_acesso_apos_saida), contato_privacidade = VALUES(contato_privacidade), sincronizado_em = NOW(3), seq_aplicado = VALUES(seq_aplicado)`,
+      [
+        siteId,
+        s.slug,
+        s.nome,
+        s.endereco,
+        s.telefone,
+        s.horasAcessoAposSaida,
+        s.contatoPrivacidade ?? null,
+        seq,
+      ],
     );
     return 'APLICADO';
   },
@@ -487,6 +496,7 @@ export const syncService = {
           endereco: site.endereco ?? null,
           telefone: site.telefone ?? null,
           horasAcessoAposSaida: Number(site.horas_acesso_apos_saida),
+          contatoPrivacidade: site.contato_privacidade ?? null,
         }),
       );
       const [cats] = await pool.query<RowDataPacket[]>(

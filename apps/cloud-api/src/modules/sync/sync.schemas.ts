@@ -19,6 +19,7 @@ export const schemaSite = z.object({
   endereco: z.string().max(255).nullable(),
   telefone: z.string().max(20).nullable(),
   horasAcessoAposSaida: z.number().int().min(0).max(168),
+  contatoPrivacidade: z.string().max(200).nullish(),
 });
 
 export const schemaDisponibilidade = z.object({

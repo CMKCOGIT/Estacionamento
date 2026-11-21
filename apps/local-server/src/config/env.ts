@@ -57,7 +57,22 @@ const schemaEnv = z.object({
     .max(24 * 60)
     .default(15),
   LOGIN_LIMITE_POR_IP: z.coerce.number().int().min(5).max(1000).default(20),
-  COOKIE_SECURE: booleano.default(false),
+  /** Cookie de sessão só por HTTPS. Padrão: ligado quando o HTTPS está configurado. */
+  COOKIE_SECURE: booleano.optional(),
+  /**
+   * HTTPS na rede local: certificado e chave (PEM). Gere com
+   * `npm run https:certificado -w @estacionamento/local-server`.
+   */
+  HTTPS_CERT_FILE: z
+    .string()
+    .optional()
+    .or(z.literal('').transform(() => undefined)),
+  HTTPS_KEY_FILE: z
+    .string()
+    .optional()
+    .or(z.literal('').transform(() => undefined)),
+  /** Com HTTPS: porta HTTP que só redireciona para o HTTPS (ex.: 80). */
+  HTTP_REDIRECIONAR_PORTA: z.coerce.number().int().min(1).max(65535).optional(),
 
   SERVE_ADMIN_WEB: booleano.default(true),
   ADMIN_WEB_DIST: z.string().optional(),
@@ -86,7 +101,7 @@ const schemaEnv = z.object({
   PUBLIC_PWA_URL: z.url().optional(),
 });
 
-export type Env = z.infer<typeof schemaEnv>;
+export type Env = z.infer<typeof schemaEnv> & { COOKIE_SECURE: boolean; HTTPS: boolean };
 
 function carregarEnv(): Env {
   const resultado = schemaEnv.safeParse(process.env);
@@ -99,7 +114,12 @@ function carregarEnv(): Env {
         `(use .env.example como modelo):\n${problemas}`,
     );
   }
-  const env = resultado.data;
+  const dados = resultado.data;
+  const https = Boolean(dados.HTTPS_CERT_FILE && dados.HTTPS_KEY_FILE);
+  if (Boolean(dados.HTTPS_CERT_FILE) !== Boolean(dados.HTTPS_KEY_FILE))
+    throw new Error('Para o HTTPS, informe HTTPS_CERT_FILE e HTTPS_KEY_FILE juntos.');
+  // Com HTTPS o cookie é sempre Secure (mesmo com COOKIE_SECURE=false copiado de um .env antigo)
+  const env: Env = { ...dados, HTTPS: https, COOKIE_SECURE: https || (dados.COOKIE_SECURE ?? false) };
   const url = env.CLOUD_API_URL;
   if (
     env.NODE_ENV === 'production' &&

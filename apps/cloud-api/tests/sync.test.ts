@@ -118,6 +118,7 @@ const snapshot = (p: Partial<ParteSnapshotSync> = {}): ParteSnapshotSync => ({
     endereco: 'Rua A, 100',
     telefone: null,
     horasAcessoAposSaida: 24,
+    contatoPrivacidade: 'Encarregado — privacidade@centro.com.br',
   },
   disponibilidade: { categorias: [{ id: ulid(), nome: 'Carro', ordem: 1, total: 30, livres: 12 }] },
   tabelas: [
@@ -190,6 +191,7 @@ describe('recebimento dos dados do servidor local', () => {
 
     expect((await request(app).get('/v1/sites/centro/disponibilidade').expect(200)).body).toMatchObject({
       vagasLivres: 12,
+      estacionamento: { contatoPrivacidade: 'Encarregado — privacidade@centro.com.br' }, // LGPD art. 41
     });
     const t = (await consultar(tokenA).expect(200)).body as TicketPublico;
     expect(t).toMatchObject({ placa: 'ABC1D23', situacao: 'ESTACIONADO', valorCentavos: 1400 });
