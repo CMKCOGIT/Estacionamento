@@ -77,6 +77,37 @@ const schemaEnv = z.object({
   SERVE_ADMIN_WEB: booleano.default(true),
   ADMIN_WEB_DIST: z.string().optional(),
 
+  // Backups do banco local (docs/BACKUP.md)
+  BACKUP_ATIVO: booleano.default(true),
+  /** Pasta dos backups (padrão: apps/local-server/backups). */
+  BACKUP_DIR: z
+    .string()
+    .optional()
+    .or(z.literal('').transform(() => undefined)),
+  /** Segunda cópia (pen drive, outro computador, pasta sincronizada com a nuvem). */
+  BACKUP_COPIA_DIR: z
+    .string()
+    .optional()
+    .or(z.literal('').transform(() => undefined)),
+  /** Horário do backup automático diário (fuso do estacionamento). */
+  BACKUP_HORA: z
+    .string()
+    .regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Use HH:MM')
+    .default('03:00'),
+  /** Chave AES-256 dos backups (base64, 32 bytes). Sem ela, é gerada em segredos/backup.chave. */
+  BACKUP_CHAVE: z
+    .string()
+    .optional()
+    .or(z.literal('').transform(() => undefined)),
+  BACKUP_RETER_DIARIOS: z.coerce.number().int().min(1).max(60).default(7),
+  BACKUP_RETER_SEMANAIS: z.coerce.number().int().min(0).max(52).default(4),
+  BACKUP_RETER_MENSAIS: z.coerce.number().int().min(0).max(120).default(12),
+  /** Pasta do mysqldump/mysql (ex.: C:\\Program Files\\MySQL\\MySQL Server 8.4\\bin). Padrão: procura sozinho. */
+  MYSQL_BIN_DIR: z
+    .string()
+    .optional()
+    .or(z.literal('').transform(() => undefined)),
+
   // Sincronização com a API externa (nuvem). Sem as três, o envio fica desligado.
   SITE_ID: z.string().length(26).optional(),
   /** Endereço da API externa, sem caminho (ex.: https://api.meuestacionamento.com.br). */

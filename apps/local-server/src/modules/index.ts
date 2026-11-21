@@ -1,6 +1,7 @@
 import type { Router } from 'express';
 import { atividadesRouter } from './atividades/atividades.routes.js';
 import { authRouter } from './auth/auth.routes.js';
+import { backupRouter } from './backup/backup.routes.js';
 import { configuracoesRouter } from './configuracoes/configuracoes.routes.js';
 import { dashboardRouter } from './dashboard/dashboard.routes.js';
 import { privacidadeRouter } from './privacidade/privacidade.routes.js';
@@ -56,4 +57,5 @@ export const modulos: ModuloApi[] = [
   { caminho: '/configuracoes', router: configuracoesRouter },
   { caminho: '/sync', router: syncRouter },
   { caminho: '/privacidade', router: privacidadeRouter },
+  { caminho: '/backups', router: backupRouter },
 ];

@@ -16,7 +16,8 @@
     "db:criar": "tsx scripts/db-migrar.ts",
     "usuario:admin": "tsx scripts/criar-admin.ts",
     "demo:criar": "tsx scripts/dados-demonstracao.ts",
-    "https:certificado": "tsx scripts/certificado-https.ts"
+    "https:certificado": "tsx scripts/certificado-https.ts",
+    "backup": "tsx scripts/backup.ts"
   },
   "dependencies": {
     "@estacionamento/calculo": "*",

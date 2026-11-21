@@ -187,29 +187,46 @@ export const sessoesRepository = {
    * leitura atual (FOR SHARE): a lista inicial vem da "fotografia" da transação e
    * pode não enxergar uma entrada que acabou de ser gravada por outro guichê.
    */
+  /**
+   * Primeira vaga livre da categoria, travada para esta entrada.
+   *
+   * As candidatas são lidas SEM trava e cada uma é travada sozinha, pela
+   * chave (FOR UPDATE SKIP LOCKED). Travar com ORDER BY ... LIMIT 1 trava
+   * todas as linhas que o MySQL percorre para ordenar — e uma entrada
+   * simultânea, pulando as travadas, concluía "lotado" com vagas livres.
+   */
   async travarVagaLivre(
     c: Conexao,
     siteId: string,
     categoriaId: string,
   ): Promise<{ id: string; codigo: string } | null> {
-    const descartadas: string[] = [];
+    const tentadas = new Set<string>();
     for (;;) {
-      const [[l]] = await c.query<RowDataPacket[]>(
+      const [candidatas] = await c.query<RowDataPacket[]>(
         `SELECT v.id, v.codigo FROM vagas v
           WHERE v.site_id = ? AND v.categoria_id = ? AND v.situacao = 'ATIVA'
             AND NOT EXISTS (SELECT 1 FROM sessoes_estacionamento s WHERE s.vaga_ocupada_id = v.id)
-            ${descartadas.length ? 'AND v.id NOT IN (?)' : ''}
+            ${tentadas.size ? 'AND v.id NOT IN (?)' : ''}
           ORDER BY v.setor, LENGTH(v.codigo), v.codigo
-          LIMIT 1 FOR UPDATE OF v SKIP LOCKED`,
-        descartadas.length ? [siteId, categoriaId, descartadas] : [siteId, categoriaId],
+          LIMIT 20`,
+        tentadas.size ? [siteId, categoriaId, [...tentadas]] : [siteId, categoriaId],
       );
-      if (!l) return null;
-      const [ocupacao] = await c.query<RowDataPacket[]>(
-        'SELECT 1 FROM sessoes_estacionamento WHERE vaga_ocupada_id = ? FOR SHARE',
-        [l.id],
-      );
-      if (ocupacao.length === 0) return { id: String(l.id), codigo: String(l.codigo) };
-      descartadas.push(String(l.id));
+      if (!candidatas.length) return null;
+      for (const v of candidatas) {
+        tentadas.add(String(v.id));
+        // Trava só esta vaga; se outra entrada já a travou, passa para a próxima
+        const [[travada]] = await c.query<RowDataPacket[]>(
+          "SELECT id FROM vagas WHERE id = ? AND situacao = 'ATIVA' FOR UPDATE SKIP LOCKED",
+          [v.id],
+        );
+        if (!travada) continue;
+        // Leitura com trava (vê o que já foi gravado por outras entradas)
+        const [ocupacao] = await c.query<RowDataPacket[]>(
+          'SELECT 1 FROM sessoes_estacionamento WHERE vaga_ocupada_id = ? FOR SHARE',
+          [v.id],
+        );
+        if (ocupacao.length === 0) return { id: String(v.id), codigo: String(v.codigo) };
+      }
     }
   },
 

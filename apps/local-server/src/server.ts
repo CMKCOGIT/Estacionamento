@@ -105,6 +105,10 @@ async function iniciar(): Promise<void> {
   // Envio dos dados para a API externa (nuvem), se configurado no .env
   sync.iniciarSync();
 
+  // Backup automático do banco (todo dia no BACKUP_HORA)
+  const { iniciarAgendadorBackup } = await import('./backup/backup.service.js');
+  iniciarAgendadorBackup();
+
   // LGPD: política de retenção aplicada todo dia (a primeira 5 min depois de iniciar)
   const { privacidadeService } = await import('./modules/privacidade/privacidade.service.js');
   const reter = () =>

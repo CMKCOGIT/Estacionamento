@@ -3,6 +3,7 @@ import { AuthProvider } from './auth/AuthProvider';
 import { RotaProtegida } from './auth/RotaProtegida';
 import { Layout } from './components/Layout';
 import { Atividades } from './pages/Atividades';
+import { Backups } from './pages/Backups';
 import { Caixa } from './pages/Caixa';
 import { Configuracoes } from './pages/Configuracoes';
 import { Dashboard } from './pages/Dashboard';
@@ -153,6 +154,14 @@ export function App() {
               element={
                 <RotaProtegida permissoes={['auditoria.ver']}>
                   <Atividades />
+                </RotaProtegida>
+              }
+            />
+            <Route
+              path="backups"
+              element={
+                <RotaProtegida permissoes={['backup.gerenciar']}>
+                  <Backups />
                 </RotaProtegida>
               }
             />

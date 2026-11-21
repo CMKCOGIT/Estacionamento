@@ -2026,3 +2026,6 @@ td .etiqueta--bloqueado {
   border: 1px solid var(--falha);
   border-radius: var(--raio);
 }
+.linha-apagada td {
+  opacity: 0.55;
+}

@@ -18,6 +18,9 @@ const envTeste = {
   DB_NAME: process.env.DB_NAME_TESTE ?? 'estacionamento_teste',
   SERVE_ADMIN_WEB: 'false',
   CORS_ORIGINS: '',
+  // Backups: pasta temporária; MYSQL_BIN_DIR do ambiente (mysqldump/mysql)
+  BACKUP_DIR: fileURLToPath(new URL('./.teste-backups', import.meta.url)),
+  ...(process.env.MYSQL_BIN_DIR ? { MYSQL_BIN_DIR: process.env.MYSQL_BIN_DIR } : {}),
 };
 
 export default defineConfig({

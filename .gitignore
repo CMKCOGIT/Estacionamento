@@ -23,3 +23,8 @@ Thumbs.db
 
 # Certificados HTTPS do servidor local (chave privada)
 apps/local-server/certificados/
+
+# Backups do banco e a chave deles (nunca no Git)
+apps/local-server/backups/
+apps/local-server/segredos/
+apps/local-server/.teste-backups/

@@ -129,7 +129,7 @@ Veja [LGPD.md](LGPD.md). No código:
 
 ## Checklist de implantação
 
-1. **Banco:** MySQL só em `127.0.0.1`, com usuário de aplicação próprio e senha forte. Backup diário criptografado fora do PC.
+1. **Banco:** MySQL só em `127.0.0.1`, com usuário de aplicação próprio e senha forte. Backup diário criptografado com segunda cópia fora do PC ([BACKUP.md](BACKUP.md)), e a chave guardada fora do computador.
 2. **HTTPS:** `Ativar-HTTPS.cmd` e o certificado instalado nos computadores do caixa.
 3. **Firewall:** no Windows, a porta do painel liberada só para a rede do estacionamento. Nenhuma porta aberta no roteador.
 4. **Contas:** uma por funcionário, sem compartilhar. Senha do administrador guardada à parte.
