@@ -10,6 +10,7 @@ Sistema de gerenciamento de estacionamento:
 |-----------|----------|
 | [`docs/ARQUITETURA.md`](docs/ARQUITETURA.md) | Arquitetura, sincronização, segurança, tarifas, retenção |
 | [`docs/BANCO_LOCAL.md`](docs/BANCO_LOCAL.md) | Modelo do banco MySQL local e diagramas ER |
+| [`docs/API-EXTERNA.md`](docs/API-EXTERNA.md) | API externa: rotas, dados públicos, sincronização com o servidor local, autenticação HMAC, registro, HTTPS |
 | [`docs/PWA.md`](docs/PWA.md) | App do cliente (PWA) e API pública: telas, instalação, service worker, HTTPS, acesso só ao próprio ticket |
 | [`docs/RELATORIOS.md`](docs/RELATORIOS.md) | Faturamento diário/semanal/mensal/por período, formas de pagamento, histórico com detalhe, pendentes e fechamentos de caixa |
 | [`docs/FINANCEIRO.md`](docs/FINANCEIRO.md) | Pagamentos, estorno, proteção contra duplicidade, caixa (abertura, sangria, fechamento) e resumo diário |
@@ -40,7 +41,7 @@ Estacionamento/
 │   │   ├── tests/               unit/ (sem banco) e integracao/ (MySQL real, banco isolado)
 │   │   └── .env.example
 │   ├── admin-web/           FRONTEND: painel administrativo (React + Vite)
-│   ├── cloud-api/           API EXTERNA (nuvem): API pública /v1, só leitura, consumida pelo app do cliente
+│   ├── cloud-api/           API EXTERNA (nuvem): consulta do cliente (/v1) e recebimento da sincronização (/sync/v1)
 │   └── pwa/                 APP DO CLIENTE "Meu Ticket" (PWA): vagas, preços e o próprio ticket
 ├── packages/
 │   ├── shared/              contratos (tipos) e utilitários usados por backend e frontend

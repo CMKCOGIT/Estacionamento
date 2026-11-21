@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { HORAS_APOS_SAIDA_MAX } from '@estacionamento/shared';
+import { StatusSincronizacao } from '../components/StatusSincronizacao';
 import { ErroDaApi } from '../services/api';
 import { configuracoesApi } from '../services/configuracoes';
 
@@ -93,6 +94,7 @@ export function Configuracoes() {
           </div>
         </form>
       )}
+      <StatusSincronizacao />
     </section>
   );
 }

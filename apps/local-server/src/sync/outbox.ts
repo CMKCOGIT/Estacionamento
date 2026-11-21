@@ -1,11 +1,16 @@
-import type { RowDataPacket } from 'mysql2/promise';
 import { ulid } from 'ulid';
+import { VERSAO_EVENTOS_SYNC, type DadosEventoSync } from '@estacionamento/shared';
 import type { Conexao } from '../db/pool.js';
+import { projecaoDisponibilidade, projecaoSite, projecaoTabelaTarifa, projecaoTicket } from './projecoes.js';
 
 /**
  * Grava um evento na fila de sincronização (sync_outbox) DENTRO da transação
- * da alteração de negócio: ou os dois ficam gravados, ou nenhum.
- * O worker de sincronização (etapa futura) envia os eventos para a nuvem.
+ * da alteração de negócio: ou os dois ficam gravados, ou nenhum. O worker
+ * (sync/worker.ts) envia os eventos para a API externa.
+ *
+ * O `payload` é a projeção pública do que mudou (DadosEventoSync): o estado
+ * atual, já no formato que a nuvem guarda. Assim um evento repetido ou fora
+ * de ordem nunca deixa a nuvem num estado inconsistente.
  */
 export async function registrarEvento(
   c: Conexao,
@@ -14,40 +19,63 @@ export async function registrarEvento(
     tipo: string;
     agregadoTipo: string;
     agregadoId: string;
-    payload: unknown;
-    versao?: number;
+    payload: DadosEventoSync;
   },
 ): Promise<string> {
   const eventId = ulid();
   await c.query(
     `INSERT INTO sync_outbox (event_id, site_id, tipo, versao, agregado_tipo, agregado_id, payload, ocorrido_em)
      VALUES (?, ?, ?, ?, ?, ?, ?, NOW(3))`,
-    [eventId, e.siteId, e.tipo, e.versao ?? 1, e.agregadoTipo, e.agregadoId, JSON.stringify(e.payload)],
+    [eventId, e.siteId, e.tipo, VERSAO_EVENTOS_SYNC, e.agregadoTipo, e.agregadoId, JSON.stringify(e.payload)],
   );
   return eventId;
 }
 
+/** Evento do ticket (aberto, pagamento, fechado, cancelado, novo link...) com o estado público atual. */
+export async function publicarTicket(
+  c: Conexao,
+  siteId: string,
+  tipo: string,
+  sessaoId: string,
+): Promise<void> {
+  await registrarEvento(c, {
+    siteId,
+    tipo,
+    agregadoTipo: 'ticket',
+    agregadoId: sessaoId,
+    payload: { tipo: 'ticket', ticket: await projecaoTicket(c, sessaoId) },
+  });
+}
+
 /** Evento `vagas.disponibilidade`: totais por categoria, para o PWA dos clientes. */
 export async function publicarDisponibilidade(c: Conexao, siteId: string): Promise<void> {
-  const [linhas] = await c.query<RowDataPacket[]>(
-    `SELECT categoria_codigo, categoria_nome, capacidade_total, em_manutencao, ocupadas, livres
-       FROM vw_ocupacao_categoria WHERE site_id = ?`,
-    [siteId],
-  );
   await registrarEvento(c, {
     siteId,
     tipo: 'vagas.disponibilidade',
     agregadoTipo: 'site',
     agregadoId: siteId,
-    payload: {
-      categorias: linhas.map((l) => ({
-        codigo: l.categoria_codigo,
-        nome: l.categoria_nome,
-        total: Number(l.capacidade_total),
-        bloqueadas: Number(l.em_manutencao),
-        ocupadas: Number(l.ocupadas),
-        livres: Math.max(0, Number(l.livres)),
-      })),
-    },
+    payload: { tipo: 'disponibilidade', disponibilidade: await projecaoDisponibilidade(c, siteId) },
+  });
+}
+
+/** Tabela de tarifas publicada (preços mostrados ao cliente). */
+export async function publicarTabelaTarifa(c: Conexao, siteId: string, tabelaId: string): Promise<void> {
+  await registrarEvento(c, {
+    siteId,
+    tipo: 'tarifa.publicada',
+    agregadoTipo: 'tabela_tarifa',
+    agregadoId: tabelaId,
+    payload: { tipo: 'tabela_tarifa', tabela: await projecaoTabelaTarifa(c, tabelaId) },
+  });
+}
+
+/** Dados do estacionamento e política do link do cliente. */
+export async function publicarSite(c: Conexao, siteId: string): Promise<void> {
+  await registrarEvento(c, {
+    siteId,
+    tipo: 'site.atualizado',
+    agregadoTipo: 'site',
+    agregadoId: siteId,
+    payload: { tipo: 'site', site: await projecaoSite(c, siteId) },
   });
 }

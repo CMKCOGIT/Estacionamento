@@ -32,6 +32,11 @@ set "DB_NAME=estacionamento_demo"
 set "PORT=8081"
 rem Links do QR Code abrem o app do cliente da demonstração (App-Cliente-Demonstracao.cmd)
 set "PUBLIC_PWA_URL=http://localhost:5174"
+rem Sincronização com a API externa da demonstração (App-Cliente-Demonstracao.cmd).
+rem Credencial SÓ de demonstração; sem a API ligada, os dados esperam na fila.
+set "CLOUD_API_URL=http://localhost:8090"
+set "SYNC_INTEGRACAO_ID=01JDEMONSTRACAOSERVIDORLCL"
+set "SYNC_SECRET=urAZGAx7nl3SK83hdxWHfJ60AcqX5lLqjStV2mWmiJ4"
 start "Servidor de Demonstração" /min cmd /k npm start
 
 for /l %%i in (1,1,60) do (

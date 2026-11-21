@@ -35,6 +35,21 @@ const schema = z.object({
   /** Quantos proxies confiar para o IP e o protocolo (provedores usam 1). */
   CONFIAR_PROXY: z.coerce.number().int().min(0).max(5).default(0),
   LIMITE_TICKET_POR_MINUTO: z.coerce.number().int().min(1).max(1000).default(30),
+
+  /**
+   * Chave mestra das integrações (servidor local de cada estacionamento).
+   * O segredo de cada integração é derivado dela; sem ela, /sync fica desligado.
+   */
+  SYNC_CHAVE_MESTRA: z
+    .string()
+    .min(32, 'SYNC_CHAVE_MESTRA precisa de pelo menos 32 caracteres')
+    .optional()
+    .or(z.literal('').transform(() => undefined)),
+  LIMITE_SYNC_POR_MINUTO: z.coerce.number().int().min(10).max(10_000).default(240),
+  /** Chave do HMAC que anonimiza o IP no registro (padrão: aleatória a cada início). */
+  CHAVE_REGISTRO: z.string().min(16).optional(),
+  /** Dias que o registro de requisições é mantido. */
+  DIAS_REGISTRO: z.coerce.number().int().min(1).max(365).default(30),
 });
 
 function carregar() {

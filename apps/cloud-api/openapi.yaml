@@ -1,0 +1,403 @@
+openapi: 3.1.0
+info:
+  title: API externa do estacionamento
+  version: 1.0.0
+  description: |
+    Consulta do cliente (app "Meu Ticket", `/v1`, somente leitura) e recebimento
+    dos dados sincronizados pelo servidor local do estacionamento (`/sync/v1`,
+    autenticação HMAC). Não há rotas administrativas, operacionais ou
+    financeiras. Guia completo e política de dados públicos: docs/API-EXTERNA.md.
+servers:
+  - url: https://api.seuestacionamento.com.br
+    description: Produção (HTTPS obrigatório)
+  - url: http://localhost:8090
+    description: Desenvolvimento
+tags:
+  - name: Cliente
+    description: Usado pelo app do cliente. Somente leitura.
+  - name: Sincronização
+    description: Usado só pelo servidor local do estacionamento (integração autenticada).
+  - name: Operação
+
+paths:
+  /saude:
+    get:
+      tags: [Operação]
+      summary: Situação da API
+      responses:
+        '200':
+          description: API e banco funcionando
+          content: { application/json: { schema: { type: object, properties: { status: { const: ok } } } } }
+        '503':
+          description: Banco indisponível
+
+  /v1/sites/{slug}/disponibilidade:
+    get:
+      tags: [Cliente]
+      summary: Vagas livres e total, por categoria
+      parameters: [{ $ref: '#/components/parameters/Slug' }]
+      responses:
+        '200':
+          description: Disponibilidade (Cache-Control public, 15 s)
+          content: { application/json: { schema: { $ref: '#/components/schemas/DisponibilidadePublica' } } }
+        '404': { $ref: '#/components/responses/NaoEncontrado' }
+
+  /v1/sites/{slug}/tarifas:
+    get:
+      tags: [Cliente]
+      summary: Tabela de preços em vigor
+      description: Uma tabela publicada para começar no futuro só aparece a partir da data.
+      parameters: [{ $ref: '#/components/parameters/Slug' }]
+      responses:
+        '200':
+          description: Tarifas (Cache-Control public, 5 min)
+          content: { application/json: { schema: { $ref: '#/components/schemas/TarifasPublicas' } } }
+        '404': { $ref: '#/components/responses/NaoEncontrado' }
+
+  /v1/ticket:
+    get:
+      tags: [Cliente]
+      summary: O ticket do link (consulta individual)
+      description: |
+        Só o ticket do token, só leitura. Valor acumulado calculado na hora,
+        com a tarifa gravada na entrada. Token errado, alterado, revogado ou
+        expirado: sempre a mesma resposta 404. Token na URL é ignorado.
+        Limite: 30 consultas por minuto por IP.
+      security: [{ TokenDoTicket: [] }]
+      responses:
+        '200':
+          description: Ticket (Cache-Control no-store, Vary Authorization)
+          content: { application/json: { schema: { $ref: '#/components/schemas/TicketPublico' } } }
+        '404': { $ref: '#/components/responses/NaoEncontrado' }
+        '429': { $ref: '#/components/responses/MuitasTentativas' }
+
+  /sync/v1/push:
+    post:
+      tags: [Sincronização]
+      summary: Lote de eventos do servidor local
+      description: |
+        Até 100 eventos (512 KB), em ordem de seq. Lote vazio = sinal de vida.
+        Idempotente por eventId; evento mais antigo que o estado aplicado é
+        "superado"; evento inválido é rejeitado sozinho (com o motivo).
+      security: [{ Integracao: [] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/LoteSync' } } }
+      responses:
+        '200':
+          description: Resultado de cada evento
+          content: { application/json: { schema: { $ref: '#/components/schemas/RespostaPushSync' } } }
+        '400': { $ref: '#/components/responses/Invalida' }
+        '401': { $ref: '#/components/responses/NaoAutorizado' }
+        '403': { $ref: '#/components/responses/Proibido' }
+        '409':
+          description: Estacionamento ainda não sincronizado. Envie a carga completa.
+          content: { application/json: { schema: { $ref: '#/components/schemas/Erro' } } }
+        '413': { $ref: '#/components/responses/Invalida' }
+
+  /sync/v1/snapshot:
+    post:
+      tags: [Sincronização]
+      summary: Carga completa (ressincronização), em partes
+      description: |
+        Parte 1 traz estacionamento, vagas e tabelas. A última parte conclui a
+        carga: a nuvem remove o que não veio nela e não mudou depois dela.
+      security: [{ Integracao: [] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/ParteSnapshotSync' } } }
+      responses:
+        '200':
+          description: Parte aplicada
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  snapshotId: { type: string }
+                  parte: { type: integer }
+                  concluido: { type: boolean }
+                  removidos: { type: integer }
+        '400': { $ref: '#/components/responses/Invalida' }
+        '401': { $ref: '#/components/responses/NaoAutorizado' }
+        '403': { $ref: '#/components/responses/Proibido' }
+        '409':
+          description: Carga desconhecida ou substituída. Recomece pela parte 1.
+
+  /sync/v1/status:
+    get:
+      tags: [Sincronização]
+      summary: Último seq aplicado e último contato
+      security: [{ Integracao: [] }]
+      responses:
+        '200':
+          description: Estado da sincronização deste estacionamento
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  siteId: { type: [string, 'null'] }
+                  ultimoSeq: { type: integer }
+                  ultimoContatoEm: { type: [string, 'null'], format: date-time }
+                  ultimoSnapshotEm: { type: [string, 'null'], format: date-time }
+        '401': { $ref: '#/components/responses/NaoAutorizado' }
+
+components:
+  securitySchemes:
+    TokenDoTicket:
+      type: apiKey
+      in: header
+      name: Authorization
+      description: '"Ticket <token>" — o token de 43 caracteres do link do QR Code (depois do #).'
+    Integracao:
+      type: apiKey
+      in: header
+      name: X-Assinatura
+      description: |
+        Cabeçalhos X-Integracao-Id, X-Timestamp (segundos UNIX, ±5 min),
+        X-Nonce (32 hex, uso único) e X-Assinatura: v1=HMAC-SHA256(segredo, texto),
+        com texto = "v1\n<timestamp>\n<nonce>\n<MÉTODO>\n<rota>\n<sha256 hex do corpo>".
+
+  parameters:
+    Slug:
+      name: slug
+      in: path
+      required: true
+      schema: { type: string, pattern: '^[a-z0-9]+(-[a-z0-9]+)*$' }
+
+  responses:
+    NaoEncontrado:
+      description: Não encontrado (ou acesso ao ticket expirado)
+      content: { application/json: { schema: { $ref: '#/components/schemas/Erro' } } }
+    MuitasTentativas:
+      description: Limite de consultas. Veja Retry-After.
+      content: { application/json: { schema: { $ref: '#/components/schemas/Erro' } } }
+    NaoAutorizado:
+      description: Credencial inválida, assinatura errada, horário fora da janela ou requisição repetida
+      content: { application/json: { schema: { $ref: '#/components/schemas/Erro' } } }
+    Proibido:
+      description: Credencial de outro estacionamento ou sem o escopo da rota
+      content: { application/json: { schema: { $ref: '#/components/schemas/Erro' } } }
+    Invalida:
+      description: Dados fora do formato (detalhes em erro.detalhes) ou corpo grande demais
+      content: { application/json: { schema: { $ref: '#/components/schemas/Erro' } } }
+
+  schemas:
+    Erro:
+      type: object
+      required: [erro]
+      properties:
+        erro:
+          type: object
+          required: [codigo, mensagem]
+          properties:
+            codigo:
+              enum:
+                [
+                  NAO_ENCONTRADO,
+                  MUITAS_TENTATIVAS,
+                  REQUISICAO_INVALIDA,
+                  NAO_AUTORIZADO,
+                  PROIBIDO,
+                  CONFLITO,
+                  INDISPONIVEL,
+                ]
+            mensagem: { type: string }
+            detalhes: { type: array, items: { type: string } }
+
+    Estacionamento:
+      type: object
+      properties:
+        slug: { type: string }
+        nome: { type: string }
+        endereco: { type: [string, 'null'] }
+        telefone: { type: [string, 'null'] }
+        sincronizadoEm:
+          {
+            type: [string, 'null'],
+            format: date-time,
+            description: Último envio do servidor local (sinal de vida),
+          }
+
+    DisponibilidadePublica:
+      type: object
+      properties:
+        estacionamento: { $ref: '#/components/schemas/Estacionamento' }
+        totalVagas: { type: integer }
+        vagasLivres: { type: integer }
+        categorias:
+          type: array
+          items:
+            {
+              type: object,
+              properties:
+                { categoria: { type: string }, total: { type: integer }, livres: { type: integer } },
+            }
+        atualizadoEm: { type: [string, 'null'], format: date-time }
+
+    TarifasPublicas:
+      type: object
+      properties:
+        estacionamento: { $ref: '#/components/schemas/Estacionamento' }
+        vigenteDesde: { type: [string, 'null'], format: date-time }
+        tarifas:
+          type: array
+          items:
+            type: object
+            properties:
+              categoria: { type: string }
+              nome: { type: string }
+              especial: { type: boolean }
+              condicao: { type: [string, 'null'] }
+              linhas: { type: array, items: { type: string } }
+
+    Item:
+      type: object
+      properties:
+        descricao: { type: string }
+        quantidade: { type: integer }
+        unitarioCentavos: { type: integer }
+        totalCentavos: { type: integer }
+
+    TicketPublico:
+      type: object
+      description: Só o que o cliente pode ver (sem ids internos, operadores, formas de pagamento ou caixa).
+      properties:
+        estacionamento: { $ref: '#/components/schemas/Estacionamento' }
+        numero: { type: string }
+        placa: { type: string }
+        categoria: { type: string }
+        vaga: { type: [string, 'null'] }
+        situacao: { enum: [ESTACIONADO, ENCERRADO, CANCELADO] }
+        entradaEm: { type: string, format: date-time }
+        saidaEm: { type: [string, 'null'], format: date-time }
+        permanenciaMin: { type: integer }
+        valorCentavos: { type: integer, description: Acumulado agora (estacionado) ou final }
+        pagoCentavos: { type: integer, description: Só o total pago }
+        aPagarCentavos: { type: integer }
+        tarifa: { type: string }
+        tabelaTarifa:
+          type: object
+          properties:
+            {
+              nome: { type: string },
+              categoria: { type: string },
+              linhas: { type: array, items: { type: string } },
+            }
+        itens: { type: array, items: { $ref: '#/components/schemas/Item' } }
+        proximaCobranca:
+          type: [object, 'null']
+          properties: { em: { type: string, format: date-time }, valorCentavos: { type: integer } }
+        calculadoEm: { type: string, format: date-time, description: Horário do servidor no cálculo }
+        sincronizadoEm: { type: string, format: date-time }
+        acessoExpiraEm: { type: [string, 'null'], format: date-time }
+        politicaAcesso: { type: object, properties: { horasAposSaida: { type: integer } } }
+
+    ProjecaoTicket:
+      type: object
+      required:
+        [
+          id,
+          numero,
+          placa,
+          categoria,
+          modalidade,
+          situacao,
+          entradaEm,
+          regra,
+          tarifaNome,
+          tarifaDescricao,
+          pagoCentavos,
+          tokens,
+        ]
+      properties:
+        id: { type: string }
+        numero: { type: integer }
+        placa: { type: string, pattern: '^[A-Z0-9]{5,10}$' }
+        categoria: { type: string }
+        vaga: { type: [string, 'null'] }
+        modalidade: { enum: [AVULSO, DIARIA] }
+        situacao: { enum: [ESTACIONADO, ENCERRADO, CANCELADO] }
+        entradaEm: { type: string, format: date-time }
+        saidaEm: { type: [string, 'null'], format: date-time }
+        regra: { type: object, description: Regra de preço gravada no ticket (centavos inteiros) }
+        tarifaNome: { type: string }
+        tarifaDescricao: { type: string }
+        valorFinalCentavos: { type: [integer, 'null'] }
+        itensFinal: { type: [array, 'null'], items: { $ref: '#/components/schemas/Item' } }
+        pagoCentavos: { type: integer }
+        acessoExpiraEm: { type: [string, 'null'], format: date-time }
+        tokens:
+          type: array
+          items:
+            {
+              type: object,
+              properties:
+                { hash: { type: string, pattern: '^[0-9a-f]{64}$' }, revogadoEm: { type: [string, 'null'] } },
+            }
+
+    DadosEvento:
+      oneOf:
+        - { type: object, properties: { tipo: { const: site }, site: { type: object } } }
+        - {
+            type: object,
+            properties: { tipo: { const: disponibilidade }, disponibilidade: { type: object } },
+          }
+        - { type: object, properties: { tipo: { const: tabela_tarifa }, tabela: { type: object } } }
+        - {
+            type: object,
+            properties: { tipo: { const: tabela_tarifa_arquivada }, tabelaId: { type: string } },
+          }
+        - {
+            type: object,
+            properties: { tipo: { const: ticket }, ticket: { $ref: '#/components/schemas/ProjecaoTicket' } },
+          }
+
+    LoteSync:
+      type: object
+      required: [siteId, eventos]
+      properties:
+        siteId: { type: string }
+        eventos:
+          type: array
+          maxItems: 100
+          items:
+            type: object
+            required: [eventId, seq, tipo, versao, ocorridoEm, agregado, dados]
+            properties:
+              eventId: { type: string }
+              seq: { type: integer }
+              tipo: { type: string, examples: [ticket.aberto, ticket.fechado, vagas.disponibilidade] }
+              versao: { type: integer, const: 2 }
+              ocorridoEm: { type: string, format: date-time }
+              agregado: { type: object, properties: { tipo: { type: string }, id: { type: string } } }
+              dados: { $ref: '#/components/schemas/DadosEvento' }
+
+    RespostaPushSync:
+      type: object
+      properties:
+        aplicados: { type: integer }
+        repetidos: { type: integer }
+        superados: { type: integer }
+        rejeitados:
+          {
+            type: array,
+            items: { type: object, properties: { eventId: { type: string }, motivo: { type: string } } },
+          }
+        ultimoSeq: { type: integer }
+        recebidoEm: { type: string, format: date-time }
+
+    ParteSnapshotSync:
+      type: object
+      required: [siteId, snapshotId, parte, totalPartes, seq]
+      properties:
+        siteId: { type: string }
+        snapshotId: { type: string }
+        parte: { type: integer, minimum: 1 }
+        totalPartes: { type: integer }
+        seq: { type: integer, description: Último seq incluído na fotografia }
+        site: { type: object }
+        disponibilidade: { type: object }
+        tabelas: { type: array, items: { type: object } }
+        tickets: { type: array, maxItems: 200, items: { $ref: '#/components/schemas/ProjecaoTicket' } }

@@ -15,6 +15,7 @@ export default defineConfig({
       DB_NAME: 'estacionamento_nuvem_teste',
       PWA_ORIGENS: 'https://app.exemplo.com.br',
       LIMITE_TICKET_POR_MINUTO: '8',
+      SYNC_CHAVE_MESTRA: 'chave-mestra-de-teste-com-mais-de-32-caracteres',
     },
   },
 });

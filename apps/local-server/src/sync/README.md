@@ -1,13 +1,14 @@
-# Sincronização com a nuvem (a implementar)
+# Sincronização com a nuvem
 
-Worker separado da API que envia os eventos da tabela `sync_outbox` para a API
-externa e, no futuro, busca itens da `sync_inbox`.
+Envia a fila `sync_outbox` para a API externa (`/sync/v1`). Detalhes em
+[`docs/API-EXTERNA.md`](../../../../docs/API-EXTERNA.md).
 
-Arquivos previstos (ver `docs/ARQUITETURA.md` §2.3 e §6):
+| Arquivo        | Função                                                                       |
+| -------------- | ---------------------------------------------------------------------------- |
+| `outbox.ts`    | Grava eventos na mesma transação da alteração de negócio                     |
+| `projecoes.ts` | O que pode sair do estacionamento (projeções públicas)                       |
+| `cliente.ts`   | Chamada HTTPS assinada com HMAC                                              |
+| `worker.ts`    | Carga completa, lotes em ordem, sinal de vida, novas tentativas, dead-letter |
+| `index.ts`     | Liga o worker pelo `.env` e informa a situação ao painel                     |
 
-| Arquivo     | Função                                                    |
-| ----------- | --------------------------------------------------------- |
-| `outbox.ts` | Grava eventos na mesma transação da alteração de negócio  |
-| `pusher.ts` | Envia lotes ordenados por `seq`, assinados com HMAC       |
-| `puller.ts` | Busca a inbox (futuro: mensalistas, Pix online)           |
-| `worker.ts` | Processo próprio (serviço do Windows) com retry e backoff |
+Futuro: `puller.ts` para buscar a `sync_inbox` (mensalistas, Pix online).

@@ -167,13 +167,7 @@ O mesmo CSP vai numa meta tag do `index.html`.
 
 ## Como os dados chegam na nuvem
 
-A **sincronização automática** (servidor local → nuvem, com fila de eventos e assinatura HMAC, ARQUITETURA §6) é um módulo próprio, ainda a implementar. Até lá, a ferramenta de desenvolvimento **`npm run espelhar:local -w @estacionamento/cloud-api`** (`--repetir` = a cada 15 s) copia do banco local para o da nuvem só o que a API mostra:
-- estacionamento;
-- vagas livres por categoria;
-- tarifas em vigor;
-- tickets abertos e os que saíram nas últimas 24h, com o hash dos tokens.
-
-Nunca copia usuários, caixa ou pagamentos individuais. A sincronização vai alimentar as mesmas tabelas, sem mudança no app nem na API.
+Pela **sincronização automática**: o servidor local grava cada alteração numa fila e a envia para a API externa, com assinatura HMAC, carga completa na primeira conexão e sinal de vida a cada 15 s. Rotas, segurança, dados públicos e o que **nunca** sai do estacionamento estão em [API-EXTERNA.md](API-EXTERNA.md).
 
 ## Experimentar (Windows)
 
@@ -181,7 +175,7 @@ Nunca copia usuários, caixa ou pagamentos individuais. A sincronização vai al
 2. Abra o **App-Cliente-Demonstracao.cmd**. Ele:
    - prepara o banco da nuvem de demonstração;
    - compila a API e o app;
-   - liga a API (porta 8090), o espelho e o app;
+   - liga a API (porta 8090) e o app. O painel já envia os dados sozinho, pela sincronização;
    - abre <http://localhost:5174>.
 3. No painel, registre uma entrada e abra o link mostrado com o QR Code: o ticket aparece no app.
 

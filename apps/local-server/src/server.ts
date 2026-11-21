@@ -25,7 +25,18 @@ async function iniciar(): Promise<void> {
       import('./db/pool.js'),
       import('./modules/auth/auth.service.js'),
     ]);
-    modulos = { env, logger, appInfo, criarApp, verificarBanco, fecharPool, authService, limitadorPorIp };
+    const sync = await import('./sync/index.js');
+    modulos = {
+      env,
+      logger,
+      appInfo,
+      criarApp,
+      verificarBanco,
+      fecharPool,
+      authService,
+      limitadorPorIp,
+      sync,
+    };
   } catch (erro) {
     // O logger pode não existir ainda (a falha pode ser justamente na configuração).
     // eslint-disable-next-line no-console
@@ -33,7 +44,8 @@ async function iniciar(): Promise<void> {
     process.exit(1);
   }
 
-  const { env, logger, appInfo, criarApp, verificarBanco, fecharPool, authService, limitadorPorIp } = modulos;
+  const { env, logger, appInfo, criarApp, verificarBanco, fecharPool, authService, limitadorPorIp, sync } =
+    modulos;
 
   // Testa o banco na inicialização. Se estiver fora, o servidor sobe mesmo
   // assim (o painel mostra o problema em /api/v1/health) e tenta de novo a
@@ -48,6 +60,9 @@ async function iniciar(): Promise<void> {
       `Servidor local ouvindo em http://${env.HOST === '0.0.0.0' ? 'localhost' : env.HOST}:${env.PORT}`,
     );
   });
+
+  // Envio dos dados para a API externa (nuvem), se configurado no .env
+  sync.iniciarSync();
 
   servidor.on('error', (erro: NodeJS.ErrnoException) => {
     if (erro.code === 'EADDRINUSE') {
@@ -82,6 +97,7 @@ async function iniciar(): Promise<void> {
     }, 10_000);
     forcar.unref();
     servidor.close(async () => {
+      await sync.pararSync();
       await fecharPool().catch((e: unknown) => logger.error({ err: e }, 'Erro ao fechar o pool MySQL'));
       logger.info('Servidor encerrado');
       process.exit(0);

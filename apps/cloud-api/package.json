@@ -2,7 +2,7 @@
   "name": "@estacionamento/cloud-api",
   "version": "0.1.0",
   "private": true,
-  "description": "API externa (nuvem): API pública /v1 consumida pelo PWA do cliente. Só leitura, sem funções administrativas.",
+  "description": "API externa (nuvem): consulta do cliente (/v1, só leitura) e recebimento da sincronização do servidor local (/sync/v1, HMAC).",
   "type": "module",
   "main": "dist/server.js",
   "scripts": {
@@ -12,7 +12,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test:integracao": "vitest run",
     "db:migrar": "tsx scripts/db-migrar.ts",
-    "espelhar:local": "tsx scripts/espelhar-local.ts"
+    "integracao": "tsx scripts/integracao.ts"
   },
   "dependencies": {
     "@estacionamento/calculo": "*",

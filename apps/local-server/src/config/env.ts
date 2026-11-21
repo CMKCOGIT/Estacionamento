@@ -62,9 +62,26 @@ const schemaEnv = z.object({
   SERVE_ADMIN_WEB: booleano.default(true),
   ADMIN_WEB_DIST: z.string().optional(),
 
-  // Futuro (sincronização)
+  // Sincronização com a API externa (nuvem). Sem as três, o envio fica desligado.
   SITE_ID: z.string().length(26).optional(),
-  CLOUD_API_URL: z.url().optional(),
+  /** Endereço da API externa, sem caminho (ex.: https://api.meuestacionamento.com.br). */
+  CLOUD_API_URL: z
+    .url()
+    .optional()
+    .or(z.literal('').transform(() => undefined)),
+  /** Credencial criada na API externa (npm run integracao -- criar). */
+  SYNC_INTEGRACAO_ID: z
+    .string()
+    .regex(/^[0-9A-Z]{26}$/, 'SYNC_INTEGRACAO_ID inválido')
+    .optional()
+    .or(z.literal('').transform(() => undefined)),
+  SYNC_SECRET: z
+    .string()
+    .min(32, 'SYNC_SECRET muito curto')
+    .optional()
+    .or(z.literal('').transform(() => undefined)),
+  /** false = não envia (ex.: servidor de testes). */
+  SYNC_ATIVO: booleano.default(true),
   /** Endereço do app do cliente (PWA). Usado no link/QR do ticket. */
   PUBLIC_PWA_URL: z.url().optional(),
 });
@@ -82,7 +99,17 @@ function carregarEnv(): Env {
         `(use .env.example como modelo):\n${problemas}`,
     );
   }
-  return resultado.data;
+  const env = resultado.data;
+  const url = env.CLOUD_API_URL;
+  if (
+    env.NODE_ENV === 'production' &&
+    url &&
+    !url.startsWith('https://') &&
+    !/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?\/?$/.test(url)
+  ) {
+    throw new Error('Em produção, CLOUD_API_URL precisa começar com https:// (os dados vão pela internet).');
+  }
+  return env;
 }
 
 export const env = carregarEnv();

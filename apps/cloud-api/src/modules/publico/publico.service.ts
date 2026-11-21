@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { calcularEstadia, minutosDePermanencia } from '@estacionamento/calculo';
 import {
+  linhasPublicasDaRegra,
   PADRAO_TOKEN_TICKET,
   type DisponibilidadePublica,
   type TarifasPublicas,
@@ -8,7 +9,6 @@ import {
 } from '@estacionamento/shared';
 import { ErroApiPublica, ticketNaoEncontrado } from '../../http/erros.js';
 import { publicoRepository as repo } from './publico.repository.js';
-import { linhasPublicasDaRegra } from './texto.js';
 
 const naoEncontrado = () => new ErroApiPublica(404, 'NAO_ENCONTRADO', 'Estacionamento não encontrado.');
 

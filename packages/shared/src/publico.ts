@@ -79,7 +79,14 @@ export interface TicketPublico {
 /** Resposta de erro da API pública (sem detalhes internos). */
 export interface ErroPublico {
   erro: {
-    codigo: 'NAO_ENCONTRADO' | 'MUITAS_TENTATIVAS' | 'REQUISICAO_INVALIDA' | 'INDISPONIVEL';
+    codigo:
+      | 'NAO_ENCONTRADO'
+      | 'MUITAS_TENTATIVAS'
+      | 'REQUISICAO_INVALIDA'
+      | 'NAO_AUTORIZADO'
+      | 'PROIBIDO'
+      | 'CONFLITO'
+      | 'INDISPONIVEL';
     mensagem: string;
   };
 }

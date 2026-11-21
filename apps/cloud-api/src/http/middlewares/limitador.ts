@@ -1,7 +1,10 @@
 import type { RequestHandler } from 'express';
 
 /** Limite de requisições por IP numa janela de 1 minuto (memória do processo). */
-export function limitarPorIp(maximo: number): RequestHandler & { limpar: () => void } {
+export function limitarPorIp(
+  maximo: number,
+  aoExceder?: (req: Parameters<RequestHandler>[0]) => void,
+): RequestHandler & { limpar: () => void } {
   const janelas = new Map<string, { inicio: number; total: number }>();
   const meio: RequestHandler = (req, res, next) => {
     const agora = Date.now();
@@ -14,6 +17,8 @@ export function limitarPorIp(maximo: number): RequestHandler & { limpar: () => v
     }
     j.total++;
     if (j.total > maximo) {
+      // Registra só a primeira recusa de cada janela (não enche o registro num ataque)
+      if (j.total === maximo + 1) aoExceder?.(req);
       res.set('Retry-After', String(Math.ceil((60_000 - (agora - j.inicio)) / 1000)));
       res
         .status(429)

@@ -8,6 +8,7 @@ import { financeiroRouter } from './financeiro/financeiro.routes.js';
 import { formasPagamentoRouter } from './formas-pagamento/formas-pagamento.routes.js';
 import { healthRouter } from './health/health.routes.js';
 import { caixaRouter, sessoesRouter } from './sessoes/sessoes.routes.js';
+import { syncRouter } from './sync/sync.routes.js';
 import { tarifasRouter } from './tarifas/tarifas.routes.js';
 import { permissoesRouter } from './usuarios/permissoes.routes.js';
 import { usuariosRouter } from './usuarios/usuarios.routes.js';
@@ -52,4 +53,5 @@ export const modulos: ModuloApi[] = [
   { caminho: '/permissoes', router: permissoesRouter },
   { caminho: '/atividades', router: atividadesRouter },
   { caminho: '/configuracoes', router: configuracoesRouter },
+  { caminho: '/sync', router: syncRouter },
 ];

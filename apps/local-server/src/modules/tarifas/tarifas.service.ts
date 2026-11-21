@@ -2,7 +2,6 @@ import type { ResultSetHeader, RowDataPacket } from 'mysql2/promise';
 import { ulid } from 'ulid';
 import { detalharTarifa, problemasDaRegra } from '@estacionamento/calculo';
 import {
-  descreverCondicao,
   regraDeDados,
   type DadosRegra,
   type PainelTarifas,
@@ -17,7 +16,7 @@ import { pool } from '../../db/pool.js';
 import { regraDaLinha } from './regra.js';
 import { comTransacao, type ContextoAuditoria } from '../../db/transacao.js';
 import { erros } from '../../http/erros.js';
-import { registrarEvento } from '../../sync/outbox.js';
+import { publicarTabelaTarifa, registrarEvento } from '../../sync/outbox.js';
 import { tarifasRepository as repo } from './tarifas.repository.js';
 
 export interface Ator {
@@ -266,7 +265,7 @@ export const tarifasService = {
   async publicar(ator: Ator, id: string, vigenteDesde: Date | null) {
     const site = await obterSiteAtual();
     await comTransacao(ator.contexto, async (c) => {
-      const t = await rascunhoTravado(c, site.id, id);
+      await rascunhoTravado(c, site.id, id);
       const [[agora]] = await c.query<RowDataPacket[]>('SELECT NOW(3) AS n');
       const inicio = vigenteDesde ?? (agora?.n as Date);
       if (vigenteDesde && vigenteDesde.getTime() < (agora?.n as Date).getTime()) {
@@ -298,29 +297,7 @@ export const tarifasService = {
         [inicio, ator.usuarioId, id],
       );
       // A nuvem e o app do cliente recebem a tabela (preços exibidos ao cliente)
-      await registrarEvento(c, {
-        siteId: site.id,
-        tipo: 'tarifa.publicada',
-        agregadoTipo: 'tabela_tarifa',
-        agregadoId: id,
-        payload: {
-          tabela_id: id,
-          versao: t.versao,
-          nome: t.nome,
-          vigente_desde: inicio.toISOString(),
-          regras: t.regras
-            .filter((r) => r.ativo)
-            .map((r) => ({
-              id: r.id,
-              categoria_id: r.categoriaId,
-              tipo: r.tipo,
-              nome: r.nome,
-              aplicacao: r.aplicacao,
-              condicao: r.tipo === 'ESPECIAL' && r.aplicacao === 'AUTOMATICA' ? descreverCondicao(r) : null,
-              regra: regraDeDados(r),
-            })),
-        },
-      });
+      await publicarTabelaTarifa(c, site.id, id);
     });
     return this.obter(id);
   },
@@ -346,7 +323,7 @@ export const tarifasService = {
         tipo: 'tarifa.arquivada',
         agregadoTipo: 'tabela_tarifa',
         agregadoId: id,
-        payload: { tabela_id: id, versao: t.versao },
+        payload: { tipo: 'tabela_tarifa_arquivada', tabelaId: id },
       });
     });
     return this.obter(id);

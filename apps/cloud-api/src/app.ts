@@ -1,4 +1,5 @@
-import express, { type ErrorRequestHandler } from 'express';
+import { randomUUID } from 'node:crypto';
+import express, { type ErrorRequestHandler, type RequestHandler } from 'express';
 import helmet from 'helmet';
 import { pinoHttp } from 'pino-http';
 import { env } from './config/env.js';
@@ -6,12 +7,17 @@ import { logger } from './config/logger.js';
 import { pool } from './db/pool.js';
 import { ErroApiPublica } from './http/erros.js';
 import { exigirHttps } from './http/middlewares/https.js';
-import { publicoRouter } from './modules/publico/publico.routes.js';
+import { ZodError } from 'zod';
+import { modulos } from './modules/index.js';
+import { registrar } from './registro.js';
 
 /**
- * API externa: SÓ a API pública do PWA (`/v1`), somente leitura.
- * Não existe nenhuma rota administrativa aqui — o painel e suas funções
- * ficam apenas no servidor local do estacionamento.
+ * API externa:
+ *  - `/v1`: consulta do cliente (PWA). Somente leitura.
+ *  - `/sync/v1`: recebe os dados do servidor local (autenticação HMAC).
+ * Não existe nenhuma rota administrativa, operacional ou financeira aqui:
+ * o painel e suas funções ficam apenas no servidor local do estacionamento.
+ * Rotas e dados públicos: docs/API-EXTERNA.md e openapi.yaml.
  */
 export function criarApp() {
   const app = express();
@@ -27,10 +33,31 @@ export function criarApp() {
       crossOriginResourcePolicy: { policy: 'cross-origin' },
     }),
   );
-  app.use(pinoHttp({ logger, autoLogging: env.NODE_ENV !== 'test' }));
+  // Toda requisição tem um id (X-Request-Id), que aparece no log e no registro
+  app.use(
+    pinoHttp({
+      logger,
+      autoLogging: env.NODE_ENV !== 'test',
+      genReqId: (req, res) => {
+        const id = randomUUID();
+        res.setHeader('X-Request-Id', id);
+        return id;
+      },
+      customLogLevel: (_req, res, erro) =>
+        erro || res.statusCode >= 500 ? 'error' : res.statusCode >= 400 ? 'warn' : 'info',
+      // Só método, rota (sem query string) e cabeçalhos não sensíveis
+      serializers: {
+        req: (req: { id: string; method: string; url: string }) => ({
+          id: req.id,
+          method: req.method,
+          url: req.url.split('?')[0],
+        }),
+      },
+    }),
+  );
 
   // CORS: só o endereço do PWA, só leitura, só o cabeçalho Authorization
-  app.use((req, res, next) => {
+  const somenteLeituraPublica: RequestHandler = (req, res, next) => {
     const origem = req.get('origin');
     if (origem && env.PWA_ORIGENS.includes(origem)) {
       res.set('Access-Control-Allow-Origin', origem);
@@ -52,7 +79,7 @@ export function criarApp() {
       return;
     }
     next();
-  });
+  };
 
   app.get('/saude', async (_req, res) => {
     try {
@@ -62,7 +89,12 @@ export function criarApp() {
       res.status(503).json({ status: 'indisponivel' });
     }
   });
-  app.use('/v1', publicoRouter);
+  for (const m of modulos) {
+    if (m.acesso === 'PUBLICO') app.use(m.caminho, somenteLeituraPublica, m.router);
+    else app.use(m.caminho, m.router);
+  }
+  // Fora dos módulos: só leitura também (POST/PUT/DELETE em qualquer outra rota = 405)
+  app.use(somenteLeituraPublica);
 
   app.use((_req, res) => {
     res.status(404).json({ erro: { codigo: 'NAO_ENCONTRADO', mensagem: 'Recurso não encontrado.' } });
@@ -72,7 +104,31 @@ export function criarApp() {
       res.status(erro.status).json({ erro: { codigo: erro.codigo, mensagem: erro.message } });
       return;
     }
-    req.log?.error({ err: erro }, 'Erro na API pública');
+    const tamanho = (erro as { type?: string }).type === 'entity.too.large';
+    if (erro instanceof ZodError || tamanho) {
+      const detalhes =
+        erro instanceof ZodError
+          ? erro.issues.slice(0, 5).map((i) => `${i.path.join('.')}: ${i.message}`)
+          : ['corpo grande demais'];
+      void registrar(req, {
+        nivel: 'warn',
+        tipo: 'requisicao.invalida',
+        status: tamanho ? 413 : 400,
+        integracaoId: req.integracao?.id,
+        detalhes: { detalhes },
+      });
+      res.status(tamanho ? 413 : 400).json({
+        erro: { codigo: 'REQUISICAO_INVALIDA', mensagem: 'Dados inválidos.', detalhes },
+      });
+      return;
+    }
+    void registrar(req, {
+      nivel: 'error',
+      tipo: 'erro.interno',
+      status: 503,
+      integracaoId: req.integracao?.id,
+      detalhes: { erro: erro instanceof Error ? erro.message.slice(0, 300) : String(erro).slice(0, 300) },
+    });
     res.status(503).json({
       erro: {
         codigo: 'INDISPONIVEL',

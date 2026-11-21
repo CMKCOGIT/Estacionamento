@@ -1,16 +1,17 @@
-# API externa (nuvem) — API pública do app do cliente
+# API externa (nuvem)
 
-Somente leitura, somente `/v1` (vagas, tarifas e o ticket pelo token). Sem
-nenhuma rota administrativa. HTTPS obrigatório em produção, CORS só para o app.
-Detalhes em [`docs/PWA.md`](../../docs/PWA.md).
+- `/v1`: consulta do cliente (vagas, tarifas e o ticket pelo token). Somente leitura.
+- `/sync/v1`: recebe os dados do servidor local (autenticação HMAC por estacionamento).
+
+Sem nenhuma rota administrativa, operacional ou financeira. HTTPS obrigatório em
+produção. Rotas, dados públicos, segurança e registro:
+[`docs/API-EXTERNA.md`](../../docs/API-EXTERNA.md) e [`openapi.yaml`](openapi.yaml).
 
 ```bash
 cp apps/cloud-api/.env.example apps/cloud-api/.env   # ajuste o banco e PWA_ORIGENS
 npm run db:migrar -w @estacionamento/cloud-api        # cria/atualiza o banco da nuvem
 npm run nuvem:dev                                     # http://localhost:8090
-npm run espelhar:local -w @estacionamento/cloud-api   # (dev) copia dados do banco local
+npm run integracao -w @estacionamento/cloud-api -- criar --nome "Centro"  # credencial do servidor local
 npm run test:integracao -w @estacionamento/cloud-api  # testes (MySQL)
 ```
 
-A sincronização automática com o servidor local (`/sync`, ARQUITETURA §6) é um
-módulo à parte, ainda a implementar; ela vai alimentar as mesmas tabelas.

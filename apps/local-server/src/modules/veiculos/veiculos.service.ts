@@ -14,6 +14,7 @@ import { obterSiteAtual } from '../../config/site.js';
 import type { Conexao } from '../../db/pool.js';
 import { comTransacao, type ContextoAuditoria } from '../../db/transacao.js';
 import { AppError, erros } from '../../http/erros.js';
+import { publicarTicket } from '../../sync/outbox.js';
 import { veiculosRepository as repo, type FiltroVeiculos } from './veiculos.repository.js';
 
 export interface Ator {
@@ -194,6 +195,8 @@ export const veiculosService = {
           placa,
           atual.estadiaAtual.sessaoId,
         ]);
+        // Placa corrigida: o app do cliente mostra a nova
+        await publicarTicket(c, site.id, 'ticket.atualizado', atual.estadiaAtual.sessaoId);
       }
     });
     return detalhar(site.id, id);

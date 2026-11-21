@@ -62,9 +62,17 @@ export const publicoRepository = {
   },
 
   async tarifas(siteId: string) {
-    const [l] = await pool.query<RowDataPacket[]>(
-      'SELECT categoria, nome, especial, condicao, linhas, vigente_desde FROM tarifas_publicas WHERE site_id = ? ORDER BY ordem, especial, nome',
+    // A tabela em vigor: a de início mais recente que já começou (uma publicada para o futuro espera a data)
+    const [[vigente]] = await pool.query<RowDataPacket[]>(
+      `SELECT tabela_id, vigente_desde FROM tarifas_publicas WHERE site_id = ? AND vigente_desde <= NOW(3)
+        ORDER BY vigente_desde DESC, tabela_versao DESC LIMIT 1`,
       [siteId],
+    );
+    if (!vigente) return [];
+    const [l] = await pool.query<RowDataPacket[]>(
+      `SELECT categoria, nome, especial, condicao, linhas, vigente_desde FROM tarifas_publicas
+        WHERE site_id = ? AND tabela_id <=> ? AND vigente_desde = ? ORDER BY ordem, especial, nome`,
+      [siteId, vigente.tabela_id, vigente.vigente_desde],
     );
     return l.map((x) => ({
       categoria: String(x.categoria),

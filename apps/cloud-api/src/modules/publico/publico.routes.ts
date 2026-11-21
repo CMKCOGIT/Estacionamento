@@ -1,3 +1,4 @@
+import { registrar } from '../../registro.js';
 import { Router } from 'express';
 import { z } from 'zod';
 import { env } from '../../config/env.js';
@@ -6,7 +7,14 @@ import { limitarPorIp } from '../../http/middlewares/limitador.js';
 import { publicoService } from './publico.service.js';
 
 export const publicoRouter = Router();
-export const limitadorTicket = limitarPorIp(env.LIMITE_TICKET_POR_MINUTO);
+export const limitadorTicket = limitarPorIp(env.LIMITE_TICKET_POR_MINUTO, (req) => {
+  void registrar(req, {
+    nivel: 'warn',
+    tipo: 'limite.excedido',
+    status: 429,
+    detalhes: { rota: '/v1/ticket' },
+  });
+});
 
 const slug = (v: unknown) => {
   const r = z

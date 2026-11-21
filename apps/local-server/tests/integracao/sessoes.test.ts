@@ -266,7 +266,7 @@ describe('saída', () => {
     );
     expect(Number(tok?.h)).toBeGreaterThanOrEqual(23); // link do cliente vale 24h após a saída
     const [[ev]] = await pool.query<RowDataPacket[]>(
-      "SELECT payload->>'$.valor_final_centavos' AS v FROM sync_outbox WHERE tipo = 'ticket.fechado' AND agregado_id = ?",
+      "SELECT payload->>'$.ticket.valorFinalCentavos' AS v FROM sync_outbox WHERE tipo = 'ticket.fechado' AND agregado_id = ?",
       [s1.id],
     );
     expect(Number(ev?.v)).toBe(2000);

@@ -6,6 +6,7 @@ import {
 } from '@estacionamento/shared';
 import { obterSiteAtual } from '../../config/site.js';
 import { pool, type Conexao } from '../../db/pool.js';
+import { publicarSite } from '../../sync/outbox.js';
 import { comTransacao, type ContextoAuditoria } from '../../db/transacao.js';
 
 /** Chave na tabela `configuracoes` (alterações auditadas pelos triggers). */
@@ -40,14 +41,16 @@ export const configuracoesService = {
     p: PoliticaAcessoCliente,
   ): Promise<PoliticaAcessoCliente> {
     const site = await obterSiteAtual();
-    await comTransacao(contexto, (c) =>
-      c.query(
+    await comTransacao(contexto, async (c) => {
+      await c.query(
         `INSERT INTO configuracoes (site_id, chave, valor, descricao, atualizado_por)
          VALUES (?, ?, ?, 'Por quanto tempo o link do cliente funciona após a saída', ?)
          ON DUPLICATE KEY UPDATE valor = VALUES(valor), atualizado_por = VALUES(atualizado_por)`,
         [site.id, CHAVE_ACESSO_CLIENTE, JSON.stringify(p), usuarioId],
-      ),
-    );
+      );
+      // A nuvem precisa saber a política (o app do cliente informa o prazo do link)
+      await publicarSite(c, site.id);
+    });
     return this.politicaAcessoCliente(site.id);
   },
 };

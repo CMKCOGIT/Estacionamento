@@ -1,4 +1,5 @@
-import { formatarCentavos, type RegraTarifa } from '@estacionamento/shared';
+import { formatarCentavos } from './dinheiro.js';
+import type { RegraTarifa } from './tarifa.js';
 
 /** Linhas legíveis da tarifa para o cliente (tabela de preços do PWA). */
 export function linhasPublicasDaRegra(r: RegraTarifa): string[] {

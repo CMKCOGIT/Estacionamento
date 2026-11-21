@@ -255,7 +255,7 @@ describe('nova versão (cadastrar, editar, desativar)', () => {
       "SELECT payload FROM sync_outbox WHERE tipo = 'tarifa.publicada' AND agregado_id = ?",
       [rascunho.id],
     );
-    expect(ev?.payload.regras).toHaveLength(4);
+    expect(ev?.payload.tabela.tarifas).toHaveLength(4); // projeção pública (preços para o cliente)
   });
 });
 

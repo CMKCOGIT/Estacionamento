@@ -1951,3 +1951,19 @@ td .etiqueta--bloqueado {
 .tabela td.numero {
   text-align: right;
 }
+
+/* Configurações → sincronização */
+.detalhes-sync {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  gap: 0.75rem;
+  margin: 0.75rem 0;
+}
+.detalhes-sync dt {
+  font-size: 0.85rem;
+  color: var(--texto-mudo);
+}
+.detalhes-sync dd {
+  margin: 0;
+  font-weight: 600;
+}

@@ -20,7 +20,7 @@ import type { Conexao } from '../../db/pool.js';
 import { comTransacao, type ContextoAuditoria } from '../../db/transacao.js';
 import { AppError, erros } from '../../http/erros.js';
 import type { Autenticacao } from '../auth/auth.service.js';
-import { publicarDisponibilidade, registrarEvento } from '../../sync/outbox.js';
+import { publicarDisponibilidade, publicarTicket } from '../../sync/outbox.js';
 import { exigirVeiculoForaDoEstacionamento, validarPlaca } from '../veiculos/veiculos.service.js';
 import { gerarToken, montarAcessoCliente } from './acesso-cliente.js';
 import { COLUNAS_REGRA, regraDoTicket } from '../tarifas/regra.js';
@@ -79,29 +79,9 @@ function exigirAberta(s: SessaoDetalhe, acao: string) {
   }
 }
 
-async function eventoTicket(
-  c: Conexao,
-  siteId: string,
-  tipo: string,
-  s: SessaoDetalhe,
-  extra: Record<string, unknown> = {},
-) {
-  await registrarEvento(c, {
-    siteId,
-    tipo,
-    agregadoTipo: 'ticket',
-    agregadoId: s.id,
-    payload: {
-      ticket_id: s.id,
-      numero: s.numero,
-      placa: s.placa,
-      categoria: s.categoria,
-      vaga: s.vaga,
-      entrada_em: s.entradaEm,
-      modalidade: s.modalidade,
-      ...extra,
-    },
-  });
+/** Ticket mudou: evento com o estado público atual e as vagas livres (sync com a nuvem). */
+async function eventoTicket(c: Conexao, siteId: string, tipo: string, s: SessaoDetalhe) {
+  await publicarTicket(c, siteId, tipo, s.id);
   await publicarDisponibilidade(c, siteId);
 }
 
@@ -302,10 +282,7 @@ export const sessoesService = {
         );
 
         const s = await carregar(site.id, id, c);
-        await eventoTicket(c, site.id, 'ticket.aberto', s, {
-          token_hash: hash.toString('hex'),
-          tarifa_regra_id: regra.regraId,
-        });
+        await eventoTicket(c, site.id, 'ticket.aberto', s);
         return { sessaoId: id, veiculoNovo: !existente };
       });
 
@@ -485,10 +462,7 @@ export const sessoesService = {
         ],
       })) as [string];
       troco = conferido.trocoCentavos;
-      await eventoTicket(c, site.id, 'ticket.pagamento', await carregar(site.id, id, c), {
-        pagamento_id: pagamentoId,
-        valor_centavos: conferido.valorCentavos,
-      });
+      await eventoTicket(c, site.id, 'ticket.pagamento', await carregar(site.id, id, c));
     });
     const sessao = await carregar(site.id, id);
     return {
@@ -551,10 +525,7 @@ export const sessoesService = {
          VALUES (?, ?, ?, 'ESTORNO', 'SAIDA', ?, ?, ?, ?, ?, ?, NOW(3))`,
         [ulid(), site.id, caixa.id, valor, p.forma_codigo, pagamentoId, s.id, motivo, ator.auth.id],
       );
-      await eventoTicket(c, site.id, 'ticket.pagamento_estornado', s, {
-        pagamento_id: pagamentoId,
-        valor_centavos: valor,
-      });
+      await eventoTicket(c, site.id, 'ticket.pagamento_estornado', s);
       return s.id;
     });
     return carregar(site.id, sessaoId);
@@ -688,11 +659,7 @@ export const sessoesService = {
         );
 
         const fechada = await carregar(site.id, id, c);
-        await eventoTicket(c, site.id, 'ticket.fechado', fechada, {
-          saida_em: fechada.saidaEm,
-          valor_final_centavos: final,
-          status: 'pago',
-        });
+        await eventoTicket(c, site.id, 'ticket.fechado', fechada);
       },
     );
 
@@ -719,7 +686,7 @@ export const sessoesService = {
         'UPDATE sessao_tokens SET revogado_em = NOW(3), revogado_por = ?, motivo_revogacao = ? WHERE sessao_id = ? AND revogado_em IS NULL',
         [ator.auth.id, 'ticket cancelado', id],
       );
-      await eventoTicket(c, site.id, 'ticket.cancelado', await carregar(site.id, id, c), { motivo });
+      await eventoTicket(c, site.id, 'ticket.cancelado', await carregar(site.id, id, c));
     });
     return carregar(site.id, id);
   },
@@ -741,13 +708,7 @@ export const sessoesService = {
         hash,
         ator.auth.id,
       ]);
-      await registrarEvento(c, {
-        siteId: site.id,
-        tipo: 'ticket.token_revogado',
-        agregadoTipo: 'ticket',
-        agregadoId: id,
-        payload: { ticket_id: id, token_hash: hash.toString('hex') },
-      });
+      await publicarTicket(c, site.id, 'ticket.token_revogado', id);
       return atual;
     });
     return montarAcessoCliente(

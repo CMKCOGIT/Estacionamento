@@ -315,7 +315,7 @@ Formato:
 
 ### 6.3 Regras
 1. **Atomicidade**: a alteração de negócio e o evento são gravados na mesma transação MySQL.
-2. **Ordem**: envio por `seq` crescente, contado por `site_id`. A nuvem recusa um lote com buraco na sequência e informa o último `seq` aplicado.
+2. **Ordem**: envio por `seq` crescente. *Implementado de outro jeito* ([API-EXTERNA.md](API-EXTERNA.md)): cada evento leva o estado atual do item, e a nuvem só aplica um `seq` maior que o já aplicado para aquele item. Assim, buracos na sequência (comuns no contador do MySQL) não travam a sincronização.
 3. **Idempotência**: a nuvem registra o `event_id` em `sync_applied`. Um evento repetido é ignorado e confirmado.
 4. **Lotes**: até 100 eventos ou 512 KB por requisição.
 5. **Frequência**: o worker é acordado quando surge um evento novo, e verifica também a cada 15s.
@@ -328,11 +328,13 @@ Formato:
 
 ### 6.4 Endpoints de sincronização
 
+Implementados em `/sync/v1` (ver [API-EXTERNA.md](API-EXTERNA.md) e `apps/cloud-api/openapi.yaml`):
+
 | Método | Rota | Função |
 |--------|------|--------|
-| `POST` | `/sync/push` | Recebe um lote e responde `{ last_applied_seq }` |
-| `GET` | `/sync/status` | Último `seq` aplicado na nuvem |
-| `POST` | `/sync/snapshot` | Recebe a carga completa por partes |
+| `POST` | `/sync/v1/push` | Recebe um lote e responde aplicados, repetidos, superados, rejeitados e `ultimoSeq` |
+| `GET` | `/sync/v1/status` | Último `seq` aplicado na nuvem e último contato |
+| `POST` | `/sync/v1/snapshot` | Recebe a carga completa por partes |
 | `GET` / `POST` | `/sync/pull`, `/sync/ack` | *(futuro)* inbox |
 
 ---
