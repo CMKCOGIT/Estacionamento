@@ -17,3 +17,4 @@ export * from './sync.js';
 export * from './texto-publico.js';
 export * from './privacidade.js';
 export * from './lgpd.js';
+export * from './relatorios-operacionais.js';

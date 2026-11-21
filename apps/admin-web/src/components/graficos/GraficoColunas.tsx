@@ -16,6 +16,8 @@ interface Props {
   pontos: PontoColuna[];
   descricao: string;
   altura?: number;
+  /** 'dinheiro' (padrão; valores em centavos) ou 'numero' (contagens: veículos, entradas). */
+  formato?: 'dinheiro' | 'numero';
 }
 
 const M = { topo: 22, dir: 8, base: 30, esq: 60 };
@@ -26,12 +28,16 @@ const LARGURA_MAX_COLUNA = 28;
  * grade discreta, rótulo direto só no maior valor, tooltip ao passar o mouse
  * ou focar pelo teclado. Aceita valores negativos (dia com mais estornos).
  */
-export function GraficoColunas({ pontos, descricao, altura = 240 }: Props) {
+export function GraficoColunas({ pontos, descricao, altura = 240, formato = 'dinheiro' }: Props) {
+  const numero = formato === 'numero';
+  const valorTexto = (v: number) => (numero ? v.toLocaleString('pt-BR') : formatarCentavos(v));
   const [ref, largura] = useLargura<HTMLDivElement>();
   const [ativo, setAtivo] = useState<number | null>(null);
 
   const valores = pontos.map((p) => p.valorCentavos);
-  const ticks = ticksBonitos(Math.max(...valores, 10_000), 4, 100);
+  const ticks = numero
+    ? ticksBonitos(Math.max(...valores, 4), 4, 1)
+    : ticksBonitos(Math.max(...valores, 10_000), 4, 100);
   const topo = ticks.at(-1)!;
   const minimo = Math.min(0, ...valores);
   const fundo = minimo < 0 ? -ticksBonitos(-minimo, 1, 100).at(-1)! : 0;
@@ -75,7 +81,7 @@ export function GraficoColunas({ pontos, descricao, altura = 240 }: Props) {
                 y2={y(t)}
               />
               <text className="grafico__eixo" x={M.esq - 6} y={y(t)} dy="0.32em" textAnchor="end">
-                {reaisEixo(t, Math.max(topo, -fundo))}
+                {numero ? t.toLocaleString('pt-BR') : reaisEixo(t, Math.max(topo, -fundo))}
               </text>
             </g>
           ))}
@@ -105,7 +111,7 @@ export function GraficoColunas({ pontos, descricao, altura = 240 }: Props) {
                   y={y(pt.valorCentavos) - 6}
                   textAnchor="middle"
                 >
-                  {formatarCentavos(pt.valorCentavos)}
+                  {valorTexto(pt.valorCentavos)}
                 </text>
               )}
               {/* Área de toque: toda a faixa do grupo, maior que a coluna */}
@@ -117,7 +123,7 @@ export function GraficoColunas({ pontos, descricao, altura = 240 }: Props) {
                 fill="transparent"
                 tabIndex={0}
                 role="button"
-                aria-label={`${pt.titulo}: ${formatarCentavos(pt.valorCentavos)}`}
+                aria-label={`${pt.titulo}: ${valorTexto(pt.valorCentavos)}`}
                 onPointerEnter={() => setAtivo(i)}
                 onPointerLeave={() => setAtivo(null)}
                 onFocus={() => setAtivo(i)}
@@ -136,7 +142,7 @@ export function GraficoColunas({ pontos, descricao, altura = 240 }: Props) {
           }}
           role="status"
         >
-          <strong>{formatarCentavos(p.valorCentavos)}</strong>
+          <strong>{valorTexto(p.valorCentavos)}</strong>
           <span>{p.titulo}</span>
           {p.linhas.map((l) => (
             <span key={l} className="grafico__dica-linha">

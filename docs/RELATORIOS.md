@@ -100,3 +100,39 @@ Relatórios financeiros: `relatorio.financeiro` ou `caixa.supervisionar`. O mode
 | GET | `/api/v1/relatorios/fechamentos?de&ate` | Caixas fechados e totais de conferência |
 | GET | `/api/v1/relatorios/detalhe?movimentacaoId=…` ou `?pagamentoId=…` | Detalhe de uma movimentação ou de um pagamento |
 | GET | `/api/v1/financeiro/pagamentos` · `/financeiro/movimentacoes` | Histórico com filtros e paginação (ver [FINANCEIRO.md](FINANCEIRO.md)) |
+
+## Relatórios administrativos (operação)
+
+Painel → **Relatórios administrativos** (permissão `relatorio.operacional`). Os dados são reais do banco local e calculados no servidor (`apps/local-server/src/modules/relatorios-operacionais`). As datas seguem o fuso do estacionamento.
+
+| Aba | Conteúdo | Filtros |
+|-----|----------|---------|
+| **Indicadores** | Entradas, saídas, entradas/dia, rotatividade (saídas por vaga/dia), veículos no pátio, vagas bloqueadas, permanência média e mediana, % na tolerância, ocupação média e de pico, hora mais cheia, ticket médio, receita por vaga/dia, cancelamentos (%). Gráfico de entradas por categoria | Período (até 92 dias) |
+| **Entradas e saídas** | Totais e gráfico de entradas por dia. Lista de tickets com entrada ou saída no período (até 2.000), com placa, vaga, horários, permanência, valor e quem registrou. Exporta planilha | Período, placa (início), funcionário (entrada, saída ou cancelamento), situação |
+| **Veículos estacionados** | Quem está no pátio agora, com o tempo e o **valor acumulado pelo mesmo cálculo do caixa** | Placa, funcionário da entrada |
+| **Histórico por placa** | Cadastro do veículo, visitas, total pago, permanência média e todas as estadias. Exporta planilha | Placa |
+| **Ocupação** | Pico de vagas ocupadas por dia (com o horário) e média; **média por hora do dia** (para escalar a equipe); por categoria | Período (até 92 dias) |
+| **Vagas bloqueadas** | As bloqueadas agora (motivo, desde quando, quantos dias, quem bloqueou; 7 dias ou mais em destaque) e os bloqueios e liberações do período, tirados do histórico | Período, funcionário |
+| **Por funcionário** | Entradas, saídas, cancelamentos, pagamentos, valor recebido (confirmado), estornos, descontos concedidos e caixas abertos. Gráfico e planilha | Período, funcionário |
+| **Histórico de atividades** | As 200 atividades mais recentes do período, com quem fez e o motivo. O detalhe completo fica em Atividades (exige `auditoria.ver`) | Período, funcionário |
+
+Como os números são calculados:
+- **Ocupação:** cada ticket ocupa a vaga da entrada até a saída; os cancelados não contam. A **média** soma as horas-veículo de cada hora e divide pela hora. O **pico** percorre entradas e saídas em ordem. A capacidade considera as vagas **ativas** (as bloqueadas não entram).
+- **Permanência:** conta só os tickets que **saíram** no período.
+- **Cancelamentos:** % sobre as entradas do período.
+- **Funcionário:**
+  - entrada = quem registrou a entrada;
+  - saída = quem registrou a saída;
+  - cancelamento = quem cancelou;
+  - pagamento = quem recebeu;
+  - estorno = quem estornou.
+
+Testes: `apps/local-server/tests/integracao/relatorios-operacionais.test.ts`, com um cenário controlado:
+- totais e filtros por placa, situação e funcionário;
+- valor acumulado igual ao do caixa;
+- histórico por placa;
+- pico de ocupação;
+- bloqueio aparecendo nas vagas bloqueadas e no histórico;
+- contagens por funcionário;
+- indicadores (inclusive a mediana);
+- validação dos filtros e da permissão.

@@ -11,6 +11,7 @@ import { Login } from './pages/Login';
 import { Operacao } from './pages/Operacao';
 import { Privacidade } from './pages/Privacidade';
 import { Relatorios } from './pages/Relatorios';
+import { RelatoriosAdministrativos } from './pages/RelatoriosAdministrativos';
 import { Tarifas } from './pages/Tarifas';
 import { TrocarSenha } from './pages/TrocarSenha';
 import { UsuarioForm } from './pages/UsuarioForm';
@@ -154,6 +155,14 @@ export function App() {
               element={
                 <RotaProtegida permissoes={['auditoria.ver']}>
                   <Atividades />
+                </RotaProtegida>
+              }
+            />
+            <Route
+              path="relatorios-administrativos"
+              element={
+                <RotaProtegida permissoes={['relatorio.operacional']}>
+                  <RelatoriosAdministrativos />
                 </RotaProtegida>
               }
             />

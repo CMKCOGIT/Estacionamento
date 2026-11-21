@@ -5,6 +5,7 @@ import { backupRouter } from './backup/backup.routes.js';
 import { configuracoesRouter } from './configuracoes/configuracoes.routes.js';
 import { dashboardRouter } from './dashboard/dashboard.routes.js';
 import { privacidadeRouter } from './privacidade/privacidade.routes.js';
+import { relatoriosOperacionaisRouter } from './relatorios-operacionais/relatorios-operacionais.routes.js';
 import { relatoriosRouter } from './relatorios/relatorios.routes.js';
 import { financeiroRouter } from './financeiro/financeiro.routes.js';
 import { formasPagamentoRouter } from './formas-pagamento/formas-pagamento.routes.js';
@@ -50,6 +51,7 @@ export const modulos: ModuloApi[] = [
   { caminho: '/caixa', router: caixaRouter },
   { caminho: '/tarifas', router: tarifasRouter },
   { caminho: '/financeiro', router: financeiroRouter },
+  { caminho: '/relatorios/operacional', router: relatoriosOperacionaisRouter },
   { caminho: '/relatorios', router: relatoriosRouter },
   { caminho: '/usuarios', router: usuariosRouter },
   { caminho: '/permissoes', router: permissoesRouter },
