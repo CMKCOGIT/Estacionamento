@@ -20,7 +20,7 @@ where git >nul 2>nul || (echo  Git não encontrado. Instale em https://git-scm.c
 where npm >nul 2>nul || (echo  Node.js não encontrado. Instale em https://nodejs.org & goto erro)
 
 rem O servidor precisa estar desligado (no Windows ele trava os arquivos).
-curl -s -f -o nul -m 2 http://localhost:8080/api/v1/health/live >nul 2>nul
+curl -s -k -f -o nul -m 2 http://localhost:8080/api/v1/health/live >nul 2>nul || curl -s -k -f -o nul -m 2 https://localhost:8080/api/v1/health/live >nul 2>nul
 if not errorlevel 1 (
   echo  O servidor está ligado. Feche a janela "Servidor do Estacionamento"
   echo  na barra de tarefas e rode este arquivo de novo.

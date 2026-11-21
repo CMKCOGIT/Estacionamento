@@ -4,9 +4,11 @@ setlocal
 cd /d "%~dp0"
 title Estacionamento - Iniciar
 set "URL=http://localhost:8080"
+rem Com o HTTPS ligado (Ativar-HTTPS.cmd), o painel responde em https://
+findstr /b /c:"HTTPS_CERT_FILE=" "apps\local-server\.env" >nul 2>nul && set "URL=https://localhost:8080"
 
 rem Já está rodando? Só abre o painel.
-curl -s -f -o nul -m 2 %URL%/api/v1/health/live >nul 2>nul
+curl -s -k -f -o nul -m 2 %URL%/api/v1/health/live >nul 2>nul
 if not errorlevel 1 (
   start "" %URL%
   exit /b 0
@@ -29,7 +31,7 @@ start "Servidor do Estacionamento" /min cmd /k npm start
 rem Espera até 60 segundos o servidor responder.
 for /l %%i in (1,1,60) do (
   timeout /t 1 /nobreak >nul
-  curl -s -f -o nul -m 2 %URL%/api/v1/health/live >nul 2>nul && goto pronto
+  curl -s -k -f -o nul -m 2 %URL%/api/v1/health/live >nul 2>nul && goto pronto
 )
 echo.
 echo  O servidor não respondeu. Abra a janela "Servidor do Estacionamento"
