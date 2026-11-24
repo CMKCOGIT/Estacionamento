@@ -78,9 +78,23 @@ export function criarApp(): Express {
   // Painel administrativo (build do Vite) + fallback para rotas do React.
   const pasta = pastaAdminWeb();
   if (env.SERVE_ADMIN_WEB && existsSync(pasta)) {
-    app.use(express.static(pasta, { index: 'index.html', maxAge: '1h' }));
+    // index.html nunca fica em cache: depois de atualizar, o navegador já
+    // pega a versão nova. Os arquivos de assets/ têm o hash no nome e podem
+    // ficar guardados à vontade.
+    app.use(
+      express.static(pasta, {
+        index: 'index.html',
+        setHeaders: (res, caminho) => {
+          res.setHeader(
+            'Cache-Control',
+            /[\\/]assets[\\/]/.test(caminho) ? 'public, max-age=31536000, immutable' : 'no-cache',
+          );
+        },
+      }),
+    );
     app.use((req, res, next) => {
       if (req.method !== 'GET' || req.path.startsWith('/api') || !req.accepts('html')) return next();
+      res.setHeader('Cache-Control', 'no-cache');
       res.sendFile(resolve(pasta, 'index.html'));
     });
   }
