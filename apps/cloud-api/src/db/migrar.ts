@@ -18,6 +18,7 @@ export async function migrarBancoNuvem(o: {
   password: string;
   banco: string;
   pasta?: string;
+  ssl?: { ca?: string; rejectUnauthorized: true };
 }): Promise<string[]> {
   if (!/^[A-Za-z0-9_]+$/.test(o.banco)) throw new Error(`Nome de banco inválido: ${o.banco}`);
   const c = await mysql.createConnection({
@@ -25,6 +26,7 @@ export async function migrarBancoNuvem(o: {
     port: o.port,
     user: o.user,
     password: o.password,
+    ssl: o.ssl,
     multipleStatements: false,
   });
   try {

@@ -1,0 +1,45 @@
+# Blueprint do Render para a API externa (nuvem). Passo a passo: docs/PUBLICAR.md
+# No Render: New → Blueprint → escolha este repositório.
+services:
+  - type: web
+    name: estacionamento-api
+    runtime: node
+    plan: free
+    region: virginia
+    buildCommand: npm ci --include=dev --no-fund --no-audit && npm run build:pacotes && npm run build -w @estacionamento/cloud-api
+    # Aplica as migrações, garante a credencial do servidor local (sem mostrar o segredo) e inicia
+    startCommand: >-
+      npm run db:migrar -w @estacionamento/cloud-api &&
+      npm run integracao -w @estacionamento/cloud-api -- criar --id 01JESTACIONAMENTOPRINCIPAL
+      --nome "Estacionamento" --se-nao-existir --sem-segredo &&
+      npm start -w @estacionamento/cloud-api
+    healthCheckPath: /saude
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: '22.12.0'
+      - key: NODE_ENV
+        value: production
+      - key: CONFIAR_PROXY
+        value: '1'
+      # Segredo de todas as credenciais: o Render gera. Copie-o para o Conectar-Nuvem.cmd
+      - key: SYNC_CHAVE_MESTRA
+        generateValue: true
+      # Banco MySQL do provedor (Aiven): preencha no painel do Render
+      - key: DB_HOST
+        sync: false
+      - key: DB_PORT
+        sync: false
+      - key: DB_USER
+        sync: false
+      - key: DB_PASSWORD
+        sync: false
+      - key: DB_NAME
+        value: defaultdb
+      - key: DB_SSL
+        value: 'true'
+      - key: DB_SSL_CA
+        sync: false
+      # Endereço do app do cliente (Cloudflare Pages), ex.: https://meu-estacionamento.pages.dev
+      - key: PWA_ORIGENS
+        sync: false

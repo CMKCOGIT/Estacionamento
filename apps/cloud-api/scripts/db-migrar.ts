@@ -1,6 +1,7 @@
 import mysql from 'mysql2/promise';
 import { env } from '../src/config/env.js';
 import { migrarBancoNuvem } from '../src/db/migrar.js';
+import { opcoesSsl } from '../src/db/ssl.js';
 
 /** --recriar: apaga e recria o banco (só fora de produção; usado pela demonstração). */
 if (process.argv.includes('--recriar')) {
@@ -11,6 +12,7 @@ if (process.argv.includes('--recriar')) {
     port: env.DB_PORT,
     user: env.DB_USER,
     password: env.DB_PASSWORD,
+    ssl: opcoesSsl(),
   });
   await c.query(`DROP DATABASE IF EXISTS \`${env.DB_NAME}\``);
   await c.end();
@@ -22,6 +24,7 @@ const aplicados = await migrarBancoNuvem({
   user: env.DB_USER,
   password: env.DB_PASSWORD,
   banco: env.DB_NAME,
+  ssl: opcoesSsl(),
 });
 console.log(
   aplicados.length

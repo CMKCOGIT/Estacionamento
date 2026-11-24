@@ -17,7 +17,8 @@
     "usuario:admin": "tsx scripts/criar-admin.ts",
     "demo:criar": "tsx scripts/dados-demonstracao.ts",
     "https:certificado": "tsx scripts/certificado-https.ts",
-    "backup": "tsx scripts/backup.ts"
+    "backup": "tsx scripts/backup.ts",
+    "nuvem:conectar": "tsx scripts/conectar-nuvem.ts"
   },
   "dependencies": {
     "@estacionamento/calculo": "*",

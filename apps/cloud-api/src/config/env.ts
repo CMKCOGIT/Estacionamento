@@ -27,6 +27,17 @@ const schema = z.object({
   DB_PASSWORD: z.string().default(''),
   DB_NAME: z.string().min(1).default('estacionamento_nuvem'),
   DB_POOL_SIZE: z.coerce.number().int().min(1).max(100).default(10),
+  /** Conexão criptografada com o MySQL (obrigatória nos provedores: Aiven, Railway...). */
+  DB_SSL: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((v) => v === 'true'),
+  /**
+   * Certificado da autoridade do provedor (o "CA certificate" do Aiven): o texto
+   * PEM inteiro (pode colar com quebras de linha) ou o caminho de um arquivo.
+   * Sem ele, vale a lista de autoridades do sistema.
+   */
+  DB_SSL_CA: z.string().optional(),
 
   /** Origens do PWA (CORS). Só elas podem chamar a API pelo navegador. */
   PWA_ORIGENS: lista,

@@ -3,6 +3,7 @@
  * Rode no servidor da API externa, com SYNC_CHAVE_MESTRA configurada.
  *
  *   npm run integracao -w @estacionamento/cloud-api -- criar --nome "Estacionamento Centro" [--site <SITE_ID>]
+ *        [--id <ID>] [--se-nao-existir] [--sem-segredo: não mostra o segredo no log da hospedagem]
  *   npm run integracao -w @estacionamento/cloud-api -- listar
  *   npm run integracao -w @estacionamento/cloud-api -- girar   --id <ID>     (troca o segredo; o antigo vale por 24h)
  *   npm run integracao -w @estacionamento/cloud-api -- revogar --id <ID>
@@ -47,6 +48,12 @@ async function principal() {
         [id, site, nome, JSON.stringify(ESCOPOS_SERVIDOR_LOCAL)],
       );
       console.log(`Integração criada: ${nome}\n`);
+      // Na hospedagem (Render...), o log fica guardado: o segredo é gerado no
+      // computador do estacionamento pelo Conectar-Nuvem.cmd, com a chave mestra
+      if (resto.includes('--sem-segredo')) {
+        console.log(`  SYNC_INTEGRACAO_ID=${id} (segredo: use o Conectar-Nuvem.cmd)`);
+        return;
+      }
       console.log('Copie para o .env do servidor local do estacionamento:');
       console.log(`  SYNC_INTEGRACAO_ID=${id}`);
       console.log(`  SYNC_SECRET=${derivarSegredo(id, 1)}`);

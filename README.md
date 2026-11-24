@@ -13,6 +13,7 @@ Sistema de gerenciamento de estacionamento:
 | [`docs/BACKUP.md`](docs/BACKUP.md) | Backup automático criptografado, conferência, retenção e **recuperação** em caso de falha do servidor ou perda de dados |
 | [`docs/AUDITORIA.md`](docs/AUDITORIA.md) | Auditoria técnica e funcional: o que foi testado com dados reais, problemas encontrados e corrigidos |
 | [`docs/EXPANSAO.md`](docs/EXPANSAO.md) | Preparação para expansões: sensores, LPR, câmeras, cancelas, pagamento online, comprovantes, notificações, impressoras, mensalistas, descontos e várias unidades |
+| [`docs/PUBLICAR.md`](docs/PUBLICAR.md) | **Passo a passo para publicar o app do cliente** (Aiven + Render + Cloudflare) e ligar este computador à nuvem |
 | [`docs/MONITORAMENTO.md`](docs/MONITORAMENTO.md) | Painel de monitoramento técnico: servidor, banco, internet, API externa, sincronização, backup, falhas e erros recentes |
 | [`docs/SEGURANCA.md`](docs/SEGURANCA.md) | Medidas de segurança: autenticação, permissões, senhas, tokens, HTTPS, validação, SQL Injection, registro, erros, checklist de implantação |
 | [`docs/LGPD.md`](docs/LGPD.md) | LGPD: inventário de dados, bases legais, minimização, retenção, atendimento aos titulares, anonimização, encarregado, incidentes |
