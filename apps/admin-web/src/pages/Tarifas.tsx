@@ -1,36 +1,98 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import type {
-  Categoria,
-  RegraCadastrada,
-  TabelaTarifaDetalhe,
-  TabelaTarifaResumo,
-  TipoRegra,
+import { useCallback, useEffect, useState } from 'react';
+import {
+  centavosParaCampo,
+  descreverCondicao,
+  formatarCentavos,
+  lerCentavos,
+  type Categoria,
+  type DadosRegra,
+  type RegraCadastrada,
+  type TabelaTarifaDetalhe,
+  type TipoRegra,
 } from '@estacionamento/shared';
 import { useAuth } from '../auth/contexto';
 import { Dialogo } from '../components/Dialogo';
-import { CartaoCategoria } from '../components/tarifas/CartaoCategoria';
+import {
+  IconeCalculadora,
+  IconeCarro,
+  IconeEtiqueta,
+  IconeHistorico,
+  IconeLapis,
+  IconeLixeira,
+  IconeLua,
+  IconeMais,
+  IconeMoto,
+  IconeRelogio,
+  IconeSalvar,
+  IconeSol,
+} from '../components/Icones';
 import { DialogoRegra } from '../components/tarifas/DialogoRegra';
 import { Simulador } from '../components/tarifas/Simulador';
-import { CLASSE_SITUACAO, diferencas, ROTULO_SITUACAO } from '../components/tarifas/util';
+import {
+  alteracoes,
+  CLASSE_SITUACAO,
+  linhasDaRegra,
+  ROTULO_SITUACAO,
+  type Alteracao,
+} from '../components/tarifas/util';
 import { mensagemDeErro } from '../components/vagas/Dialogos';
 import { useCarregar } from '../hooks/useCarregar';
 import { formatarDataHora } from '../services/rotulos';
 import { tarifasApi } from '../services/tarifas';
 import { vagasApi } from '../services/vagas';
 
-type Aba = 'vigor' | 'edicao' | 'historico';
-type Edicao = { regra: RegraCadastrada | null; nova: { categoriaId: string; tipo: TipoRegra } | null };
+/**
+ * Tarifas por categoria (Carro, Moto...), cada uma independente.
+ * Por baixo continua o controle de versões: toda alteração fica numa versão
+ * "em edição" e só passa a valer em "Salvar alterações" (publicar). Quem já
+ * entrou paga pela tarifa da entrada.
+ */
+interface Campos {
+  primeira: string;
+  adicional: string;
+  diaria: string;
+  teto: string;
+}
+type EdicaoRegra = {
+  tabelaId: string;
+  regra: RegraCadastrada | null;
+  nova: { categoriaId: string; tipo: TipoRegra } | null;
+  modelo?: RegraCadastrada;
+  /** A versão em edição foi criada só para abrir este diálogo: se cancelar, é descartada. */
+  criouRascunho: boolean;
+};
+type LinhaHistorico = Alteracao & { em: string; por: string | null; versao: number };
 
-/** Agrupa as regras por categoria, incluindo categorias ativas ainda sem preço. */
-function porCategoria(t: TabelaTarifaDetalhe, categorias: Categoria[]) {
-  const grupos = new Map<string, { nome: string; regras: RegraCadastrada[] }>();
-  for (const c of categorias.filter((x) => x.ativo)) grupos.set(c.id, { nome: c.nome, regras: [] });
-  for (const r of t.regras) {
-    const g = grupos.get(r.categoriaId) ?? { nome: r.categoria, regras: [] };
-    g.regras.push(r);
-    grupos.set(r.categoriaId, g);
-  }
-  return [...grupos.entries()];
+const campo = (v: number | null | undefined) => (v === null || v === undefined ? '' : centavosParaCampo(v));
+const camposDe = (r: RegraCadastrada | undefined): Campos => ({
+  primeira: campo(r?.primeiraHoraCentavos),
+  adicional: campo(r?.horaAdicionalCentavos),
+  diaria: campo(r?.diariaCentavos),
+  teto: campo(r?.diariaMaximaCentavos),
+});
+const chave = (r: RegraCadastrada) => `${r.categoriaId}|${r.tipo}|${r.nome ?? ''}`;
+const padraoDe = (t: TabelaTarifaDetalhe | null, categoriaId: string) =>
+  t?.regras.find((r) => r.categoriaId === categoriaId && r.tipo === 'PADRAO');
+const periodosDe = (t: TabelaTarifaDetalhe | null, categoriaId: string) =>
+  (t?.regras ?? []).filter((r) => r.categoriaId === categoriaId && r.tipo === 'ESPECIAL');
+
+/** Valor principal de um período: preço fixo ou 1ª hora. */
+const valorDoPeriodo = (r: RegraCadastrada) =>
+  r.valorFixoCentavos !== null
+    ? formatarCentavos(r.valorFixoCentavos)
+    : `${formatarCentavos(r.primeiraHoraCentavos)} 1ª h + ${formatarCentavos(r.horaAdicionalCentavos)}/h`;
+const horarioDoPeriodo = (r: RegraCadastrada) =>
+  r.aplicacao === 'MANUAL'
+    ? 'Escolhida na entrada'
+    : r.horaInicio
+      ? descreverCondicao(r)
+      : r.diasSemana === null || r.diasSemana === 127
+        ? 'Qualquer horário'
+        : descreverCondicao(r);
+function IconePeriodo({ r }: { r: RegraCadastrada }) {
+  if (!r.horaInicio) return <IconeRelogio tamanho={18} />;
+  const h = Number(r.horaInicio.slice(0, 2));
+  return h >= 17 || h < 5 ? <IconeLua tamanho={18} /> : <IconeSol tamanho={18} />;
 }
 
 export function Tarifas() {
@@ -40,33 +102,35 @@ export function Tarifas() {
   const carregar = useCallback(() => tarifasApi.painel(), []);
   const painel = useCarregar(carregar);
   const [categorias, setCategorias] = useState<Categoria[]>([]);
-  const [aba, setAba] = useState<Aba>('vigor');
-  const [mensagem, setMensagem] = useState<{ tipo: 'ok' | 'erro'; texto: string } | null>(null);
-  const [edicao, setEdicao] = useState<Edicao | null>(null);
-  const [publicando, setPublicando] = useState(false);
-  const [descartando, setDescartando] = useState(false);
-  const [vendo, setVendo] = useState<TabelaTarifaDetalhe | null>(null);
+  const [categoriaId, setCategoriaId] = useState<string | null>(null);
+  const [edicoes, setEdicoes] = useState<Record<string, Campos>>({});
+  const [mensagem, setMensagem] = useState<{ tipo: 'ok' | 'erro' | 'info'; texto: string } | null>(null);
   const [ocupado, setOcupado] = useState(false);
+  const [edicaoRegra, setEdicaoRegra] = useState<EdicaoRegra | null>(null);
+  const [excluindo, setExcluindo] = useState<RegraCadastrada | null>(null);
+  const [publicando, setPublicando] = useState<TabelaTarifaDetalhe | null>(null);
+  const [descartando, setDescartando] = useState(false);
 
   useEffect(() => {
     vagasApi
       .categorias()
-      .then((r) => setCategorias(r.itens))
+      .then((r) => setCategorias(r.itens.filter((c) => c.ativo)))
       .catch(() => undefined);
   }, []);
 
   const p = painel.dados;
-  const rascunho = p?.rascunho ?? null;
   const vigente = p?.vigente ?? null;
+  const rascunho = p?.rascunho ?? null;
+  const base = rascunho ?? vigente;
+  const catAtual = categorias.find((c) => c.id === categoriaId) ?? categorias[0] ?? null;
 
-  const executar = async (acao: () => Promise<unknown>, ok: string, irPara?: Aba) => {
+  const historico = useHistorico(p?.historico.map((t) => `${t.id}:${t.situacao}`).join(',') ?? '');
+
+  const executar = async (acao: () => Promise<void>) => {
     setOcupado(true);
     setMensagem(null);
     try {
       await acao();
-      setMensagem({ tipo: 'ok', texto: ok });
-      painel.recarregar();
-      if (irPara) setAba(irPara);
     } catch (e) {
       setMensagem({ tipo: 'erro', texto: mensagemDeErro(e) });
     } finally {
@@ -74,39 +138,121 @@ export function Tarifas() {
     }
   };
 
-  const novaVersao = (baseId?: string) =>
-    executar(
-      () => tarifasApi.novaVersao({ baseId }),
-      'Nova versão criada a partir dos preços atuais. Altere o que precisar e publique quando estiver pronta.',
-      'edicao',
-    );
+  /** Toda alteração acontece numa versão em edição (criada a partir da que está em vigor). */
+  async function garantirRascunho(): Promise<TabelaTarifaDetalhe> {
+    if (rascunho) return rascunho;
+    const t = await tarifasApi.novaVersao({});
+    painel.recarregar();
+    return t;
+  }
+  const correspondente = (t: TabelaTarifaDetalhe, r: RegraCadastrada) =>
+    t.regras.find((x) => chave(x) === chave(r));
 
-  const alternar = (r: RegraCadastrada) =>
-    executar(
-      () => tarifasApi.salvarRegra(rascunho!.id, r.id, { ...r, ativo: !r.ativo }),
-      `${r.tipo === 'PADRAO' ? `Tarifa padrão de ${r.categoria}` : `"${r.nome}"`} ${r.ativo ? 'desativada' : 'reativada'} nesta versão.`,
-    );
+  const camposDaCategoria = (c: Categoria) => edicoes[c.id] ?? camposDe(padraoDe(base, c.id));
+  const alterada = (c: Categoria) =>
+    !!edicoes[c.id] && JSON.stringify(edicoes[c.id]) !== JSON.stringify(camposDe(padraoDe(base, c.id)));
+  const categoriasAlteradas = categorias.filter(alterada);
+  const temPendencias = categoriasAlteradas.length > 0 || !!rascunho;
 
-  const remover = (r: RegraCadastrada) =>
-    executar(() => tarifasApi.removerRegra(rascunho!.id, r.id), `"${r.nome}" removida desta versão.`);
+  function alterarCampo(c: Categoria, nome: keyof Campos, valor: string) {
+    setEdicoes((e) => ({ ...e, [c.id]: { ...camposDaCategoria(c), [nome]: valor } }));
+  }
 
-  const abaAtual: Aba = aba === 'edicao' && !rascunho ? 'vigor' : aba;
+  /** "Salvar alterações": grava os preços na versão em edição e pede a confirmação para publicar. */
+  const salvar = () =>
+    executar(async () => {
+      for (const c of categoriasAlteradas) {
+        const f = edicoes[c.id]!;
+        const primeira = lerCentavos(f.primeira);
+        const adicional = lerCentavos(f.adicional);
+        const diaria = f.diaria.trim() ? lerCentavos(f.diaria) : null;
+        const teto = f.teto.trim() ? lerCentavos(f.teto) : null;
+        if (
+          primeira === null ||
+          adicional === null ||
+          (f.diaria.trim() && diaria === null) ||
+          (f.teto.trim() && teto === null)
+        )
+          throw new Error(`${c.nome}: preencha os valores no formato 10,00.`);
+      }
+      let t = await garantirRascunho();
+      for (const c of categoriasAlteradas) {
+        const f = edicoes[c.id]!;
+        const atual = padraoDe(t, c.id);
+        const dados: DadosRegra = {
+          ...(atual ?? {
+            categoriaId: c.id,
+            tipo: 'PADRAO',
+            nome: null,
+            aplicacao: null,
+            diasSemana: null,
+            horaInicio: null,
+            horaFim: null,
+            ativo: true,
+            toleranciaMin: 10,
+            fracaoMin: null,
+            fracaoCentavos: null,
+            carenciaMin: 0,
+            valorFixoCentavos: null,
+          }),
+          primeiraHoraCentavos: lerCentavos(f.primeira)!,
+          horaAdicionalCentavos: lerCentavos(f.adicional)!,
+          diariaCentavos: f.diaria.trim() ? lerCentavos(f.diaria) : null,
+          diariaMaximaCentavos: f.teto.trim() ? lerCentavos(f.teto) : null,
+        };
+        t = await tarifasApi.salvarRegra(t.id, atual?.id ?? null, dados);
+      }
+      setEdicoes({});
+      painel.recarregar();
+      if (podePublicar) setPublicando(t);
+      else
+        setMensagem({
+          tipo: 'info',
+          texto:
+            'Alterações guardadas. Elas passam a valer quando um responsável com permissão de publicar salvar.',
+        });
+    });
+
+  const abrirPeriodo = (r: RegraCadastrada | null, c: Categoria) =>
+    executar(async () => {
+      const t = await garantirRascunho();
+      setEdicaoRegra({
+        tabelaId: t.id,
+        regra: r ? (correspondente(t, r) ?? null) : null,
+        nova: r ? null : { categoriaId: c.id, tipo: 'ESPECIAL' },
+        modelo: padraoDe(t, c.id),
+        criouRascunho: !rascunho,
+      });
+    });
+
+  const excluirPeriodo = (r: RegraCadastrada) =>
+    executar(async () => {
+      const t = await garantirRascunho();
+      const alvo = correspondente(t, r);
+      if (alvo) await tarifasApi.removerRegra(t.id, alvo.id);
+      setExcluindo(null);
+      painel.recarregar();
+      setMensagem({
+        tipo: 'info',
+        texto: `Período "${r.nome}" removido. Clique em Salvar alterações para valer.`,
+      });
+    });
+
+  const resumo = catAtual ? padraoDe(base, catAtual.id) : undefined;
+  const periodos = catAtual ? periodosDe(base, catAtual.id) : [];
 
   return (
-    <>
-      <header className="cabecalho">
-        <div>
-          <h1>Tarifas</h1>
-          <p className="mudo">
-            Preços por categoria, regras de arredondamento e tarifas especiais. Cada mudança vira uma nova
-            versão: quem já entrou paga pela tarifa da entrada.
-          </p>
+    <div className="pagina-tarifas">
+      <header className="cabecalho cabecalho--icone">
+        <div className="cabecalho__titulo">
+          <span className="selo-pagina" aria-hidden="true">
+            <IconeEtiqueta />
+          </span>
+          <div>
+            <h1>Tarifas</h1>
+            <p className="mudo">Configure as tarifas do estacionamento</p>
+          </div>
         </div>
-        {podeEditar && !rascunho && p && (
-          <button type="button" className="botao" onClick={() => void novaVersao()} disabled={ocupado}>
-            Alterar preços
-          </button>
-        )}
       </header>
 
       {mensagem && (
@@ -119,168 +265,443 @@ export function Tarifas() {
           {painel.erro.message}
         </p>
       )}
-
-      <div className="abas abas--pagina" role="tablist">
-        {(
-          [
-            ['vigor', 'Em vigor'],
-            ...(rascunho ? [['edicao', `Nova versão (v${rascunho.versao})`]] : []),
-            ['historico', 'Histórico de versões'],
-          ] as [Aba, string][]
-        ).map(([id, rotulo]) => (
-          <button
-            key={id}
-            type="button"
-            role="tab"
-            aria-selected={abaAtual === id}
-            className={abaAtual === id ? 'aba aba--ativa' : 'aba'}
-            onClick={() => setAba(id)}
-          >
-            {rotulo}
-          </button>
-        ))}
-      </div>
-
-      {!p && painel.carregando && <p className="mudo">Carregando…</p>}
-
-      {p && abaAtual === 'vigor' && (
-        <>
-          {p.agendadas.map((t) => (
-            <p key={t.id} className="alerta alerta--info">
-              A versão {t.versao} (“{t.nome}”) entra em vigor em{' '}
-              <strong>{formatarDataHora(t.vigenteDesde)}</strong>.{' '}
+      {rascunho && (
+        <div className="alerta alerta--info aviso-rascunho" role="status">
+          <span>
+            Há alterações ainda <strong>não publicadas</strong> (versão {rascunho.versao}). Os clientes
+            continuam pagando a tabela em vigor até você clicar em <strong>Salvar alterações</strong>.
+          </span>
+          {podeEditar && (
+            <button type="button" className="botao-texto" onClick={() => setDescartando(true)}>
+              Descartar alterações
+            </button>
+          )}
+        </div>
+      )}
+      {(p?.agendadas ?? []).map((t) => (
+        <p key={t.id} className="alerta alerta--info">
+          Nova tabela (versão {t.versao}) agendada para <strong>{formatarDataHora(t.vigenteDesde)}</strong>.
+          {podePublicar && (
+            <>
+              {' '}
               <button
                 type="button"
                 className="botao-texto"
-                onClick={() => void tarifasApi.obter(t.id).then(setVendo)}
+                onClick={() =>
+                  void executar(async () => {
+                    await tarifasApi.arquivar(t.id);
+                    painel.recarregar();
+                    setMensagem({ tipo: 'ok', texto: 'Agendamento cancelado.' });
+                  })
+                }
               >
-                Ver preços
+                Cancelar agendamento
               </button>
-              {podePublicar && (
-                <>
-                  {' · '}
+            </>
+          )}
+        </p>
+      ))}
+
+      <div className="abas-categoria" role="tablist" aria-label="Categoria de veículo">
+        {categorias.map((c) => {
+          const Icone = c.codigo === 'MOTO' ? IconeMoto : IconeCarro;
+          return (
+            <button
+              key={c.id}
+              type="button"
+              role="tab"
+              aria-selected={catAtual?.id === c.id}
+              className={`aba-categoria${catAtual?.id === c.id ? ' aba-categoria--ativa' : ''}`}
+              onClick={() => setCategoriaId(c.id)}
+            >
+              <Icone tamanho={22} /> {c.nome}
+              {alterada(c) && <span className="ponto-alterado" title="Alterado e não salvo" />}
+            </button>
+          );
+        })}
+      </div>
+
+      {!p && !painel.erro && <p className="mudo">Carregando…</p>}
+      {p && categorias.length === 0 && (
+        <p className="cartao mudo">
+          Cadastre as categorias de veículo em Vagas → Categorias para definir as tarifas.
+        </p>
+      )}
+
+      {p && catAtual && (
+        <div className="tarifas-corpo">
+          <div className="tarifas-coluna">
+            <section className="cartao">
+              <h2 className="titulo-secao">
+                {catAtual.codigo === 'MOTO' ? <IconeMoto tamanho={26} /> : <IconeCarro tamanho={26} />}{' '}
+                Tarifas para {catAtual.nome}
+              </h2>
+              <div className="campos-tarifa">
+                <CampoValor
+                  rotulo="Valor da primeira hora"
+                  valor={camposDaCategoria(catAtual).primeira}
+                  onChange={(v) => alterarCampo(catAtual, 'primeira', v)}
+                  desabilitado={!podeEditar || ocupado}
+                />
+                <CampoValor
+                  rotulo="Valor da hora adicional"
+                  valor={camposDaCategoria(catAtual).adicional}
+                  onChange={(v) => alterarCampo(catAtual, 'adicional', v)}
+                  desabilitado={!podeEditar || ocupado}
+                />
+                <CampoValor
+                  rotulo="Valor da diária"
+                  dica="Em branco = não oferece diária"
+                  valor={camposDaCategoria(catAtual).diaria}
+                  onChange={(v) => alterarCampo(catAtual, 'diaria', v)}
+                  desabilitado={!podeEditar || ocupado}
+                />
+                <CampoValor
+                  rotulo="Máximo cobrado por dia"
+                  dica="Em branco = sem limite"
+                  valor={camposDaCategoria(catAtual).teto}
+                  onChange={(v) => alterarCampo(catAtual, 'teto', v)}
+                  desabilitado={!podeEditar || ocupado}
+                />
+              </div>
+              {resumo && podeEditar && (
+                <button
+                  type="button"
+                  className="botao-texto"
+                  onClick={() =>
+                    void executar(async () => {
+                      const t = await garantirRascunho();
+                      setEdicaoRegra({
+                        tabelaId: t.id,
+                        regra: correspondente(t, resumo) ?? null,
+                        nova: null,
+                        criouRascunho: !rascunho,
+                      });
+                    })
+                  }
+                >
+                  Mais opções (tolerância, fração, carência)
+                </button>
+              )}
+            </section>
+
+            <section className="cartao">
+              <div className="cartao__topo">
+                <h2 className="titulo-secao">
+                  <IconeRelogio tamanho={24} /> Tarifas por período
+                </h2>
+                {podeEditar && (
                   <button
                     type="button"
-                    className="botao-texto"
-                    onClick={() =>
-                      void executar(
-                        () => tarifasApi.arquivar(t.id),
-                        `Agendamento da versão ${t.versao} cancelado.`,
-                      )
-                    }
+                    className="botao botao--contorno"
+                    onClick={() => void abrirPeriodo(null, catAtual)}
+                    disabled={ocupado || !resumo}
+                    title={!resumo ? 'Defina e salve primeiro a tarifa padrão' : undefined}
                   >
-                    Cancelar agendamento
+                    <IconeMais tamanho={18} /> Adicionar período
                   </button>
-                </>
-              )}
-            </p>
-          ))}
-          {vigente ? (
-            <>
-              <CabecalhoVersao t={vigente} />
-              <div className="grade-tarifas">
-                {porCategoria(vigente, categorias).map(([id, g]) => (
-                  <CartaoCategoria key={id} categoriaId={id} categoria={g.nome} regras={g.regras} />
-                ))}
+                )}
               </div>
-            </>
-          ) : (
-            <p className="alerta alerta--erro">
-              Nenhuma tabela de tarifas em vigor: as entradas são recusadas até uma versão ser publicada.
-              {rascunho
-                ? ' Termine a nova versão e publique.'
-                : ' Clique em “Alterar preços” para cadastrar.'}
-            </p>
-          )}
-          <Simulador vigente={vigente} rascunho={rascunho} />
-        </>
-      )}
-
-      {p && abaAtual === 'edicao' && rascunho && (
-        <>
-          <EdicaoCabecalho
-            t={rascunho}
-            podeEditar={podeEditar}
-            onSalvo={(texto) => {
-              setMensagem({ tipo: 'ok', texto });
-              painel.recarregar();
-            }}
-          />
-          <MudancasEPublicacao
-            vigente={vigente}
-            rascunho={rascunho}
-            podePublicar={podePublicar}
-            podeEditar={podeEditar}
-            onPublicar={() => setPublicando(true)}
-            onDescartar={() => setDescartando(true)}
-          />
-          <div className="grade-tarifas">
-            {porCategoria(rascunho, categorias).map(([id, g]) => (
-              <CartaoCategoria
-                key={id}
-                categoriaId={id}
-                categoria={g.nome}
-                regras={g.regras}
-                acoes={
-                  podeEditar
-                    ? {
-                        onEditar: (r) => setEdicao({ regra: r, nova: null }),
-                        onAlternar: (r) => void alternar(r),
-                        onRemover: (r) => void remover(r),
-                        onNovaEspecial: (categoriaId) =>
-                          setEdicao({ regra: null, nova: { categoriaId, tipo: 'ESPECIAL' } }),
-                        onDefinirPadrao: (categoriaId) =>
-                          setEdicao({ regra: null, nova: { categoriaId, tipo: 'PADRAO' } }),
-                      }
-                    : undefined
-                }
-              />
-            ))}
+              {periodos.length === 0 ? (
+                <p className="mudo">
+                  Nenhum período cadastrado. Use para preços diferentes em certos horários ou dias (ex.:
+                  noturno, fim de semana) ou para convênios escolhidos na entrada.
+                </p>
+              ) : (
+                <div className="tabela-rolagem">
+                  <table className="tabela tabela--tarifas">
+                    <thead>
+                      <tr>
+                        <th>Período</th>
+                        <th>Horário</th>
+                        <th>Valor</th>
+                        {podeEditar && <th className="acoes-coluna">Ações</th>}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {periodos.map((r) => (
+                        <tr key={r.id} className={r.ativo ? undefined : 'linha-apagada'}>
+                          <td>
+                            <span className="periodo-nome">
+                              <IconePeriodo r={r} /> {r.nome}
+                              {!r.ativo && <span className="mudo pequeno"> (desativado)</span>}
+                            </span>
+                          </td>
+                          <td>{horarioDoPeriodo(r)}</td>
+                          <td className="sem-quebra">{valorDoPeriodo(r)}</td>
+                          {podeEditar && (
+                            <td className="acoes-coluna">
+                              <button
+                                type="button"
+                                className="botao-icone botao-icone--azul"
+                                aria-label={`Editar ${r.nome}`}
+                                onClick={() => void abrirPeriodo(r, catAtual)}
+                                disabled={ocupado}
+                              >
+                                <IconeLapis tamanho={16} />
+                              </button>
+                              <button
+                                type="button"
+                                className="botao-icone botao-icone--vermelho"
+                                aria-label={`Excluir ${r.nome}`}
+                                onClick={() => setExcluindo(r)}
+                                disabled={ocupado}
+                              >
+                                <IconeLixeira tamanho={16} />
+                              </button>
+                            </td>
+                          )}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </section>
           </div>
-          <Simulador vigente={vigente} rascunho={rascunho} />
-        </>
+
+          <div className="tarifas-coluna">
+            <section className="cartao resumo-tarifas">
+              <h2 className="titulo-secao">
+                <IconeCalculadora tamanho={24} /> Resumo das tarifas
+              </h2>
+              <div className="resumo-tarifas__categoria">
+                {catAtual.codigo === 'MOTO' ? <IconeMoto tamanho={24} /> : <IconeCarro tamanho={24} />}{' '}
+                {catAtual.nome}
+              </div>
+              {resumo ? (
+                <>
+                  <div className="resumo-tarifas__valores">
+                    {resumo.valorFixoCentavos === null && (
+                      <>
+                        <div>
+                          <strong>{formatarCentavos(resumo.primeiraHoraCentavos)}</strong>
+                          <span>1ª hora</span>
+                        </div>
+                        <div>
+                          <strong>{formatarCentavos(resumo.horaAdicionalCentavos)}</strong>
+                          <span>Hora adicional</span>
+                        </div>
+                      </>
+                    )}
+                    <div>
+                      <strong>
+                        {resumo.diariaCentavos === null ? '—' : formatarCentavos(resumo.diariaCentavos)}
+                      </strong>
+                      <span>Diária</span>
+                    </div>
+                  </div>
+                  {periodos
+                    .filter((r) => r.ativo)
+                    .map((r) => (
+                      <div key={r.id} className="resumo-tarifas__periodo">
+                        <IconePeriodo r={r} />
+                        <strong>{valorDoPeriodo(r)}</strong>
+                        <span>
+                          {r.nome} ({horarioDoPeriodo(r)})
+                        </span>
+                      </div>
+                    ))}
+                  <details className="resumo-tarifas__regras">
+                    <summary>Todas as regras da tarifa padrão</summary>
+                    <dl className="resumo resumo--linhas">
+                      {linhasDaRegra(resumo).map(([k, v]) => (
+                        <div key={k}>
+                          <dt>{k}</dt>
+                          <dd>{v}</dd>
+                        </div>
+                      ))}
+                    </dl>
+                  </details>
+                </>
+              ) : (
+                <p className="mudo">Sem tarifa definida para {catAtual.nome}. Preencha os valores e salve.</p>
+              )}
+              {vigente && (
+                <p className="mudo pequeno">
+                  Em vigor: versão {vigente.versao}
+                  {vigente.vigenteDesde && ` desde ${formatarDataHora(vigente.vigenteDesde)}`}
+                  {vigente.publicadoPor && ` · por ${vigente.publicadoPor}`}
+                </p>
+              )}
+            </section>
+            {podeEditar && (
+              <button
+                type="button"
+                className="botao botao--grande"
+                onClick={() =>
+                  categoriasAlteradas.length || !rascunho || !podePublicar
+                    ? void salvar()
+                    : setPublicando(rascunho)
+                }
+                disabled={ocupado || !temPendencias}
+              >
+                <IconeSalvar tamanho={20} /> {ocupado ? 'Salvando…' : 'Salvar alterações'}
+              </button>
+            )}
+          </div>
+        </div>
       )}
 
-      {p && abaAtual === 'historico' && (
-        <Historico
-          itens={p.historico}
-          podeEditar={podeEditar && !rascunho}
-          onVer={(id) => void tarifasApi.obter(id).then(setVendo)}
-          onBase={(id) => void novaVersao(id)}
-        />
-      )}
-
-      {edicao && rascunho && (
-        <DialogoRegra
-          tabelaId={rascunho.id}
-          regra={edicao.regra}
-          nova={edicao.nova}
-          categorias={categorias}
-          modelo={rascunho.regras.find(
-            (r) =>
-              r.tipo === 'PADRAO' &&
-              r.categoriaId === (edicao.regra?.categoriaId ?? edicao.nova?.categoriaId),
+      {p && (
+        <section className="cartao">
+          <h2 className="titulo-secao">
+            <IconeHistorico tamanho={24} /> Histórico de alterações
+          </h2>
+          {historico === null ? (
+            <p className="mudo">Carregando…</p>
+          ) : historico.length === 0 ? (
+            <p className="mudo">Nenhuma alteração publicada ainda.</p>
+          ) : (
+            <div className="tabela-rolagem">
+              <table className="tabela tabela--compacta">
+                <thead>
+                  <tr>
+                    <th>Data</th>
+                    <th>Usuário</th>
+                    <th>Tipo de veículo</th>
+                    <th>Alteração</th>
+                    <th>Valor anterior</th>
+                    <th>Novo valor</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {historico.slice(0, 40).map((h, i) => (
+                    <tr key={i}>
+                      <td className="sem-quebra">{formatarDataHora(h.em)}</td>
+                      <td>{h.por ?? '—'}</td>
+                      <td>
+                        {h.categoria}
+                        {h.tarifa !== 'Padrão' && <span className="mudo"> · {h.tarifa}</span>}
+                      </td>
+                      <td>{h.campo}</td>
+                      <td className="mudo">{h.antes}</td>
+                      <td>
+                        <strong>{h.depois}</strong>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
-          onFechar={() => setEdicao(null)}
+          <details className="detalhes-extra">
+            <summary>Versões da tabela de preços</summary>
+            <div className="tabela-rolagem">
+              <table className="tabela tabela--compacta">
+                <thead>
+                  <tr>
+                    <th>Versão</th>
+                    <th>Situação</th>
+                    <th>Valendo desde</th>
+                    <th>Publicada por</th>
+                    <th>Tickets cobrados</th>
+                    {podeEditar && <th />}
+                  </tr>
+                </thead>
+                <tbody>
+                  {p.historico.map((t) => (
+                    <tr key={t.id}>
+                      <td>
+                        v{t.versao} · {t.nome}
+                      </td>
+                      <td>
+                        <span className={`etiqueta ${CLASSE_SITUACAO[t.situacao]}`}>
+                          {ROTULO_SITUACAO[t.situacao]}
+                        </span>
+                      </td>
+                      <td className="sem-quebra">{formatarDataHora(t.vigenteDesde)}</td>
+                      <td>{t.publicadoPor ?? '—'}</td>
+                      <td>{t.ticketsUsaram}</td>
+                      {podeEditar && (
+                        <td>
+                          {!rascunho && t.situacao !== 'VIGENTE' && (
+                            <button
+                              type="button"
+                              className="botao-texto"
+                              disabled={ocupado}
+                              onClick={() =>
+                                void executar(async () => {
+                                  await tarifasApi.novaVersao({ baseId: t.id });
+                                  painel.recarregar();
+                                  setMensagem({
+                                    tipo: 'info',
+                                    texto: `Preços da versão ${t.versao} copiados. Confira e clique em Salvar alterações para voltarem a valer.`,
+                                  });
+                                })
+                              }
+                            >
+                              Usar como base
+                            </button>
+                          )}
+                        </td>
+                      )}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </details>
+          <details className="detalhes-extra">
+            <summary>Simular preço</summary>
+            <Simulador vigente={vigente} rascunho={rascunho} />
+          </details>
+        </section>
+      )}
+
+      {edicaoRegra && (
+        <DialogoRegra
+          tabelaId={edicaoRegra.tabelaId}
+          regra={edicaoRegra.regra}
+          nova={edicaoRegra.nova}
+          modelo={edicaoRegra.modelo}
+          categorias={categorias}
+          onFechar={() => {
+            const e = edicaoRegra;
+            setEdicaoRegra(null);
+            if (e.criouRascunho)
+              void tarifasApi
+                .descartar(e.tabelaId)
+                .catch(() => undefined)
+                .finally(() => painel.recarregar());
+          }}
           onSalvo={() => {
-            setEdicao(null);
-            setMensagem({
-              tipo: 'ok',
-              texto: 'Tarifa salva na nova versão. Ela só passa a valer quando for publicada.',
-            });
+            setEdicaoRegra(null);
             painel.recarregar();
+            setMensagem({
+              tipo: 'info',
+              texto: 'Alteração guardada. Clique em Salvar alterações para valer.',
+            });
           }}
         />
       )}
-      {publicando && rascunho && (
+      {excluindo && (
+        <Dialogo
+          aberto
+          perigo
+          titulo={`Excluir o período "${excluindo.nome}"?`}
+          textoConfirmar="Excluir"
+          enviando={ocupado}
+          onFechar={() => setExcluindo(null)}
+          onConfirmar={() => void excluirPeriodo(excluindo)}
+        >
+          <p className="mudo">
+            O período sai da próxima versão da tabela. Quem já entrou com ele continua pagando o preço da
+            entrada.
+          </p>
+        </Dialogo>
+      )}
+      {publicando && (
         <DialogoPublicar
+          rascunho={publicando}
           vigente={vigente}
-          rascunho={rascunho}
-          onFechar={() => setPublicando(false)}
+          onFechar={() => {
+            setPublicando(null);
+            painel.recarregar();
+          }}
           onPublicado={(texto) => {
-            setPublicando(false);
+            setPublicando(null);
             setMensagem({ tipo: 'ok', texto });
-            setAba('vigor');
             painel.recarregar();
           }}
         />
@@ -288,176 +709,92 @@ export function Tarifas() {
       {descartando && rascunho && (
         <Dialogo
           aberto
-          titulo={`Descartar a versão ${rascunho.versao}?`}
-          textoConfirmar="Descartar"
           perigo
+          titulo="Descartar as alterações não publicadas?"
+          textoConfirmar="Descartar"
           enviando={ocupado}
           onFechar={() => setDescartando(false)}
           onConfirmar={() =>
-            void executar(
-              () => tarifasApi.descartar(rascunho.id),
-              'Nova versão descartada. Os preços em vigor não mudaram.',
-              'vigor',
-            ).then(() => setDescartando(false))
+            void executar(async () => {
+              await tarifasApi.descartar(rascunho.id);
+              setDescartando(false);
+              setEdicoes({});
+              painel.recarregar();
+              setMensagem({
+                tipo: 'ok',
+                texto: 'Alterações descartadas. Continua valendo a tabela em vigor.',
+              });
+            })
           }
         >
-          <p className="mudo">
-            As alterações feitas nesta versão serão perdidas. Os preços em vigor continuam os mesmos.
-          </p>
+          <p className="mudo">Os preços voltam a ser os da tabela em vigor. Nada muda para os clientes.</p>
         </Dialogo>
       )}
-      {vendo && <DialogoVersao t={vendo} categorias={categorias} onFechar={() => setVendo(null)} />}
-    </>
-  );
-}
-
-function CabecalhoVersao({ t }: { t: TabelaTarifaResumo }) {
-  return (
-    <div className="versao-tarifa">
-      <span className={`etiqueta ${CLASSE_SITUACAO[t.situacao]}`}>{ROTULO_SITUACAO[t.situacao]}</span>
-      <strong>
-        Versão {t.versao} · {t.nome}
-      </strong>
-      {t.vigenteDesde && <span className="mudo">valendo desde {formatarDataHora(t.vigenteDesde)}</span>}
-      {t.publicadoPor && <span className="mudo">publicada por {t.publicadoPor}</span>}
-      <span className="mudo">{t.ticketsUsaram} ticket(s) cobrados por ela</span>
     </div>
   );
 }
 
-function EdicaoCabecalho({
-  t,
-  podeEditar,
-  onSalvo,
+function CampoValor({
+  rotulo,
+  dica,
+  valor,
+  onChange,
+  desabilitado,
 }: {
-  t: TabelaTarifaDetalhe;
-  podeEditar: boolean;
-  onSalvo: (msg: string) => void;
+  rotulo: string;
+  dica?: string;
+  valor: string;
+  onChange: (v: string) => void;
+  desabilitado: boolean;
 }) {
-  const [nome, setNome] = useState(t.nome);
-  const [descricao, setDescricao] = useState(t.descricao ?? '');
-  const [erro, setErro] = useState<string | null>(null);
-  const mudou = nome !== t.nome || descricao !== (t.descricao ?? '');
   return (
-    <form
-      className="cartao filtros"
-      onSubmit={(e) => {
-        e.preventDefault();
-        tarifasApi
-          .renomear(t.id, { nome, descricao: descricao || null })
-          .then(() => onSalvo('Nome da versão salvo.'))
-          .catch((x) => setErro(mensagemDeErro(x)));
-      }}
-    >
-      <label className="campo campo--crescer">
-        <span>Nome da versão</span>
+    <label className="campo campo-valor">
+      <span>{rotulo}</span>
+      <span className="campo-valor__caixa">
+        <span className="campo-valor__prefixo">R$</span>
         <input
-          value={nome}
-          onChange={(e) => setNome(e.target.value)}
-          maxLength={80}
-          required
-          disabled={!podeEditar}
+          inputMode="decimal"
+          value={valor}
+          placeholder={dica ? '—' : '0,00'}
+          onChange={(e) => onChange(e.target.value.replace(/[^\d,.]/g, ''))}
+          disabled={desabilitado}
         />
-      </label>
-      <label className="campo campo--crescer">
-        <span>Observação</span>
-        <input
-          value={descricao}
-          onChange={(e) => setDescricao(e.target.value)}
-          maxLength={255}
-          disabled={!podeEditar}
-        />
-      </label>
-      {podeEditar && (
-        <button type="submit" className="botao botao--secundario" disabled={!mudou}>
-          Salvar nome
-        </button>
-      )}
-      {erro && <p className="alerta alerta--erro">{erro}</p>}
-    </form>
+      </span>
+      {dica && <small className="mudo">{dica}</small>}
+    </label>
   );
 }
 
-function MudancasEPublicacao({
-  vigente,
-  rascunho,
-  podePublicar,
-  podeEditar,
-  onPublicar,
-  onDescartar,
-}: {
-  vigente: TabelaTarifaDetalhe | null;
-  rascunho: TabelaTarifaDetalhe;
-  podePublicar: boolean;
-  podeEditar: boolean;
-  onPublicar: () => void;
-  onDescartar: () => void;
-}) {
-  const mudancas = diferencas(vigente, rascunho);
-  return (
-    <section className="cartao" aria-labelledby="titulo-mudancas">
-      <div className="cartao__topo">
-        <h2 id="titulo-mudancas">O que muda {vigente ? `em relação à versão ${vigente.versao}` : ''}</h2>
-        <div className="acoes acoes--quebrar">
-          {podeEditar && (
-            <button type="button" className="botao-texto botao-texto--perigo" onClick={onDescartar}>
-              Descartar versão
-            </button>
-          )}
-          {podePublicar && (
-            <button type="button" className="botao" onClick={onPublicar} disabled={mudancas.length === 0}>
-              Publicar versão {rascunho.versao}…
-            </button>
-          )}
-        </div>
-      </div>
-      {mudancas.length ? (
-        <ul className="lista-mudancas">
-          {mudancas.map((m) => (
-            <li key={m}>{m}</li>
-          ))}
-        </ul>
-      ) : (
-        <p className="mudo">
-          Nenhuma diferença ainda. Edite uma tarifa ou cadastre uma tarifa especial abaixo.
-        </p>
-      )}
-      {!podePublicar && (
-        <p className="pequeno mudo">Publicar exige a permissão “Publicar e arquivar tabelas de tarifa”.</p>
-      )}
-    </section>
-  );
-}
-
+/** Confirmação antes de as alterações valerem: mostra exatamente o que muda. */
 function DialogoPublicar({
-  vigente,
   rascunho,
+  vigente,
   onFechar,
   onPublicado,
 }: {
-  vigente: TabelaTarifaDetalhe | null;
   rascunho: TabelaTarifaDetalhe;
+  vigente: TabelaTarifaDetalhe | null;
   onFechar: () => void;
-  onPublicado: (msg: string) => void;
+  onPublicado: (texto: string) => void;
 }) {
   const [quando, setQuando] = useState<'agora' | 'agendar'>('agora');
   const [data, setData] = useState('');
   const [enviando, setEnviando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
-  const mudancas = diferencas(vigente, rascunho);
+  const lista = alteracoes(vigente, rascunho);
 
   async function publicar() {
-    const inicio = quando === 'agendar' ? (data ? new Date(data) : null) : null;
-    if (quando === 'agendar' && (!inicio || Number.isNaN(inicio.getTime())))
-      return setErro('Informe a data e a hora de início.');
+    const inicio = quando === 'agendar' ? new Date(data) : null;
+    if (inicio && (Number.isNaN(inicio.getTime()) || inicio.getTime() <= Date.now()))
+      return setErro('Escolha uma data e hora no futuro.');
     setEnviando(true);
     setErro(null);
     try {
       await tarifasApi.publicar(rascunho.id, inicio ? inicio.toISOString() : null);
       onPublicado(
         inicio
-          ? `Versão ${rascunho.versao} agendada para ${formatarDataHora(inicio.toISOString())}. Até lá, valem os preços atuais.`
-          : `Versão ${rascunho.versao} publicada e em vigor. Os veículos que já estavam no estacionamento continuam com a tarifa da entrada.`,
+          ? `Novos preços agendados para ${formatarDataHora(inicio.toISOString())}.`
+          : 'Alterações salvas: os novos preços já valem para as próximas entradas.',
       );
     } catch (e) {
       setErro(mensagemDeErro(e));
@@ -469,152 +806,79 @@ function DialogoPublicar({
   return (
     <Dialogo
       aberto
-      titulo={`Publicar a versão ${rascunho.versao}`}
-      textoConfirmar={quando === 'agora' ? 'Publicar agora' : 'Agendar'}
+      largo
+      titulo="Salvar as alterações de tarifa?"
+      textoConfirmar={quando === 'agora' ? 'Salvar e aplicar agora' : 'Agendar'}
       enviando={enviando}
       erro={erro}
       onFechar={onFechar}
       onConfirmar={() => void publicar()}
     >
-      <ul className="lista-mudancas lista-mudancas--curta">
-        {mudancas.map((m) => (
-          <li key={m}>{m}</li>
-        ))}
-      </ul>
-      <div className="opcoes-linha" role="radiogroup" aria-label="Quando começa a valer">
-        <label className="opcao opcao--compacta">
-          <input type="radio" checked={quando === 'agora'} onChange={() => setQuando('agora')} />
-          Começa a valer agora
-        </label>
-        <label className="opcao opcao--compacta">
-          <input type="radio" checked={quando === 'agendar'} onChange={() => setQuando('agendar')} />
-          Agendar
-        </label>
-      </div>
-      {quando === 'agendar' && (
-        <label className="campo">
-          <span>Início da vigência</span>
-          <input type="datetime-local" value={data} onChange={(e) => setData(e.target.value)} required />
-        </label>
+      {lista.length === 0 ? (
+        <p className="mudo">Nenhuma diferença em relação à tabela em vigor.</p>
+      ) : (
+        <ul className="lista-alteracoes">
+          {lista.map((a, i) => (
+            <li key={i}>
+              <strong>
+                {a.categoria}
+                {a.tarifa !== 'Padrão' && ` · ${a.tarifa}`}
+              </strong>{' '}
+              — {a.campo}: <span className="mudo">{a.antes}</span> → <strong>{a.depois}</strong>
+            </li>
+          ))}
+        </ul>
       )}
-      <p className="alerta alerta--info">
-        Tickets abertos e já encerrados não mudam: cada um guarda a tarifa da entrada. Depois de publicada,
-        esta versão não pode mais ser alterada — para mudar de novo, crie outra versão.
-      </p>
+      <p className="mudo pequeno">Quem já está estacionado continua pagando a tarifa da hora da entrada.</p>
+      <fieldset className="opcoes-status">
+        <legend>Quando vale</legend>
+        <label className={`opcao-status${quando === 'agora' ? ' opcao-status--marcada' : ''}`}>
+          <input type="radio" checked={quando === 'agora'} onChange={() => setQuando('agora')} /> Agora, para
+          as próximas entradas
+        </label>
+        <label className={`opcao-status${quando === 'agendar' ? ' opcao-status--marcada' : ''}`}>
+          <input type="radio" checked={quando === 'agendar'} onChange={() => setQuando('agendar')} /> A partir
+          de:
+          <input
+            type="datetime-local"
+            value={data}
+            onChange={(e) => {
+              setData(e.target.value);
+              setQuando('agendar');
+            }}
+          />
+        </label>
+      </fieldset>
     </Dialogo>
   );
 }
 
-function Historico({
-  itens,
-  podeEditar,
-  onVer,
-  onBase,
-}: {
-  itens: TabelaTarifaResumo[];
-  podeEditar: boolean;
-  onVer: (id: string) => void;
-  onBase: (id: string) => void;
-}) {
-  if (!itens.length) return <p className="mudo">Nenhuma versão publicada ainda.</p>;
-  return (
-    <section className="cartao">
-      <div className="tabela-rolagem">
-        <table className="tabela tabela--compacta">
-          <thead>
-            <tr>
-              <th scope="col">Versão</th>
-              <th scope="col">Nome</th>
-              <th scope="col">Situação</th>
-              <th scope="col">Início da vigência</th>
-              <th scope="col">Publicada por</th>
-              <th scope="col" className="numero">
-                Tickets
-              </th>
-              <th scope="col">
-                <span className="sr-only">Ações</span>
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {itens.map((t) => (
-              <tr key={t.id}>
-                <td>v{t.versao}</td>
-                <td>{t.nome}</td>
-                <td>
-                  <span className={`etiqueta ${CLASSE_SITUACAO[t.situacao]}`}>
-                    {ROTULO_SITUACAO[t.situacao]}
-                  </span>
-                </td>
-                <td className="sem-quebra">{formatarDataHora(t.vigenteDesde)}</td>
-                <td>{t.publicadoPor ?? '—'}</td>
-                <td className="numero">{t.ticketsUsaram}</td>
-                <td>
-                  <div className="acoes acoes--tabela">
-                    <button
-                      type="button"
-                      className="botao botao--secundario botao--pequeno"
-                      onClick={() => onVer(t.id)}
-                    >
-                      Ver preços
-                    </button>
-                    {podeEditar && (
-                      <button
-                        type="button"
-                        className="botao-texto"
-                        onClick={() => onBase(t.id)}
-                        title="Cria uma nova versão com os preços desta"
-                      >
-                        Usar como base
-                      </button>
-                    )}
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      <p className="pequeno mudo">
-        Versões publicadas nunca são alteradas nem apagadas: cada ticket continua ligado à versão com que foi
-        cobrado.
-      </p>
-    </section>
-  );
-}
-
-function DialogoVersao({
-  t,
-  categorias,
-  onFechar,
-}: {
-  t: TabelaTarifaDetalhe;
-  categorias: Categoria[];
-  onFechar: () => void;
-}) {
-  const ref = useRef<HTMLDialogElement>(null);
+/** Alterações campo a campo entre versões publicadas consecutivas (dados reais do banco). */
+function useHistorico(assinatura: string): LinhaHistorico[] | null {
+  const [linhas, setLinhas] = useState<LinhaHistorico[] | null>(null);
   useEffect(() => {
-    const d = ref.current;
-    if (d && !d.open) d.showModal();
-  }, []);
-  return (
-    <dialog ref={ref} className="dialogo dialogo--largo" onClose={onFechar} aria-labelledby="versao-titulo">
-      <h2 id="versao-titulo">
-        Versão {t.versao} · {t.nome}
-      </h2>
-      <CabecalhoVersao t={t} />
-      <div className="grade-tarifas grade-tarifas--dialogo">
-        {porCategoria(t, categorias)
-          .filter(([, g]) => g.regras.length)
-          .map(([id, g]) => (
-            <CartaoCategoria key={id} categoriaId={id} categoria={g.nome} regras={g.regras} />
-          ))}
-      </div>
-      <div className="acoes acoes--direita">
-        <button type="button" className="botao" onClick={() => ref.current?.close()} autoFocus>
-          Fechar
-        </button>
-      </div>
-    </dialog>
-  );
+    let ativo = true;
+    const ids = assinatura
+      .split(',')
+      .filter(Boolean)
+      .map((x) => x.split(':'))
+      .filter(([, situacao]) => situacao !== 'ARQUIVADA')
+      .map(([id]) => id!);
+    Promise.all(ids.slice(0, 10).map((id) => tarifasApi.obter(id)))
+      .then((versoes) => {
+        const ordem = versoes.filter((v) => v.publicadoEm).sort((a, b) => a.versao - b.versao);
+        const saida: LinhaHistorico[] = [];
+        for (let i = 1; i < ordem.length; i++) {
+          const v = ordem[i]!;
+          for (const a of alteracoes(ordem[i - 1]!, v))
+            saida.push({ ...a, em: v.publicadoEm!, por: v.publicadoPor, versao: v.versao });
+        }
+        if (ativo) setLinhas(saida.reverse());
+      })
+      .catch(() => ativo && setLinhas([]));
+    return () => {
+      ativo = false;
+    };
+  }, [assinatura]);
+  return linhas;
 }

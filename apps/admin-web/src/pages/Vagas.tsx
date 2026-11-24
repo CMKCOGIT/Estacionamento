@@ -1,32 +1,59 @@
-import { useCallback, useEffect, useState } from 'react';
-import { formatarPlaca, type Categoria, type Vaga, type VagaDetalhe } from '@estacionamento/shared';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { useNavigate } from 'react-router';
+import {
+  formatarPlaca,
+  type Categoria,
+  type EstadoVaga,
+  type Vaga,
+  type VagaDetalhe,
+} from '@estacionamento/shared';
 import { useAuth } from '../auth/contexto';
+import { Dialogo } from '../components/Dialogo';
+import {
+  IconeAtualizar,
+  IconeCadeado,
+  IconeCarro,
+  IconeFiltro,
+  IconeLapis,
+  IconeMoto,
+  IconeProibido,
+  IconeRelogio,
+  IconeSaida,
+} from '../components/Icones';
 import {
   DialogoCapacidade,
   DialogoCategorias,
-  DialogoMotivo,
   DialogoVaga,
   mensagemDeErro,
 } from '../components/vagas/Dialogos';
-import { ESTADOS, MapaVagas, duracaoCurta } from '../components/vagas/MapaVagas';
+import { duracaoCurta } from '../components/vagas/MapaVagas';
 import { useAtualizacaoAutomatica } from '../hooks/useAtualizacaoAutomatica';
 import { formatarDataHora } from '../services/rotulos';
 import { vagasApi } from '../services/vagas';
 
-type Dialogo = 'nova' | 'editar' | 'bloquear' | 'remover' | 'capacidade' | 'categorias' | null;
+/** Situação mostrada na tela. REMOVIDA = desativada: aparece como "Indisponível". */
+const SITUACAO: Record<EstadoVaga, { rotulo: string; classe: string }> = {
+  LIVRE: { rotulo: 'Livre', classe: 'livre' },
+  OCUPADA: { rotulo: 'Ocupada', classe: 'ocupada' },
+  BLOQUEADA: { rotulo: 'Bloqueada', classe: 'bloqueada' },
+  REMOVIDA: { rotulo: 'Indisponível', classe: 'indisponivel' },
+};
+
+type Dialogos = 'nova' | 'editar' | 'capacidade' | 'categorias' | 'status' | 'saida' | null;
 
 export function Vagas() {
   const { temPermissao } = useAuth();
+  const navegar = useNavigate();
   const podeGerenciar = temPermissao('vaga.gerenciar');
   const podeCapacidade = temPermissao('vaga.capacidade');
+  const podeSaida = temPermissao('sessao.saida');
 
-  const [categoriaId, setCategoriaId] = useState('');
-  const [estado, setEstado] = useState('');
+  const [setor, setSetor] = useState('');
   const [busca, setBusca] = useState('');
-  const [incluirRemovidas, setIncluirRemovidas] = useState(false);
+  // Indisponíveis (desativadas) aparecem no mapa, em cinza
   const carregar = useCallback(
-    () => vagasApi.listar({ categoriaId, estado, busca: busca.trim(), incluirRemovidas }),
-    [categoriaId, estado, busca, incluirRemovidas],
+    () => vagasApi.listar({ busca: busca.trim(), incluirRemovidas: true }),
+    [busca],
   );
   const lista = useAtualizacaoAutomatica(carregar, 10_000);
 
@@ -44,23 +71,27 @@ export function Vagas() {
   }, [versaoCategorias]);
 
   const [selecionadaId, setSelecionadaId] = useState<string | null>(null);
-  const [dialogo, setDialogo] = useState<Dialogo>(null);
+  const [dialogo, setDialogo] = useState<Dialogos>(null);
   const [mensagem, setMensagem] = useState<{ tipo: 'ok' | 'erro'; texto: string } | null>(null);
 
-  const selecionada = lista.dados?.itens.find((v) => v.id === selecionadaId) ?? null;
+  const todas = lista.dados?.itens ?? [];
+  const visiveis = setor ? todas.filter((v) => (v.setor ?? '') === setor) : todas;
+  const selecionada = todas.find((v) => v.id === selecionadaId) ?? null;
+  const setores = [...new Set(todas.map((v) => v.setor ?? ''))].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  const codigoCategoria = new Map((categorias ?? []).map((c) => [c.id, c.codigo]));
+
   const setorPorCategoria = Object.fromEntries(
     (categorias ?? []).map((c) => {
       const contagem = new Map<string, number>();
-      for (const v of lista.dados?.itens ?? []) {
+      for (const v of todas)
         if (v.categoriaId === c.id && v.setor) contagem.set(v.setor, (contagem.get(v.setor) ?? 0) + 1);
-      }
       return [c.id, [...contagem.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? ''];
     }),
   );
   const ocupadasPorCategoria = Object.fromEntries(
     (categorias ?? []).map((c) => [
       c.id,
-      (lista.dados?.itens ?? []).filter((v) => v.categoriaId === c.id && v.estado === 'OCUPADA').length,
+      todas.filter((v) => v.categoriaId === c.id && v.estado === 'OCUPADA').length,
     ]),
   );
 
@@ -70,32 +101,33 @@ export function Vagas() {
     lista.atualizarAgora();
     setVersaoCategorias((v) => v + 1);
   };
-  const executar = async (acao: () => Promise<string>) => {
+
+  const criarPadrao = async () => {
     try {
-      concluir(await acao());
+      await vagasApi.criarCategoria('CARRO', 'Carro');
+      await vagasApi.criarCategoria('MOTO', 'Moto');
+      concluir('Categorias Carro e Moto criadas. Agora cadastre as vagas.');
     } catch (e) {
       setMensagem({ tipo: 'erro', texto: mensagemDeErro(e) });
     }
   };
 
-  const criarPadrao = () =>
-    void executar(async () => {
-      await vagasApi.criarCategoria('CARRO', 'Carro');
-      await vagasApi.criarCategoria('MOTO', 'Moto');
-      return 'Categorias Carro e Moto criadas. Agora cadastre as vagas.';
-    });
-
   const r = lista.dados?.resumo;
+  const total = r?.total ?? 0;
+  const pct = (n: number) => (total ? Math.round((n / total) * 100) : 0);
   const semCategorias = categorias !== null && categorias.length === 0;
 
   return (
-    <>
-      <header className="cabecalho">
-        <div>
-          <h1>Vagas</h1>
-          <p className="mudo">
-            Mapa em tempo real: muda sozinho a cada entrada e saída (atualiza a cada 10 s).
-          </p>
+    <div className="pagina-vagas">
+      <header className="cabecalho cabecalho--icone">
+        <div className="cabecalho__titulo">
+          <span className="selo-pagina" aria-hidden="true">
+            P
+          </span>
+          <div>
+            <h1>Vagas</h1>
+            <p className="mudo">Visualize e gerencie as vagas do estacionamento</p>
+          </div>
         </div>
         <div className="acoes acoes--quebrar">
           {podeGerenciar && (
@@ -113,7 +145,7 @@ export function Vagas() {
               className="botao botao--secundario"
               onClick={() => setDialogo('capacidade')}
             >
-              Configurar capacidade
+              Capacidade
             </button>
           )}
           {podeGerenciar && !semCategorias && (
@@ -129,8 +161,10 @@ export function Vagas() {
           {mensagem.texto}
         </p>
       )}
-      {lista.erro && lista.dados && (
-        <p className="alerta alerta--erro">Não foi possível atualizar: {lista.erro.message}</p>
+      {lista.erro && (
+        <p className="alerta alerta--erro" role="alert">
+          Não foi possível atualizar: {lista.erro.message}
+        </p>
       )}
 
       {semCategorias && (
@@ -141,15 +175,8 @@ export function Vagas() {
           </p>
           {podeGerenciar ? (
             <div className="acoes">
-              <button type="button" className="botao" onClick={criarPadrao}>
+              <button type="button" className="botao" onClick={() => void criarPadrao()}>
                 Criar Carro e Moto
-              </button>
-              <button
-                type="button"
-                className="botao botao--secundario"
-                onClick={() => setDialogo('categorias')}
-              >
-                Criar outra categoria
               </button>
             </div>
           ) : (
@@ -158,124 +185,150 @@ export function Vagas() {
         </section>
       )}
 
-      {r && (
-        <section className="resumo-vagas" aria-label="Resumo">
-          <Chip
-            classe="livre"
-            rotulo="Disponíveis"
-            valor={r.livres}
-            ativo={estado === 'LIVRE'}
-            onClick={() => setEstado(estado === 'LIVRE' ? '' : 'LIVRE')}
-          />
-          <Chip
-            classe="ocupada"
-            rotulo="Ocupadas"
-            valor={r.ocupadas}
-            ativo={estado === 'OCUPADA'}
-            onClick={() => setEstado(estado === 'OCUPADA' ? '' : 'OCUPADA')}
-          />
-          <Chip
-            classe="bloqueada"
-            rotulo="Bloqueadas"
-            valor={r.bloqueadas}
-            ativo={estado === 'BLOQUEADA'}
-            onClick={() => setEstado(estado === 'BLOQUEADA' ? '' : 'BLOQUEADA')}
-          />
-          <div className="chip chip--total">
-            <strong>{r.total}</strong> vagas no total
-            {r.removidas > 0 && <span className="mudo"> · {r.removidas} removida(s)</span>}
+      <section className="indicadores-vagas" aria-label="Resumo das vagas">
+        <Indicador
+          classe="total"
+          icone={<IconeCarro tamanho={30} />}
+          valor={r?.total}
+          rotulo="Total de vagas"
+        />
+        <Indicador
+          classe="livre"
+          icone={<IconeCarro tamanho={30} />}
+          valor={r?.livres}
+          rotulo="Livres"
+          pct={pct(r?.livres ?? 0)}
+        />
+        <Indicador
+          classe="ocupada"
+          icone={<IconeCarro tamanho={30} />}
+          valor={r?.ocupadas}
+          rotulo="Ocupadas"
+          pct={pct(r?.ocupadas ?? 0)}
+        />
+        <Indicador
+          classe="bloqueada"
+          icone={<IconeCadeado tamanho={28} />}
+          valor={r?.bloqueadas}
+          rotulo="Bloqueadas"
+          pct={pct(r?.bloqueadas ?? 0)}
+        />
+      </section>
+
+      <div className="vagas-corpo">
+        <section className="cartao vagas-mapa">
+          <div className="vagas-mapa__barra">
+            <label className="filtro-setor">
+              <IconeFiltro tamanho={18} />
+              <span>Filtrar por setor:</span>
+              <select value={setor} onChange={(e) => setSetor(e.target.value)}>
+                <option value="">Todos os setores</option>
+                {setores.map((s) => (
+                  <option key={s || '_'} value={s}>
+                    {s || 'Sem setor'}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <input
+              className="vagas-mapa__busca"
+              type="search"
+              placeholder="Buscar vaga ou placa"
+              aria-label="Buscar vaga ou placa"
+              value={busca}
+              onChange={(e) => setBusca(e.target.value)}
+              maxLength={20}
+            />
+            <ul className="legenda" aria-label="Legenda">
+              {(['LIVRE', 'OCUPADA', 'BLOQUEADA', 'REMOVIDA'] as const).map((e) => (
+                <li key={e}>
+                  <span
+                    className={`legenda__ponto legenda__ponto--${SITUACAO[e].classe}`}
+                    aria-hidden="true"
+                  />
+                  {SITUACAO[e].rotulo}
+                </li>
+              ))}
+            </ul>
           </div>
-        </section>
-      )}
 
-      <div className="filtros cartao">
-        <label className="campo campo--crescer">
-          <span>Buscar</span>
-          <input
-            type="search"
-            placeholder="Código da vaga ou placa"
-            value={busca}
-            onChange={(e) => setBusca(e.target.value)}
-            maxLength={20}
-          />
-        </label>
-        <label className="campo">
-          <span>Categoria</span>
-          <select value={categoriaId} onChange={(e) => setCategoriaId(e.target.value)}>
-            <option value="">Todas</option>
-            {(categorias ?? []).map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.nome}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="campo">
-          <span>Situação</span>
-          <select value={estado} onChange={(e) => setEstado(e.target.value)}>
-            <option value="">Todas</option>
-            <option value="LIVRE">Disponível</option>
-            <option value="OCUPADA">Ocupada</option>
-            <option value="BLOQUEADA">Bloqueada</option>
-            <option value="REMOVIDA">Removida</option>
-          </select>
-        </label>
-        <label className="opcao opcao--compacta">
-          <input
-            type="checkbox"
-            checked={incluirRemovidas}
-            onChange={(e) => setIncluirRemovidas(e.target.checked)}
-          />
-          Mostrar removidas
-        </label>
-      </div>
-
-      <div className={`grade-vagas${selecionada ? ' grade-vagas--com-painel' : ''}`}>
-        <section className="cartao cartao--largo">
           {!lista.dados && <p className="mudo">Carregando…</p>}
-          {lista.dados && lista.dados.itens.length === 0 && (
+          {lista.dados && visiveis.length === 0 && (
             <p className="mudo">
-              {r && r.total === 0 ? 'Nenhuma vaga cadastrada ainda.' : 'Nenhuma vaga com esses filtros.'}
+              {total === 0 && !busca ? 'Nenhuma vaga cadastrada ainda.' : 'Nenhuma vaga com esses filtros.'}
             </p>
           )}
-          {lista.dados && lista.dados.itens.length > 0 && (
-            <>
-              <Legenda />
-              <MapaVagas
-                vagas={lista.dados.itens}
-                selecionada={selecionadaId}
-                onSelecionar={(id) => setSelecionadaId(id === selecionadaId ? null : id)}
-              />
-            </>
-          )}
+          <div className="vagas-grade">
+            {visiveis.map((v) => {
+              const s = SITUACAO[v.estado];
+              const moto = codigoCategoria.get(v.categoriaId) === 'MOTO';
+              return (
+                <button
+                  key={v.id}
+                  type="button"
+                  className={`vaga-bloco vaga-bloco--${s.classe}${selecionadaId === v.id ? ' vaga-bloco--selecionada' : ''}`}
+                  onClick={() => setSelecionadaId(v.id)}
+                  aria-pressed={selecionadaId === v.id}
+                  aria-label={`Vaga ${v.codigo}, ${v.categoria}: ${s.rotulo}${v.ocupacao ? `, placa ${formatarPlaca(v.ocupacao.placa)}` : ''}`}
+                  title={
+                    v.bloqueio ? `Bloqueada: ${v.bloqueio.motivo}` : v.setor ? `Setor ${v.setor}` : undefined
+                  }
+                >
+                  <span className="vaga-bloco__codigo">{v.codigo}</span>
+                  <span className="vaga-bloco__icone">
+                    {v.estado === 'BLOQUEADA' ? (
+                      <IconeCadeado tamanho={26} />
+                    ) : v.estado === 'REMOVIDA' ? (
+                      <IconeProibido tamanho={26} />
+                    ) : moto ? (
+                      <IconeMoto tamanho={28} />
+                    ) : (
+                      <IconeCarro tamanho={28} />
+                    )}
+                  </span>
+                  <span className="vaga-bloco__pilula">{s.rotulo}</span>
+                </button>
+              );
+            })}
+          </div>
         </section>
 
-        {selecionada && (
-          <PainelVaga
-            key={selecionada.id}
-            vaga={selecionada}
-            podeGerenciar={podeGerenciar}
-            onFechar={() => setSelecionadaId(null)}
-            onEditar={() => setDialogo('editar')}
-            onBloquear={() => setDialogo('bloquear')}
-            onLiberar={() =>
-              void executar(
-                async () => (await vagasApi.liberar(selecionada.id), `Vaga ${selecionada.codigo} liberada.`),
-              )
-            }
-            onRemover={() => setDialogo('remover')}
-            onReativar={() =>
-              void executar(
-                async () => (
-                  await vagasApi.reativar(selecionada.id),
-                  `Vaga ${selecionada.codigo} reativada.`
-                ),
-              )
-            }
-          />
-        )}
+        <PainelDetalhes
+          vaga={selecionada}
+          podeGerenciar={podeGerenciar}
+          podeSaida={podeSaida}
+          atualizando={lista.atualizando}
+          onSaida={() => setDialogo('saida')}
+          onStatus={() => setDialogo('status')}
+          onEditar={() => setDialogo('editar')}
+          onAtualizar={() => {
+            setMensagem(null);
+            lista.atualizarAgora();
+          }}
+        />
       </div>
 
+      {selecionada?.ocupacao && dialogo === 'saida' && (
+        <Dialogo
+          aberto
+          titulo={`Dar saída na vaga ${selecionada.codigo}?`}
+          textoConfirmar="Ir para a saída"
+          onFechar={() => setDialogo(null)}
+          onConfirmar={() => void navegar(`/operacao?saida=${selecionada.ocupacao!.sessaoId}`)}
+        >
+          <p>
+            Veículo <strong>{formatarPlaca(selecionada.ocupacao.placa)}</strong>, ticket nº{' '}
+            {selecionada.ocupacao.numero}, estacionado há {duracaoCurta(selecionada.ocupacao.permanenciaMin)}.
+          </p>
+          <p className="mudo">
+            Você vai para a tela de saída com o ticket já aberto, para conferir o valor e registrar o
+            pagamento. A saída só é gravada quando você confirmar lá.
+          </p>
+        </Dialogo>
+      )}
+      {selecionada && dialogo === 'status' && (
+        <DialogoStatus vaga={selecionada} onFechar={() => setDialogo(null)} onConcluir={concluir} />
+      )}
       {categorias && dialogo === 'nova' && (
         <DialogoVaga
           aberto
@@ -293,43 +346,6 @@ export function Vagas() {
           categorias={categorias}
           setores={lista.dados?.setores ?? []}
           onFechar={() => setDialogo(null)}
-          onConcluir={concluir}
-        />
-      )}
-      {selecionada && dialogo === 'bloquear' && (
-        <DialogoMotivo
-          aberto
-          titulo={`Bloquear a vaga ${selecionada.codigo}?`}
-          texto="A vaga deixa de receber veículos até ser liberada. Ela continua contando na capacidade."
-          textoConfirmar="Bloquear"
-          sugestoes={['Manutenção', 'Pintura da demarcação', 'Reservada', 'Obra', 'Piso danificado']}
-          onFechar={() => setDialogo(null)}
-          acao={async (motivo) => (
-            await vagasApi.bloquear(selecionada.id, motivo),
-            `Vaga ${selecionada.codigo} bloqueada.`
-          )}
-          onConcluir={concluir}
-        />
-      )}
-      {selecionada && dialogo === 'remover' && (
-        <DialogoMotivo
-          aberto
-          perigo
-          titulo={`Excluir a vaga ${selecionada.codigo}?`}
-          texto={
-            selecionada.temHistorico
-              ? 'Esta vaga já recebeu veículos. Para preservar o histórico, ela será desativada: sai do mapa e da capacidade, mas os registros antigos continuam. Você pode reativá-la depois.'
-              : 'Esta vaga nunca foi usada e será excluída definitivamente.'
-          }
-          textoConfirmar={selecionada.temHistorico ? 'Desativar vaga' : 'Excluir vaga'}
-          onFechar={() => setDialogo(null)}
-          acao={async (motivo) => {
-            const r = await vagasApi.remover(selecionada.id, motivo);
-            setSelecionadaId(null);
-            return r.resultado === 'EXCLUIDA'
-              ? `Vaga ${r.codigo} excluída.`
-              : `Vaga ${r.codigo} desativada (histórico preservado).`;
-          }}
           onConcluir={concluir}
         />
       )}
@@ -351,75 +367,63 @@ export function Vagas() {
           onAlterou={() => setVersaoCategorias((v) => v + 1)}
         />
       )}
-    </>
+    </div>
   );
 }
 
-function Chip({
+function Indicador({
   classe,
-  rotulo,
+  icone,
   valor,
-  ativo,
-  onClick,
+  rotulo,
+  pct,
 }: {
   classe: string;
+  icone: ReactNode;
+  valor: number | undefined;
   rotulo: string;
-  valor: number;
-  ativo: boolean;
-  onClick: () => void;
+  pct?: number;
 }) {
   return (
-    <button
-      type="button"
-      className={`chip chip--${classe}${ativo ? ' chip--ativo' : ''}`}
-      onClick={onClick}
-      aria-pressed={ativo}
-      title={`Mostrar só: ${rotulo.toLowerCase()}`}
-    >
-      <span className="chip__marca" aria-hidden="true" />
-      <strong>{valor}</strong> {rotulo}
-    </button>
-  );
-}
-
-function Legenda() {
-  return (
-    <ul className="legenda-vagas" aria-label="Legenda">
-      {(['LIVRE', 'OCUPADA', 'BLOQUEADA'] as const).map((e) => (
-        <li key={e}>
-          <span className={`legenda-vagas__cor vaga--${e.toLowerCase()}`} aria-hidden="true">
-            {ESTADOS[e].icone}
+    <div className={`indicador indicador--${classe}`}>
+      <span className="indicador__icone">{icone}</span>
+      <div className="indicador__texto">
+        <strong>{valor ?? '…'}</strong>
+        <span>{rotulo}</span>
+        {pct !== undefined && (
+          <span className="indicador__barra" role="img" aria-label={`${pct}% do total`}>
+            <span style={{ width: `${pct}%` }} />
           </span>
-          {ESTADOS[e].rotulo}
-        </li>
-      ))}
-    </ul>
+        )}
+      </div>
+    </div>
   );
 }
 
 interface PainelProps {
-  vaga: Vaga;
+  vaga: Vaga | null;
   podeGerenciar: boolean;
-  onFechar: () => void;
+  podeSaida: boolean;
+  atualizando: boolean;
+  onSaida: () => void;
+  onStatus: () => void;
   onEditar: () => void;
-  onBloquear: () => void;
-  onLiberar: () => void;
-  onRemover: () => void;
-  onReativar: () => void;
+  onAtualizar: () => void;
 }
 
-function PainelVaga({
+function PainelDetalhes({
   vaga,
   podeGerenciar,
-  onFechar,
+  podeSaida,
+  atualizando,
+  onSaida,
+  onStatus,
   onEditar,
-  onBloquear,
-  onLiberar,
-  onRemover,
-  onReativar,
+  onAtualizar,
 }: PainelProps) {
   const [detalhe, setDetalhe] = useState<VagaDetalhe | null>(null);
   useEffect(() => {
+    if (!vaga) return;
     let ativo = true;
     vagasApi
       .obter(vaga.id)
@@ -428,112 +432,258 @@ function PainelVaga({
     return () => {
       ativo = false;
     };
-  }, [vaga.id, vaga.estado]);
-  const e = ESTADOS[vaga.estado];
+  }, [vaga?.id, vaga?.estado, vaga]);
 
-  return (
-    <aside className="cartao painel-vaga" aria-label={`Detalhes da vaga ${vaga.codigo}`}>
-      <div className="painel-vaga__topo">
-        <h2>Vaga {vaga.codigo}</h2>
-        <button type="button" className="botao-texto" onClick={onFechar} aria-label="Fechar detalhes">
-          Fechar
+  if (!vaga)
+    return (
+      <aside className="cartao vaga-detalhes vaga-detalhes--vazio" aria-label="Detalhes da vaga">
+        <h2>Detalhes da vaga</h2>
+        <p className="mudo">Clique numa vaga do mapa para ver o veículo, o horário de entrada e as ações.</p>
+        <button
+          type="button"
+          className="botao botao--secundario botao--largo"
+          onClick={onAtualizar}
+          disabled={atualizando}
+        >
+          <IconeAtualizar tamanho={18} /> Atualizar
         </button>
+      </aside>
+    );
+
+  const s = SITUACAO[vaga.estado];
+  const usos = detalhe && detalhe.id === vaga.id ? detalhe.ultimosUsos : null;
+  return (
+    <aside className="cartao vaga-detalhes" aria-label={`Detalhes da vaga ${vaga.codigo}`}>
+      <h2>Detalhes da vaga</h2>
+      <div className="vaga-detalhes__destaque">
+        <span className="vaga-detalhes__codigo">{vaga.codigo}</span>
+        <span className={`pilula pilula--${s.classe}`}>{s.rotulo}</span>
       </div>
-      <p className={`estado-vaga estado-vaga--${vaga.estado.toLowerCase()}`}>
-        <span aria-hidden="true">{e.icone}</span> {e.rotulo}
-      </p>
-      <dl className="resumo resumo--linhas">
-        <div>
-          <dt>Categoria</dt>
-          <dd>{vaga.categoria}</dd>
-        </div>
-        <div>
-          <dt>Setor</dt>
-          <dd>{vaga.setor ?? '—'}</dd>
-        </div>
-        <div>
-          <dt>Coberta</dt>
-          <dd>{vaga.coberta ? 'Sim' : 'Não'}</dd>
+
+      <dl className="vaga-detalhes__linhas">
+        {vaga.ocupacao ? (
+          <>
+            <div>
+              <IconeCarro tamanho={20} />
+              <dt>Veículo</dt>
+              <dd>{formatarPlaca(vaga.ocupacao.placa)}</dd>
+            </div>
+            <div>
+              <IconeRelogio tamanho={20} />
+              <dt>Entrada</dt>
+              <dd>{formatarDataHora(vaga.ocupacao.entradaEm)}</dd>
+            </div>
+            <div>
+              <IconeRelogio tamanho={20} />
+              <dt>Tempo estacionado</dt>
+              <dd>{duracaoCurta(vaga.ocupacao.permanenciaMin)}</dd>
+            </div>
+          </>
+        ) : vaga.bloqueio ? (
+          <>
+            <div>
+              <IconeCadeado tamanho={20} />
+              <dt>Motivo do bloqueio</dt>
+              <dd>{vaga.bloqueio.motivo}</dd>
+            </div>
+            <div>
+              <IconeRelogio tamanho={20} />
+              <dt>Bloqueada em</dt>
+              <dd>
+                {formatarDataHora(vaga.bloqueio.em)}
+                {vaga.bloqueio.por && <span className="mudo"> · {vaga.bloqueio.por}</span>}
+              </dd>
+            </div>
+          </>
+        ) : (
+          <div>
+            <IconeCarro tamanho={20} />
+            <dt>Veículo</dt>
+            <dd className="mudo">{vaga.estado === 'REMOVIDA' ? 'Vaga desativada' : 'Nenhum veículo'}</dd>
+          </div>
+        )}
+        <div className="vaga-detalhes__secundaria">
+          <dt>Categoria · setor</dt>
+          <dd>
+            {vaga.categoria} · {vaga.setor ?? 'sem setor'}
+            {vaga.coberta && ' · coberta'}
+          </dd>
         </div>
         {vaga.observacao && (
-          <div>
+          <div className="vaga-detalhes__secundaria">
             <dt>Observação</dt>
             <dd>{vaga.observacao}</dd>
           </div>
         )}
       </dl>
 
-      {vaga.ocupacao && (
-        <div className="destaque-ocupacao">
-          <strong>{formatarPlaca(vaga.ocupacao.placa)}</strong>
-          <span className="mudo">
-            Ticket nº {vaga.ocupacao.numero} · entrou {formatarDataHora(vaga.ocupacao.entradaEm)} · há{' '}
-            {duracaoCurta(vaga.ocupacao.permanenciaMin)}
-          </span>
-        </div>
-      )}
-      {vaga.bloqueio && (
-        <div className="destaque-bloqueio">
-          <strong>{vaga.bloqueio.motivo}</strong>
-          <span className="mudo">
-            Bloqueada {formatarDataHora(vaga.bloqueio.em)}
-            {vaga.bloqueio.por && ` por ${vaga.bloqueio.por}`}
-          </span>
-        </div>
-      )}
+      <div className="vaga-detalhes__acoes">
+        {podeSaida && (
+          <button
+            type="button"
+            className="botao botao--largo"
+            onClick={onSaida}
+            disabled={vaga.estado !== 'OCUPADA'}
+          >
+            <IconeSaida tamanho={18} /> Dar saída
+          </button>
+        )}
+        {podeGerenciar && (
+          <button type="button" className="botao botao--contorno botao--largo" onClick={onStatus}>
+            <IconeLapis tamanho={18} /> Alterar status
+          </button>
+        )}
+        <button
+          type="button"
+          className="botao botao--secundario botao--largo"
+          onClick={onAtualizar}
+          disabled={atualizando}
+        >
+          <IconeAtualizar tamanho={18} /> {atualizando ? 'Atualizando…' : 'Atualizar'}
+        </button>
+        {podeGerenciar && vaga.estado !== 'REMOVIDA' && (
+          <button type="button" className="botao-texto" onClick={onEditar}>
+            Editar dados da vaga
+          </button>
+        )}
+      </div>
 
-      {podeGerenciar && (
-        <div className="acoes acoes--quebrar">
-          {vaga.estado !== 'REMOVIDA' && (
-            <button type="button" className="botao botao--secundario" onClick={onEditar}>
-              Editar
-            </button>
-          )}
-          {vaga.estado === 'LIVRE' && (
-            <button type="button" className="botao botao--secundario" onClick={onBloquear}>
-              Bloquear
-            </button>
-          )}
-          {vaga.estado === 'BLOQUEADA' && (
-            <button type="button" className="botao" onClick={onLiberar}>
-              Liberar
-            </button>
-          )}
-          {(vaga.estado === 'LIVRE' || vaga.estado === 'BLOQUEADA') && (
-            <button type="button" className="botao botao--perigo" onClick={onRemover}>
-              Excluir
-            </button>
-          )}
-          {vaga.estado === 'REMOVIDA' && (
-            <button type="button" className="botao" onClick={onReativar}>
-              Reativar
-            </button>
-          )}
-        </div>
-      )}
-      {vaga.estado === 'OCUPADA' && podeGerenciar && (
-        <p className="mudo pequeno">
-          Vaga ocupada: registre a saída do veículo para poder bloquear ou excluir.
-        </p>
-      )}
-
-      <h3>Últimos usos</h3>
-      {!detalhe && <p className="mudo">Carregando…</p>}
-      {detalhe && detalhe.ultimosUsos.length === 0 && (
-        <p className="mudo">Esta vaga ainda não recebeu veículos.</p>
-      )}
-      {detalhe && detalhe.ultimosUsos.length > 0 && (
-        <ul className="lista-simples">
-          {detalhe.ultimosUsos.map((u) => (
-            <li key={u.sessaoId}>
-              <code>{formatarPlaca(u.placa)}</code>{' '}
-              <span className="mudo">· {formatarDataHora(u.entradaEm)}</span>
-              {u.status === 'CANCELADA' && <span className="mudo"> · cancelado</span>}
-              {u.status === 'ABERTA' && <span className="mudo"> · ainda estacionado</span>}
-            </li>
-          ))}
-        </ul>
-      )}
+      <details className="vaga-detalhes__usos">
+        <summary>Últimos usos</summary>
+        {!usos && <p className="mudo">Carregando…</p>}
+        {usos && usos.length === 0 && <p className="mudo">Esta vaga ainda não recebeu veículos.</p>}
+        {usos && usos.length > 0 && (
+          <ul className="lista-simples">
+            {usos.map((u) => (
+              <li key={u.sessaoId}>
+                <code>{formatarPlaca(u.placa)}</code>{' '}
+                <span className="mudo">· {formatarDataHora(u.entradaEm)}</span>
+                {u.status === 'CANCELADA' && <span className="mudo"> · cancelado</span>}
+                {u.status === 'ABERTA' && <span className="mudo"> · ainda estacionado</span>}
+              </li>
+            ))}
+          </ul>
+        )}
+      </details>
     </aside>
+  );
+}
+
+type NovoStatus = 'LIVRE' | 'BLOQUEADA' | 'REMOVIDA';
+
+/** Alterar a situação da vaga, sempre com confirmação. */
+function DialogoStatus({
+  vaga,
+  onFechar,
+  onConcluir,
+}: {
+  vaga: Vaga;
+  onFechar: () => void;
+  onConcluir: (msg: string) => void;
+}) {
+  const opcoes: NovoStatus[] =
+    vaga.estado === 'LIVRE'
+      ? ['BLOQUEADA', 'REMOVIDA']
+      : vaga.estado === 'BLOQUEADA'
+        ? ['LIVRE', 'REMOVIDA']
+        : vaga.estado === 'REMOVIDA'
+          ? ['LIVRE']
+          : [];
+  const [novo, setNovo] = useState<NovoStatus | null>(opcoes[0] ?? null);
+  const [motivo, setMotivo] = useState('');
+  const [enviando, setEnviando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+  const precisaMotivo = novo === 'BLOQUEADA' || novo === 'REMOVIDA';
+
+  async function confirmar() {
+    if (!novo) return onFechar();
+    if (precisaMotivo && motivo.trim().length < 3) return setErro('Informe o motivo (pelo menos 3 letras).');
+    setEnviando(true);
+    setErro(null);
+    try {
+      if (novo === 'BLOQUEADA') await vagasApi.bloquear(vaga.id, motivo.trim());
+      else if (novo === 'LIVRE' && vaga.estado === 'REMOVIDA') await vagasApi.reativar(vaga.id);
+      else if (novo === 'LIVRE') await vagasApi.liberar(vaga.id);
+      else {
+        const r = await vagasApi.remover(vaga.id, motivo.trim());
+        return onConcluir(
+          r.resultado === 'EXCLUIDA'
+            ? `Vaga ${r.codigo} excluída (nunca tinha sido usada).`
+            : `Vaga ${r.codigo} agora está indisponível (histórico preservado).`,
+        );
+      }
+      onConcluir(`Vaga ${vaga.codigo}: ${SITUACAO[novo].rotulo.toLowerCase()}.`);
+    } catch (e) {
+      setErro(mensagemDeErro(e));
+    } finally {
+      setEnviando(false);
+    }
+  }
+
+  return (
+    <Dialogo
+      aberto
+      titulo={`Alterar status da vaga ${vaga.codigo}`}
+      textoConfirmar={opcoes.length ? 'Confirmar alteração' : 'Fechar'}
+      perigo={novo === 'REMOVIDA'}
+      enviando={enviando}
+      erro={erro}
+      onFechar={onFechar}
+      onConfirmar={() => void confirmar()}
+    >
+      <p>
+        Situação atual:{' '}
+        <span className={`pilula pilula--${SITUACAO[vaga.estado].classe}`}>
+          {SITUACAO[vaga.estado].rotulo}
+        </span>
+      </p>
+      {vaga.estado === 'OCUPADA' ? (
+        <p className="mudo">A vaga está ocupada. Dê saída no veículo antes de mudar a situação dela.</p>
+      ) : (
+        <>
+          <fieldset className="opcoes-status">
+            <legend>Nova situação</legend>
+            {opcoes.map((o) => (
+              <label key={o} className={`opcao-status${novo === o ? ' opcao-status--marcada' : ''}`}>
+                <input type="radio" name="status" checked={novo === o} onChange={() => setNovo(o)} />
+                <span className={`legenda__ponto legenda__ponto--${SITUACAO[o].classe}`} aria-hidden="true" />
+                <span>
+                  <strong>{SITUACAO[o].rotulo}</strong>
+                  <span className="mudo pequeno">
+                    {o === 'LIVRE'
+                      ? ' — volta a receber veículos'
+                      : o === 'BLOQUEADA'
+                        ? ' — temporário (manutenção, reserva...): continua na capacidade'
+                        : vaga.temHistorico
+                          ? ' — desativada: sai da capacidade, o histórico é preservado'
+                          : ' — nunca usada: será excluída'}
+                  </span>
+                </span>
+              </label>
+            ))}
+          </fieldset>
+          {precisaMotivo && (
+            <label className="campo">
+              <span>Motivo</span>
+              <input
+                value={motivo}
+                onChange={(e) => setMotivo(e.target.value)}
+                maxLength={255}
+                placeholder={
+                  novo === 'BLOQUEADA' ? 'Ex.: Manutenção, Reservada' : 'Ex.: Vaga eliminada na reforma'
+                }
+                list="sugestoes-motivo"
+                autoFocus
+              />
+              <datalist id="sugestoes-motivo">
+                {['Manutenção', 'Pintura da demarcação', 'Reservada', 'Obra', 'Piso danificado'].map((m) => (
+                  <option key={m} value={m} />
+                ))}
+              </datalist>
+            </label>
+          )}
+        </>
+      )}
+    </Dialogo>
   );
 }

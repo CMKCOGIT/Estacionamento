@@ -62,28 +62,56 @@ export function quandoVale(r: RegraCadastrada): string {
 }
 
 const chave = (r: RegraCadastrada) => `${r.categoriaId}|${r.tipo}|${r.nome ?? ''}`;
-const titulo = (r: RegraCadastrada) => `${r.categoria} · ${r.tipo === 'PADRAO' ? 'padrão' : r.nome}`;
 
-/** O que muda do que está em vigor para o rascunho (mostrado antes de publicar). */
-export function diferencas(atual: TabelaTarifaDetalhe | null, nova: TabelaTarifaDetalhe): string[] {
+export interface Alteracao {
+  categoria: string;
+  /** "Padrão" ou o nome da tarifa por período. */
+  tarifa: string;
+  campo: string;
+  antes: string;
+  depois: string;
+}
+
+/** Mesmo que `diferencas`, em colunas (tela de histórico de alterações). */
+export function alteracoes(atual: TabelaTarifaDetalhe | null, nova: TabelaTarifaDetalhe): Alteracao[] {
   const antes = new Map((atual?.regras ?? []).map((r) => [chave(r), r]));
-  const saida: string[] = [];
+  const nome = (r: RegraCadastrada) => (r.tipo === 'PADRAO' ? 'Padrão' : (r.nome ?? ''));
+  const saida: Alteracao[] = [];
   for (const r of nova.regras) {
     const a = antes.get(chave(r));
     antes.delete(chave(r));
+    const base = { categoria: r.categoria, tarifa: nome(r) };
     if (!a) {
-      saida.push(`${titulo(r)}: nova${r.ativo ? '' : ' (desativada)'}`);
+      saida.push({
+        ...base,
+        campo: r.tipo === 'PADRAO' ? 'Tarifa criada' : 'Período criado',
+        antes: '—',
+        depois: r.ativo ? 'ativo' : 'desativado',
+      });
       continue;
     }
-    if (a.ativo !== r.ativo) saida.push(`${titulo(r)}: ${r.ativo ? 'reativada' : 'desativada'}`);
+    if (a.ativo !== r.ativo)
+      saida.push({
+        ...base,
+        campo: 'Situação',
+        antes: a.ativo ? 'ativa' : 'desativada',
+        depois: r.ativo ? 'ativa' : 'desativada',
+      });
     const la = new Map(linhasDaRegra(a));
     for (const [rotulo, valor] of linhasDaRegra(r)) {
       const v = la.get(rotulo);
-      if (v !== undefined && v !== valor) saida.push(`${titulo(r)}: ${rotulo.toLowerCase()} ${v} → ${valor}`);
-      else if (v === undefined) saida.push(`${titulo(r)}: ${rotulo.toLowerCase()} ${valor}`);
+      if (v !== valor) saida.push({ ...base, campo: rotulo, antes: v ?? '—', depois: valor });
     }
-    if (quandoVale(a) !== quandoVale(r)) saida.push(`${titulo(r)}: ${quandoVale(r).toLowerCase()}`);
+    if (quandoVale(a) !== quandoVale(r))
+      saida.push({ ...base, campo: 'Quando vale', antes: quandoVale(a), depois: quandoVale(r) });
   }
-  for (const r of antes.values()) saida.push(`${titulo(r)}: removida`);
+  for (const r of antes.values())
+    saida.push({
+      categoria: r.categoria,
+      tarifa: nome(r),
+      campo: r.tipo === 'PADRAO' ? 'Tarifa removida' : 'Período removido',
+      antes: 'existia',
+      depois: '—',
+    });
   return saida;
 }

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router';
 import {
   formatarCentavos,
   formatarPlaca,
@@ -61,6 +62,26 @@ export function Operacao() {
         .then((r) => setFormas(r.itens))
         .catch(() => undefined);
   }, [podeSaida]);
+
+  // Vindo da tela de Vagas ("Dar saída"): abre o ticket direto no painel de saída
+  const [parametros, setParametros] = useSearchParams();
+  const saidaPedida = parametros.get('saida');
+  useEffect(() => {
+    if (!saidaPedida || !/^[0-9A-Z]{26}$/.test(saidaPedida)) return;
+    let ativo = true;
+    sessoesApi
+      .obter(saidaPedida)
+      .then((s) => {
+        if (!ativo) return;
+        setSaida(s);
+        refSaida.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      })
+      .catch((e: unknown) => ativo && setMensagem({ tipo: 'erro', texto: mensagemDeErro(e) }))
+      .finally(() => setParametros({}, { replace: true }));
+    return () => {
+      ativo = false;
+    };
+  }, [saidaPedida, setParametros]);
 
   const carregarAbertas = useCallback(() => sessoesApi.abertas(), []);
   const abertas = useAtualizacaoAutomatica<Lista<SessaoDetalhe>>(carregarAbertas, 15_000);

@@ -1,7 +1,8 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router';
 import { AuthProvider } from './auth/AuthProvider';
 import { RotaProtegida } from './auth/RotaProtegida';
-import { Layout } from './components/Layout';
+import { Layout, PERMISSOES_VAGAS } from './components/Layout';
+import { useAuth } from './auth/contexto';
 import { Atividades } from './pages/Atividades';
 import { Backups } from './pages/Backups';
 import { Monitoramento } from './pages/Monitoramento';
@@ -38,7 +39,9 @@ export function App() {
               </RotaProtegida>
             }
           >
-            <Route index element={<Dashboard />} />
+            {/* Vagas é a tela principal; quem não vê vagas cai no Painel */}
+            <Route index element={<Inicio />} />
+            <Route path="painel" element={<Dashboard />} />
             <Route path="trocar-senha" element={<TrocarSenha />} />
             <Route
               path="relatorios"
@@ -111,22 +114,7 @@ export function App() {
                 </RotaProtegida>
               }
             />
-            <Route
-              path="vagas"
-              element={
-                <RotaProtegida
-                  permissoes={[
-                    'vaga.gerenciar',
-                    'vaga.capacidade',
-                    'sessao.consultar',
-                    'sessao.entrada',
-                    'relatorio.operacional',
-                  ]}
-                >
-                  <Vagas />
-                </RotaProtegida>
-              }
-            />
+            <Route path="vagas" element={<Navigate to="/" replace />} />
             <Route
               path="usuarios"
               element={
@@ -205,4 +193,9 @@ export function App() {
       </BrowserRouter>
     </AuthProvider>
   );
+}
+
+function Inicio() {
+  const { temPermissao } = useAuth();
+  return temPermissao(...PERMISSOES_VAGAS) ? <Vagas /> : <Navigate to="/painel" replace />;
 }

@@ -49,16 +49,14 @@ A tela mostra qual tarifa será usada antes de confirmar a entrada.
 
 As tarifas ficam em **tabelas versionadas**.
 
-1. **Alterar preços** cria uma **nova versão** (rascunho) com a cópia dos preços em vigor. Só existe uma versão em edição por vez. "Usar como base", no histórico, copia uma versão antiga, o que permite voltar a preços anteriores.
-2. No rascunho, você pode:
-   - **editar** qualquer tarifa;
-   - **cadastrar** tarifas especiais (ou a padrão de uma categoria nova);
-   - **desativar** ou **reativar** uma tarifa;
-   - **remover** uma especial que só existe nesta versão.
+Na tela **Financeiro → Tarifas**, cada categoria (Carro, Moto...) tem a sua aba, independente das outras:
 
-   O quadro **"O que muda"** lista cada diferença em relação à versão em vigor, e o **simulador** mostra lado a lado quanto custa ficar X horas na versão em vigor e na nova.
-3. **Publicar** pode ser **agora** ou **agendado** para uma data futura. Até essa data, valem os preços atuais. Um agendamento pode ser cancelado (a versão é arquivada).
-4. Depois de publicada, a versão **nunca mais muda**. Para mudar de novo, crie outra versão.
+1. **Valores básicos:** primeira hora, hora adicional, diária e máximo cobrado por dia. "Mais opções" abre tolerância, fração e carência.
+2. **Tarifas por período:** preços para certos horários ou dias (ex.: Noturno 18:00–06:00) ou escolhidos pelo operador na entrada (convênios). Dá para **adicionar**, **editar** (inclusive desativar) e **excluir**.
+3. Toda alteração fica guardada numa **versão em edição**; um aviso mostra que há alterações não publicadas, e **Descartar alterações** volta ao que está em vigor. Só existe uma versão em edição por vez.
+4. **Salvar alterações** mostra exatamente o que muda (valor anterior → novo) e pede a confirmação. Pode valer **agora** ou ser **agendado** para uma data futura. Até essa data, valem os preços atuais. Um agendamento pode ser cancelado (a versão é arquivada). Salvar exige a permissão de publicar; quem só edita deixa as alterações guardadas para um responsável.
+5. **Histórico de alterações:** cada mudança publicada, campo a campo, com data, usuário, categoria, valor anterior e novo. Em "Versões da tabela de preços", **Usar como base** copia uma versão antiga para voltar a preços anteriores. "Simular preço" compara quanto custa ficar X horas na versão em vigor e na em edição.
+6. Depois de publicada, a versão **nunca mais muda**. Para mudar de novo, crie outra versão.
 
 Regras de proteção:
 

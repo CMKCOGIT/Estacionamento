@@ -124,7 +124,7 @@ export function DialogoRegra({ tabelaId, regra, nova, categorias, modelo, onFech
     problemas.push('Início e fim do horário não podem ser iguais.');
 
   async function salvar() {
-    if (especial && !nome.trim()) return setErro('Dê um nome à tarifa especial.');
+    if (especial && !nome.trim()) return setErro('Dê um nome ao período (ex.: Noturno).');
     if (problemas.length) return setErro(problemas[0]!);
     setEnviando(true);
     setErro(null);
@@ -140,14 +140,14 @@ export function DialogoRegra({ tabelaId, regra, nova, categorias, modelo, onFech
   const titulo = regra
     ? `Editar ${especial ? `"${regra.nome}"` : 'tarifa padrão'} · ${categoria}`
     : especial
-      ? `Nova tarifa especial · ${categoria}`
+      ? `Novo período · ${categoria}`
       : `Tarifa padrão · ${categoria}`;
 
   return (
     <Dialogo
       aberto
       titulo={titulo}
-      textoConfirmar="Salvar na nova versão"
+      textoConfirmar="Guardar"
       enviando={enviando}
       erro={erro}
       onFechar={onFechar}
