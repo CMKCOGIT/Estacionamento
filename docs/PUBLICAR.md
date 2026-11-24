@@ -4,23 +4,24 @@ Para o cliente acompanhar o ticket pelo celular, três peças ficam na internet.
 
 | Peça | Para que serve | Onde |
 |------|----------------|------|
-| Banco de dados da nuvem | Guarda a cópia pública dos tickets | **Aiven** |
+| Banco de dados da nuvem | Guarda a cópia pública dos tickets | **TiDB Cloud** (compatível com MySQL) |
 | API externa | Recebe os dados do seu computador e entrega para o celular | **Render** |
 | App do cliente | A tela que o cliente abre pelo QR Code | **Cloudflare Pages** |
 
 Leva uns 30 minutos. Use o mesmo login do GitHub nos três sites (botão "Continuar com GitHub"). Vá anotando num bloco de notas o que for pedido.
 
-## Passo 1 — Banco de dados (Aiven)
+## Passo 1 — Banco de dados (TiDB Cloud)
 
-1. Entre em **aiven.io** → **Sign up** → **Continue with GitHub**.
-2. Clique em **Create service** → escolha **MySQL** → plano **Free** → **Create service**.
-3. Espere a bolinha ficar verde (**Running**, uns 5 minutos).
-4. Na tela do serviço, em **Connection information**, anote:
-   - **Host**: algo como `mysql-xxxx.aivencloud.com`;
-   - **Port**: um número, como `12345`;
-   - **User**: `avnadmin`;
-   - **Password**: clique no olho para ver e copie.
-5. Ainda nessa tela, em **CA certificate**, clique em **Show** (ou baixe o arquivo) e copie **todo** o texto, de `-----BEGIN CERTIFICATE-----` até `-----END CERTIFICATE-----`.
+1. Entre em **tidbcloud.com** → **Sign Up** (com Google, GitHub ou e-mail).
+2. Clique em **Create Cluster** → escolha o plano **Starter** (grátis) → região **AWS N. Virginia (us-east-1)** → **Create**.
+3. Quando o cluster estiver pronto, clique em **Connect** (canto superior direito).
+4. Clique em **Generate Password** e anote:
+   - **Host**: algo como `gateway01.us-east-1.prod.aws.tidbcloud.com`;
+   - **Port**: `4000`;
+   - **User**: algo como `2abcDEF.root`;
+   - **Password**: a senha gerada. Ela aparece **uma vez só**.
+
+O sistema foi testado no TiDB: os 40 testes da API externa passam nele.
 
 ## Passo 2 — API externa (Render)
 
@@ -31,11 +32,10 @@ Leva uns 30 minutos. Use o mesmo login do GitHub nos três sites (botão "Contin
 
    | Campo | O que colocar |
    |-------|---------------|
-   | `DB_HOST` | o Host do Aiven |
-   | `DB_PORT` | o Port do Aiven |
-   | `DB_USER` | `avnadmin` |
-   | `DB_PASSWORD` | a senha do Aiven |
-   | `DB_SSL_CA` | o texto inteiro do certificado |
+   | `DB_HOST` | o Host do TiDB |
+   | `DB_PORT` | `4000` |
+   | `DB_USER` | o User do TiDB (com o ponto, ex.: `2abcDEF.root`) |
+   | `DB_PASSWORD` | a senha do TiDB |
    | `PWA_ORIGENS` | deixe em branco por enquanto (preenche no Passo 4) |
 
 5. Clique em **Apply**. A primeira vez leva uns 5 minutos.
@@ -86,7 +86,7 @@ Para testar, faça uma entrada e leia o QR Code com o celular: o ticket abre no 
 
 | O que aparece | O que fazer |
 |---------------|-------------|
-| No Render, **Failed** ou erro com `DB_` | Confira o Host, a Port, a senha e se o certificado foi colado inteiro, com as linhas BEGIN e END |
+| No Render, **Failed** ou erro com `DB_` | Confira o Host, a Port (`4000`), o User inteiro (com o ponto) e a senha, sem espaços nas pontas |
 | `/saude` mostra erro ou demora | No plano grátis, a API "dorme" depois de 15 minutos sem uso e leva até 1 minuto para acordar. Espere e recarregue |
 | Conectar-Nuvem diz "A API não respondeu" | Abra o endereço `/saude` no navegador antes, para acordar a API, e rode de novo |
 | Configurações continua "Desligada" | Você não reiniciou o servidor: feche a janela "Servidor do Estacionamento" e abra o Iniciar.cmd |

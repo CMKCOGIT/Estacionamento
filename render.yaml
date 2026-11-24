@@ -25,7 +25,7 @@ services:
       # Segredo de todas as credenciais: o Render gera. Copie-o para o Conectar-Nuvem.cmd
       - key: SYNC_CHAVE_MESTRA
         generateValue: true
-      # Banco MySQL do provedor (Aiven): preencha no painel do Render
+      # Banco MySQL do provedor (TiDB Cloud): preencha no painel do Render
       - key: DB_HOST
         sync: false
       - key: DB_PORT
@@ -35,11 +35,10 @@ services:
       - key: DB_PASSWORD
         sync: false
       - key: DB_NAME
-        value: defaultdb
+        value: estacionamento_nuvem
+      # TiDB Cloud usa certificado público: não precisa de DB_SSL_CA
       - key: DB_SSL
         value: 'true'
-      - key: DB_SSL_CA
-        sync: false
       # Endereço do app do cliente (Cloudflare Pages), ex.: https://meu-estacionamento.pages.dev
       - key: PWA_ORIGENS
         sync: false

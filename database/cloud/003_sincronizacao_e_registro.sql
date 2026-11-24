@@ -86,6 +86,6 @@ ALTER TABLE tickets_publicos
 -- Tarifas por TABELA (versão): a publicada com data futura só passa a valer na data
 ALTER TABLE tarifas_publicas
   ADD COLUMN tabela_id CHAR(26) CHARACTER SET ascii COLLATE ascii_bin NULL AFTER site_id,
-  ADD COLUMN tabela_versao INT UNSIGNED NOT NULL DEFAULT 0 AFTER tabela_id,
+  ADD COLUMN tabela_versao INT UNSIGNED NOT NULL DEFAULT 0,
   ADD COLUMN seq_aplicado BIGINT UNSIGNED NOT NULL DEFAULT 0;
 CREATE INDEX ix_tarifas_tabela ON tarifas_publicas (site_id, tabela_id);
