@@ -696,9 +696,12 @@ h3 {
 .grafico__area {
   position: relative;
   width: 100%;
+  /* Deixa o gráfico encolher (ex.: quando aparece a barra de rolagem); ele se redesenha na largura nova */
+  min-width: 0;
 }
 .grafico__area svg {
   display: block;
+  max-width: 100%;
   overflow: visible;
   touch-action: pan-y;
 }
@@ -3269,7 +3272,9 @@ td .etiqueta--bloqueado {
 }
 .grafico-mov {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 6px;
+  min-width: 0;
 }
 .grafico-mov__legenda {
   display: flex;
@@ -3334,4 +3339,8 @@ td .etiqueta--bloqueado {
   cursor: pointer;
   font-size: 0.85rem;
   color: var(--primaria-forte);
+}
+
+.grade-painel--uma {
+  grid-template-columns: minmax(0, 1fr);
 }

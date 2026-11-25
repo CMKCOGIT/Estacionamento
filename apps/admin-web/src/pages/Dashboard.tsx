@@ -231,7 +231,8 @@ export function Dashboard() {
         </div>
       )}
 
-      <div className="grade-painel">
+      {/* Sem o cartão de sincronização ao lado, a tabela ocupa a largura toda */}
+      <div className={sincronizacao && operacao ? 'grade-painel' : 'grade-painel grade-painel--uma'}>
         {operacao && (
           <section className="cartao cartao--largo">
             <h2>Últimas entradas e saídas</h2>
@@ -283,7 +284,11 @@ export function Dashboard() {
           </section>
         )}
 
-        <div className="coluna-painel">{sincronizacao && <CartaoSincronizacao s={sincronizacao} />}</div>
+        {sincronizacao && (
+          <div className="coluna-painel">
+            <CartaoSincronizacao s={sincronizacao} />
+          </div>
+        )}
       </div>
 
       {!operacao && !financeiro && (
