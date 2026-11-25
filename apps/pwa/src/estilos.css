@@ -732,3 +732,41 @@ a {
 .ticket--desatualizado .relogio {
   color: var(--mudo);
 }
+
+/* "Instalar app" no fim do ticket */
+.instalar {
+  display: grid;
+  gap: 12px;
+}
+.instalar__topo {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.instalar__topo img {
+  border-radius: 12px;
+  flex-shrink: 0;
+}
+.instalar__topo p {
+  margin: 2px 0 0;
+}
+.instalar__botao {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+}
+.instalar__botao svg {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.instalar__passos {
+  margin: 0;
+  padding-left: 1.3em;
+  display: grid;
+  gap: 6px;
+}

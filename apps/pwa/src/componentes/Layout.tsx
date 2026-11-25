@@ -1,9 +1,11 @@
-import { NavLink, Outlet } from 'react-router';
+import { NavLink, Outlet, useLocation } from 'react-router';
 import { ConviteInstalar } from './ConviteInstalar';
 import { useConexao } from './instalacao';
 
 export function Layout({ novaVersao }: { novaVersao: (() => void) | null }) {
   const online = useConexao();
+  // Na tela do ticket, o botão "Instalar app" fica embaixo do ticket
+  const naTelaDoTicket = useLocation().pathname.startsWith('/ticket');
   return (
     <div className="app">
       <header className="topo">
@@ -30,7 +32,7 @@ export function Layout({ novaVersao }: { novaVersao: (() => void) | null }) {
       <main className="conteudo">
         <Outlet />
       </main>
-      <ConviteInstalar />
+      {!naTelaDoTicket && <ConviteInstalar />}
       <nav className="navegacao" aria-label="Principal">
         <NavLink to="/" end className="navegacao__item">
           <svg viewBox="0 0 24 24" aria-hidden="true">

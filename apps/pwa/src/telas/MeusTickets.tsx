@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router';
 import { esquecer, removerEncerrados } from '../armazenamento';
+import { InstalarApp } from '../componentes/InstalarApp';
 import { CartaoTicket } from './CartaoTicket';
 
 /** Os tickets guardados neste celular (cada um aberto pelo próprio link). */
@@ -40,6 +41,7 @@ export function MeusTickets() {
       {tickets.map((t) => (
         <CartaoTicket key={t.token} salvo={t} onEsquecer={() => setTickets(esquecer(t.token))} />
       ))}
+      <InstalarApp />
     </>
   );
 }
