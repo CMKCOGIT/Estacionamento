@@ -1,4 +1,4 @@
-import type { RowDataPacket } from 'mysql2/promise';
+import type { ResultSetHeader, RowDataPacket } from 'mysql2/promise';
 import { env } from '../config/env.js';
 import { logger } from '../config/logger.js';
 import { obterSiteAtual } from '../config/site.js';
@@ -172,4 +172,45 @@ export async function pedirRessincronizacao(): Promise<void> {
   await pool.query('INSERT IGNORE INTO sync_estado (site_id) VALUES (?)', [site.id]);
   await pool.query('UPDATE sync_estado SET snapshot_pendente = TRUE WHERE site_id = ?', [site.id]);
   trabalhador?.acordar();
+}
+
+/**
+ * "Reenviar agora" (Sistema → Monitoramento): os pendentes deixam de esperar
+ * o próximo horário de tentativa e os recusados voltam para a fila. O envio
+ * continua idempotente (a nuvem ignora o que já tiver aplicado).
+ */
+export async function reenviarPendentes(siteId: string): Promise<{ pendentes: number; recolocados: number }> {
+  const [p] = await pool.query<ResultSetHeader>(
+    "UPDATE sync_outbox SET proxima_tentativa_em = NULL WHERE site_id = ? AND status = 'PENDENTE'",
+    [siteId],
+  );
+  const [r] = await pool.query<ResultSetHeader>(
+    `UPDATE sync_outbox SET status = 'PENDENTE', tentativas = 0, proxima_tentativa_em = NULL, enviado_em = NULL
+      WHERE site_id = ? AND status = 'REJEITADO'`,
+    [siteId],
+  );
+  trabalhador?.acordar();
+  return { pendentes: p.affectedRows, recolocados: r.affectedRows };
+}
+
+/** Registros ainda não sincronizados (pendentes e recusados), dos mais antigos. */
+export async function registrosNaoSincronizados(siteId: string, limite = 100) {
+  const [linhas] = await pool.query<RowDataPacket[]>(
+    `SELECT seq, event_id, tipo, agregado_tipo, agregado_id, status, tentativas, proxima_tentativa_em, ultimo_erro, criado_em
+       FROM sync_outbox WHERE site_id = ? AND status IN ('PENDENTE', 'REJEITADO')
+      ORDER BY seq LIMIT ?`,
+    [siteId, limite],
+  );
+  const iso = (v: unknown) => (v instanceof Date ? v.toISOString() : null);
+  return linhas.map((l) => ({
+    seq: String(l.seq),
+    eventoId: String(l.event_id),
+    tipo: String(l.tipo),
+    entidade: `${l.agregado_tipo} ${l.agregado_id}`,
+    status: l.status as 'PENDENTE' | 'REJEITADO',
+    tentativas: Number(l.tentativas),
+    proximaTentativaEm: iso(l.proxima_tentativa_em),
+    ultimoErro: (l.ultimo_erro as string | null) ?? null,
+    criadoEm: iso(l.criado_em) ?? '',
+  }));
 }

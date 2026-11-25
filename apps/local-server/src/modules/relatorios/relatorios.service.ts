@@ -134,12 +134,13 @@ export const relatoriosService = {
     const { hoje } = await validarPeriodo(de, ate, agrupar);
     const fim = ate > hoje ? hoje : ate; // não inventa dias futuros
     const site = await obterSiteAtual();
-    const [rec, est, tks, nomesFormas, ordem] = await Promise.all([
+    const [rec, est, tks, nomesFormas, ordem, porCategoria] = await Promise.all([
       repo.recebimentos(site.id, de, fim, agrupar),
       repo.estornos(site.id, de, fim, agrupar),
       repo.tickets(site.id, de, fim, agrupar),
       repo.nomesFormas(),
       repo.ordemFormas(),
+      repo.porCategoria(site.id, de, fim),
     ]);
 
     const pontos: PontoFaturamento[] = gruposDoPeriodo(de, fim, agrupar).map((g) => {
@@ -182,6 +183,7 @@ export const relatoriosService = {
                 1000,
             ) / 10,
       nomesFormas,
+      porCategoria,
     };
   },
 

@@ -86,6 +86,31 @@ export const relatoriosRepository = {
     }));
   },
 
+  /** Receita líquida por tipo de veículo (categoria do ticket): recebido − estornado no período. */
+  async porCategoria(siteId: string, de: string, ate: string) {
+    const [l] = await pool.query<RowDataPacket[]>(
+      `SELECT c.codigo, c.nome,
+              COALESCE(SUM(IF(${noPeriodo('p.registrado_em')}, p.valor_centavos, 0)), 0) AS recebido,
+              COALESCE(SUM(IF(p.status = 'ESTORNADO' AND ${noPeriodo('p.estornado_em')}, p.valor_centavos, 0)), 0) AS estornado,
+              COUNT(DISTINCT IF(${noPeriodo('p.registrado_em')}, p.sessao_id, NULL)) AS tickets,
+              SUM(IF(${noPeriodo('p.registrado_em')}, 1, 0)) AS pagamentos
+         FROM pagamentos p
+         JOIN sessoes_estacionamento s ON s.id = p.sessao_id
+         JOIN categorias_veiculo c ON c.id = s.categoria_id
+        WHERE p.site_id = ? AND (${noPeriodo('p.registrado_em')} OR ${noPeriodo('p.estornado_em')})
+        GROUP BY c.id, c.codigo, c.nome
+        ORDER BY recebido DESC`,
+      [de, ate, de, ate, de, ate, de, ate, siteId, de, ate, de, ate],
+    );
+    return l.map((x) => ({
+      codigo: String(x.codigo),
+      nome: String(x.nome),
+      liquidoCentavos: n(x.recebido) - n(x.estornado),
+      pagamentos: n(x.pagamentos),
+      tickets: n(x.tickets),
+    }));
+  },
+
   /** Tickets encerrados no período (pela data da saída), por grupo. */
   async tickets(siteId: string, de: string, ate: string, agrupar: Agrupamento): Promise<AgregadoTickets[]> {
     const [l] = await pool.query<RowDataPacket[]>(

@@ -4,14 +4,20 @@ Tema escuro (azul-marinho e grafite), com o azul nos botões e itens selecionado
 
 ## Menu
 
-| Item | O que tem |
-|------|-----------|
-| **Vagas** | Tela principal, a primeira depois do login |
-| **Painel** | Indicadores gerais: ocupação, faturamento do dia, pendências, gráficos e alertas |
-| **Operação** ▸ | Entrada e saída · Veículos |
-| **Financeiro** ▸ | Caixa · Tarifas |
-| **Relatórios** ▸ | Administrativos · Financeiros |
-| **Administração** ▸ | Funcionários · Atividades · Monitoramento · Backups · Privacidade (LGPD) · Configurações |
+Oito módulos. Funções relacionadas ficam em abas dentro da mesma página, para o menu não crescer.
+
+| Módulo | O que tem |
+|--------|-----------|
+| **Painel** | Indicadores do dia, movimentação por horário, faturamento de 7 dias, situação do caixa, últimas entradas e saídas, alertas |
+| **Operação** ▸ | **Vagas** (abre depois do login) · Entrada e saída · Movimentações |
+| **Financeiro** ▸ | Caixa (meu caixa, resumo, pendentes, pagamentos, movimentações, caixas anteriores) · Indicadores financeiros |
+| **Cadastros** ▸ | Veículos · Funcionários |
+| **Relatórios** | Relatórios administrativos (movimento, ocupação, permanência, veículos, horários, funcionários) |
+| **Auditoria** | Histórico de atividades, somente consulta |
+| **Sistema** ▸ | Monitoramento · Backups |
+| **Configurações** ▸ | Gerais (estacionamento, operação, usuários e permissões, segurança, integrações, notificações) · Tarifas · Privacidade e LGPD |
+
+Módulo com um item só (Relatórios, Auditoria) é um link direto. Relatórios e listas têm os botões **Excel** (arquivo .xlsx) e **PDF** (impressão do navegador, sem o menu e os botões).
 
 Os grupos abrem e fecham; o grupo da página atual fica aberto. Cada funcionário só vê o que tem permissão para usar. No celular, o menu fica atrás do botão **Menu**.
 

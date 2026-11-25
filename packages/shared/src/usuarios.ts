@@ -1,11 +1,60 @@
 /** Contratos do módulo de usuários e funcionários. */
 
-export type NivelAcesso = 'admin' | 'funcionario';
+/**
+ * Três níveis. "funcionario" é o Operador (o código foi mantido para não
+ * mexer nos registros antigos).
+ */
+export type NivelAcesso = 'admin' | 'gerente' | 'funcionario';
 
 export const NIVEIS_ACESSO: { codigo: NivelAcesso; nome: string; descricao: string }[] = [
-  { codigo: 'admin', nome: 'Administrador', descricao: 'Acesso completo ao sistema' },
-  { codigo: 'funcionario', nome: 'Funcionário', descricao: 'Acesso somente às funcionalidades autorizadas' },
+  { codigo: 'admin', nome: 'Administrador', descricao: 'Proprietário: acesso completo ao sistema' },
+  {
+    codigo: 'gerente',
+    nome: 'Gerente',
+    descricao: 'Supervisiona o dia a dia: caixas, relatórios, ajustes dentro do limite definido',
+  },
+  {
+    codigo: 'funcionario',
+    nome: 'Operador',
+    descricao: 'Atendimento: entradas, saídas, consulta de veículos e recebimento',
+  },
 ];
+
+/** Permissões que só o Administrador tem (nunca concedidas a Gerente ou Operador). */
+export const PERMISSOES_SO_ADMIN = [
+  'backup.gerenciar',
+  'config.seguranca',
+  'perfil.gerenciar',
+  'usuario.sessoes',
+] as const;
+
+/** Permissões de supervisão: Gerente pode ter, Operador não. */
+export const PERMISSOES_SO_GERENCIA = [
+  'tarifa.gerenciar',
+  'tarifa.publicar',
+  'relatorio.financeiro',
+  'funcionario.gerenciar',
+  'usuario.gerenciar',
+  'config.gerenciar',
+  'caixa.supervisionar',
+  'pagamento.estornar',
+  'sessao.cancelar',
+  'auditoria.ver',
+  'sync.gerenciar',
+  'lgpd.atender',
+  'sistema.monitorar',
+] as const;
+
+/** O nível permite esta permissão? (o servidor também confere a cada requisição) */
+export function permissaoCabeNoNivel(nivel: NivelAcesso, codigo: string): boolean {
+  if (nivel === 'admin') return true;
+  if ((PERMISSOES_SO_ADMIN as readonly string[]).includes(codigo)) return false;
+  if (nivel === 'gerente') return true;
+  return !(PERMISSOES_SO_GERENCIA as readonly string[]).includes(codigo);
+}
+
+export const nomeDoNivel = (n: NivelAcesso | null | undefined) =>
+  NIVEIS_ACESSO.find((x) => x.codigo === n)?.nome ?? 'Sem acesso';
 
 export type SituacaoAcesso = 'ATIVO' | 'BLOQUEADO' | 'INATIVO' | 'SEM_ACESSO';
 
@@ -25,6 +74,8 @@ export interface FuncionarioResumo {
   cargo: string | null;
   ativo: boolean;
   situacao: SituacaoAcesso;
+  /** Data de cadastro do funcionário. */
+  cadastradoEm: string;
   acesso: AcessoResumo | null;
 }
 

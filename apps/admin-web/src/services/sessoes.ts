@@ -3,6 +3,7 @@ import type {
   CaixaAtual,
   FormaPagamento,
   Lista,
+  MovimentacaoHistorico,
   PedidoEntrada,
   PedidoPreviaSaida,
   PedidoSaida,
@@ -16,6 +17,12 @@ import { api } from './api';
 
 export const sessoesApi = {
   abertas: () => api<Lista<SessaoDetalhe>>('/sessoes/abertas'),
+  historico: (f: Record<string, string | undefined>) => {
+    const q = new URLSearchParams(Object.entries(f).filter((e): e is [string, string] => !!e[1]));
+    return api<{ itens: MovimentacaoHistorico[]; proximaPagina: string | null; somenteMinhas: boolean }>(
+      `/sessoes/historico?${q.toString()}`,
+    );
+  },
   obter: (id: string) => api<SessaoDetalhe>(`/sessoes/${id}`),
   localizar: (termo: string) => api<SessaoDetalhe>(`/sessoes/localizar?termo=${encodeURIComponent(termo)}`),
   vagasLivres: (categoriaId: string) =>

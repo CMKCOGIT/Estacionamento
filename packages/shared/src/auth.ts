@@ -27,6 +27,8 @@ export interface RespostaSessao {
   expiraEm: string;
   /** Minutos sem uso até a sessão expirar. */
   inatividadeMinutos: number;
+  /** Regras de senha em vigor (para validar na tela antes de enviar). */
+  regrasSenha?: RegrasSenha;
 }
 
 export interface RequisicaoTrocaSenha {
@@ -40,13 +42,25 @@ export const POLITICA_SENHA = {
   maximo: 128,
 } as const;
 
-export function problemasDaSenha(senha: string, login?: string): string[] {
+/** Regras extras de senha definidas pelo administrador (Configurações → Segurança). */
+export interface RegrasSenha {
+  /** Mínimo de caracteres (nunca menor que POLITICA_SENHA.minimo). */
+  minimo: number;
+  exigirMaiuscula: boolean;
+  exigirSimbolo: boolean;
+}
+
+export function problemasDaSenha(senha: string, login?: string, regras?: RegrasSenha): string[] {
   const problemas: string[] = [];
-  if (senha.length < POLITICA_SENHA.minimo)
-    problemas.push(`Use pelo menos ${POLITICA_SENHA.minimo} caracteres`);
+  const minimo = Math.max(POLITICA_SENHA.minimo, regras?.minimo ?? 0);
+  if (senha.length < minimo) problemas.push(`Use pelo menos ${minimo} caracteres`);
   if (senha.length > POLITICA_SENHA.maximo)
     problemas.push(`Use no máximo ${POLITICA_SENHA.maximo} caracteres`);
   if (!/[A-Za-zÀ-ÿ]/.test(senha) || !/[0-9]/.test(senha)) problemas.push('Combine letras e números');
+  if (regras?.exigirMaiuscula && !/[A-ZÀ-Þ]/.test(senha))
+    problemas.push('Use pelo menos uma letra maiúscula');
+  if (regras?.exigirSimbolo && !/[^A-Za-zÀ-ÿ0-9]/.test(senha))
+    problemas.push('Use pelo menos um símbolo (ex.: ! @ # $)');
   if (login && senha.toLowerCase().includes(login.toLowerCase()))
     problemas.push('A senha não pode conter o login');
   return problemas;

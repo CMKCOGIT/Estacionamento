@@ -21,6 +21,7 @@ export async function garantirAdmin(): Promise<{ siteId: string; usuarioId: stri
 const PERFIS = {
   admin: '00000000000000000000000001',
   funcionario: '00000000000000000000000004',
+  gerente: '00000000000000000000000005',
 } as const;
 
 /** Cria um usuário de teste direto no banco (sem funcionário vinculado). */
@@ -48,7 +49,7 @@ export async function criarUsuario(opcoes: {
       PERFIS[perfil],
     ]);
   }
-  if (perfil === 'funcionario') {
+  if (perfil === 'funcionario' || perfil === 'gerente') {
     const permissoes =
       opcoes.permissoes ??
       (

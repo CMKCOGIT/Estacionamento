@@ -1,6 +1,10 @@
 import { Router, type Request } from 'express';
 import { z } from 'zod';
-import type { Lista, SessaoDetalhe } from '@estacionamento/shared';
+import type { RowDataPacket } from 'mysql2/promise';
+import type { Lista, MovimentacaoHistorico, SessaoDetalhe } from '@estacionamento/shared';
+import { env } from '../../config/env.js';
+import { obterSiteAtual } from '../../config/site.js';
+import { pool } from '../../db/pool.js';
 import { contextoAuditoria, exigirPermissao } from '../../http/middlewares/autenticacao.js';
 import { caixaService } from './caixa.service.js';
 import { sessoesService, type Ator } from './sessoes.service.js';
@@ -40,6 +44,96 @@ sessoesRouter.get('/tarifas', exigirPermissao('sessao.entrada'), async (req, res
   const { categoriaId } = z.object({ categoriaId: ulidSchema }).parse(req.query);
   res.set('Cache-Control', 'no-store');
   res.json(await sessoesService.tarifasDaEntrada(categoriaId));
+});
+
+/**
+ * Histórico de entradas e saídas (Operação → Movimentações). Quem não
+ * supervisiona (Operador) vê só as que ele mesmo registrou.
+ */
+sessoesRouter.get('/historico', consulta, async (req, res) => {
+  const f = z
+    .object({
+      busca: z.string().trim().max(20).optional(),
+      categoriaId: z
+        .string()
+        .regex(/^[0-9A-Z]{26}$/)
+        .optional(),
+      situacao: z.enum(['ABERTA', 'ENCERRADA', 'CANCELADA']).optional(),
+      de: z
+        .string()
+        .regex(/^\d{4}-\d{2}-\d{2}$/)
+        .optional(),
+      ate: z
+        .string()
+        .regex(/^\d{4}-\d{2}-\d{2}$/)
+        .optional(),
+      limite: z.coerce.number().int().min(1).max(200).default(50),
+      antesDe: z
+        .string()
+        .regex(/^[0-9A-Z]{26}$/)
+        .optional(),
+    })
+    .parse(req.query);
+  const auth = req.auth!;
+  const todas = auth.temPermissao('relatorio.operacional') || auth.temPermissao('caixa.supervisionar');
+  const site = await obterSiteAtual();
+  const where = ['s.site_id = ?'];
+  const params: unknown[] = [site.id];
+  if (!todas) {
+    where.push('(s.operador_entrada_id = ? OR s.operador_saida_id = ?)');
+    params.push(auth.id, auth.id);
+  }
+  if (f.busca) {
+    where.push('(s.placa LIKE ? OR s.numero = ?)');
+    params.push(`%${f.busca.toUpperCase().replace(/[^A-Z0-9]/g, '')}%`, f.busca);
+  }
+  const se = (valor: unknown, sql: string) => {
+    if (!valor) return;
+    where.push(sql);
+    params.push(valor);
+  };
+  se(f.categoriaId, 's.categoria_id = ?');
+  se(f.situacao, 's.status = ?');
+  se(f.de, `s.entrada_em >= CONVERT_TZ(?, '${env.FUSO_OFFSET}', '+00:00')`);
+  se(f.ate, `s.entrada_em < CONVERT_TZ(? + INTERVAL 1 DAY, '${env.FUSO_OFFSET}', '+00:00')`);
+  se(f.antesDe, 's.id < ?');
+  const [linhas] = await pool.query<RowDataPacket[]>(
+    `SELECT s.id, s.numero, s.placa, s.status, s.entrada_em, s.saida_em, s.cancelado_em, s.valor_final_centavos,
+            c.nome AS categoria, c.codigo AS categoria_codigo, v.codigo AS vaga,
+            COALESCE(fe.nome, ue.login) AS operador_entrada, COALESCE(fs.nome, us.login) AS operador_saida
+       FROM sessoes_estacionamento s
+       JOIN categorias_veiculo c ON c.id = s.categoria_id
+       LEFT JOIN vagas v ON v.id = s.vaga_id
+       LEFT JOIN usuarios ue ON ue.id = s.operador_entrada_id
+       LEFT JOIN funcionarios fe ON fe.usuario_id = ue.id
+       LEFT JOIN usuarios us ON us.id = s.operador_saida_id
+       LEFT JOIN funcionarios fs ON fs.usuario_id = us.id
+      WHERE ${where.join(' AND ')}
+      ORDER BY s.id DESC
+      LIMIT ?`,
+    [...params, f.limite + 1],
+  );
+  const iso = (v: unknown) => (v instanceof Date ? v.toISOString() : null);
+  const itens: MovimentacaoHistorico[] = linhas.slice(0, f.limite).map((l) => ({
+    id: String(l.id),
+    numero: String(l.numero),
+    placa: String(l.placa),
+    categoria: String(l.categoria),
+    categoriaCodigo: String(l.categoria_codigo),
+    vaga: (l.vaga as string | null) ?? null,
+    entradaEm: iso(l.entrada_em) ?? '',
+    saidaEm: iso(l.saida_em),
+    canceladoEm: iso(l.cancelado_em),
+    status: l.status,
+    operadorEntrada: (l.operador_entrada as string | null) ?? null,
+    operadorSaida: (l.operador_saida as string | null) ?? null,
+    valorFinalCentavos: l.valor_final_centavos === null ? null : Number(l.valor_final_centavos),
+  }));
+  res.set('Cache-Control', 'no-store').json({
+    itens,
+    proximaPagina: linhas.length > f.limite ? (itens.at(-1)?.id ?? null) : null,
+    somenteMinhas: !todas,
+  });
 });
 
 sessoesRouter.get('/:id', consulta, async (req, res) => {

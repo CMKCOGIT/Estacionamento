@@ -1,18 +1,20 @@
 import { useEffect, useRef, useState, type ComponentType } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router';
 import { useAuth } from '../auth/contexto';
+import { useConfigPainel } from '../hooks/useConfigPainel';
 import {
   IconeCalendario,
   IconeCarro,
   IconeDinheiro,
   IconeEngrenagem,
+  IconeHistorico,
+  IconeMonitor,
   IconePainel,
   IconeRelatorio,
   IconeRelogio,
   IconeSair,
   IconeSeta,
   IconeUsuario,
-  IconeVagas,
 } from './Icones';
 
 /**
@@ -39,23 +41,22 @@ export const PERMISSOES_VAGAS = [
   'relatorio.operacional',
 ];
 
+/**
+ * Oito módulos. Grupo com um item só vira link direto (sem submenu).
+ * "Vagas" abre o sistema e fica em Operação.
+ */
 const GRUPOS: Grupo[] = [
   {
     id: 'operacao',
     rotulo: 'Operação',
     icone: IconeCarro,
     itens: [
+      { rotulo: 'Vagas', rota: '/', permissoes: PERMISSOES_VAGAS },
       { rotulo: 'Entrada e saída', rota: '/operacao', permissoes: ['sessao.entrada', 'sessao.saida'] },
       {
-        rotulo: 'Veículos',
-        rota: '/veiculos',
-        permissoes: [
-          'veiculo.gerenciar',
-          'sessao.consultar',
-          'sessao.entrada',
-          'sessao.saida',
-          'relatorio.operacional',
-        ],
+        rotulo: 'Movimentações',
+        rota: '/movimentacoes',
+        permissoes: ['sessao.consultar', 'sessao.entrada', 'sessao.saida'],
       },
     ],
   },
@@ -70,9 +71,32 @@ const GRUPOS: Grupo[] = [
         permissoes: ['caixa.operar', 'caixa.supervisionar', 'relatorio.financeiro', 'pagamento.registrar'],
       },
       {
-        rotulo: 'Tarifas',
-        rota: '/tarifas',
-        permissoes: ['tarifa.ver', 'tarifa.gerenciar', 'tarifa.publicar'],
+        rotulo: 'Indicadores financeiros',
+        rota: '/relatorios',
+        permissoes: ['relatorio.financeiro', 'caixa.supervisionar'],
+      },
+    ],
+  },
+  {
+    id: 'cadastros',
+    rotulo: 'Cadastros',
+    icone: IconeUsuario,
+    itens: [
+      {
+        rotulo: 'Veículos',
+        rota: '/veiculos',
+        permissoes: [
+          'veiculo.gerenciar',
+          'sessao.consultar',
+          'sessao.entrada',
+          'sessao.saida',
+          'relatorio.operacional',
+        ],
+      },
+      {
+        rotulo: 'Funcionários',
+        rota: '/usuarios',
+        permissoes: ['usuario.gerenciar', 'funcionario.gerenciar'],
       },
     ],
   },
@@ -81,33 +105,36 @@ const GRUPOS: Grupo[] = [
     rotulo: 'Relatórios',
     icone: IconeRelatorio,
     itens: [
-      {
-        rotulo: 'Administrativos',
-        rota: '/relatorios-administrativos',
-        permissoes: ['relatorio.operacional'],
-      },
-      {
-        rotulo: 'Financeiros',
-        rota: '/relatorios',
-        permissoes: ['relatorio.financeiro', 'caixa.supervisionar'],
-      },
+      { rotulo: 'Relatórios', rota: '/relatorios-administrativos', permissoes: ['relatorio.operacional'] },
     ],
   },
   {
-    id: 'administracao',
-    rotulo: 'Administração',
-    icone: IconeEngrenagem,
+    id: 'auditoria',
+    rotulo: 'Auditoria',
+    icone: IconeHistorico,
+    itens: [{ rotulo: 'Auditoria', rota: '/atividades', permissoes: ['auditoria.ver'] }],
+  },
+  {
+    id: 'sistema',
+    rotulo: 'Sistema',
+    icone: IconeMonitor,
     itens: [
-      {
-        rotulo: 'Funcionários',
-        rota: '/usuarios',
-        permissoes: ['usuario.gerenciar', 'funcionario.gerenciar'],
-      },
-      { rotulo: 'Atividades', rota: '/atividades', permissoes: ['auditoria.ver'] },
       { rotulo: 'Monitoramento', rota: '/monitoramento', permissoes: ['sistema.monitorar'] },
       { rotulo: 'Backups', rota: '/backups', permissoes: ['backup.gerenciar'] },
-      { rotulo: 'Privacidade (LGPD)', rota: '/privacidade', permissoes: ['lgpd.atender'] },
-      { rotulo: 'Configurações', rota: '/configuracoes', permissoes: ['config.gerenciar'] },
+    ],
+  },
+  {
+    id: 'configuracoes',
+    rotulo: 'Configurações',
+    icone: IconeEngrenagem,
+    itens: [
+      { rotulo: 'Gerais', rota: '/configuracoes', permissoes: ['config.gerenciar', 'config.seguranca'] },
+      {
+        rotulo: 'Tarifas',
+        rota: '/tarifas',
+        permissoes: ['tarifa.ver', 'tarifa.gerenciar', 'tarifa.publicar'],
+      },
+      { rotulo: 'Privacidade e LGPD', rota: '/privacidade', permissoes: ['lgpd.atender'] },
     ],
   },
 ];
@@ -121,10 +148,12 @@ function lerAbertos(): string[] {
   }
 }
 
-const ativa = (rota: string, caminho: string) => caminho === rota || caminho.startsWith(`${rota}/`);
+const ativa = (rota: string, caminho: string) =>
+  rota === '/' ? caminho === '/' : caminho === rota || caminho.startsWith(`${rota}/`);
 
 export function Layout() {
   const { usuario, sair, temPermissao } = useAuth();
+  const painel = useConfigPainel();
   const navegar = useNavigate();
   const { pathname } = useLocation();
   const [abertos, setAbertos] = useState<string[]>(lerAbertos);
@@ -162,11 +191,15 @@ export function Layout() {
     <div className="layout">
       <aside className={`layout__menu${menuAberto ? ' layout__menu--aberto' : ''}`}>
         <div className="marca">
-          <span className="marca__logo" aria-hidden="true">
-            P
-          </span>
-          <span className="marca__nome">
-            Estaciona<strong>mento</strong>
+          {painel.logo ? (
+            <img className="marca__imagem" src={painel.logo} alt="" />
+          ) : (
+            <span className="marca__logo" aria-hidden="true">
+              P
+            </span>
+          )}
+          <span className="marca__nome" title={painel.nome}>
+            {painel.nome}
           </span>
           <button
             type="button"
@@ -178,17 +211,6 @@ export function Layout() {
           </button>
         </div>
         <nav aria-label="Menu principal">
-          {temPermissao(...PERMISSOES_VAGAS) && (
-            <NavLink
-              to="/"
-              end
-              className={({ isActive }) =>
-                `menu__item menu__item--vagas${isActive ? ' menu__item--ativo' : ''}`
-              }
-            >
-              <IconeVagas /> Vagas
-            </NavLink>
-          )}
           <NavLink
             to="/painel"
             className={({ isActive }) => `menu__item${isActive ? ' menu__item--ativo' : ''}`}
@@ -196,8 +218,22 @@ export function Layout() {
             <IconePainel /> Painel
           </NavLink>
           {grupos.map((g) => {
-            const aberto = abertos.includes(g.id) || g.id === grupoAtual;
             const Icone = g.icone;
+            // Grupo com um item só: link direto
+            if (g.itens.length === 1 && GRUPOS.find((x) => x.id === g.id)!.itens.length === 1) {
+              const i = g.itens[0]!;
+              return (
+                <NavLink
+                  key={g.id}
+                  to={i.rota}
+                  end={i.rota === '/'}
+                  className={({ isActive }) => `menu__item${isActive ? ' menu__item--ativo' : ''}`}
+                >
+                  <Icone /> {g.rotulo}
+                </NavLink>
+              );
+            }
+            const aberto = abertos.includes(g.id) || g.id === grupoAtual;
             return (
               <div key={g.id} className={`menu__grupo${g.id === grupoAtual ? ' menu__grupo--atual' : ''}`}>
                 <button
@@ -215,8 +251,9 @@ export function Layout() {
                       <NavLink
                         key={i.rota}
                         to={i.rota}
+                        end={i.rota === '/'}
                         className={({ isActive }) =>
-                          `menu__subitem${isActive ? ' menu__subitem--ativo' : ''}`
+                          `menu__subitem${isActive ? ' menu__subitem--ativo' : ''}${i.rota === '/' ? ' menu__subitem--vagas' : ''}`
                         }
                       >
                         {i.rotulo}

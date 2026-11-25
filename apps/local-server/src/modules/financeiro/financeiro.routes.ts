@@ -1,5 +1,10 @@
 import { Router, type Request } from 'express';
+import type { RowDataPacket } from 'mysql2/promise';
+import { ulid } from 'ulid';
 import { z } from 'zod';
+import { obterSiteAtual } from '../../config/site.js';
+import { comTransacao } from '../../db/transacao.js';
+import { erros } from '../../http/erros.js';
 import { contextoAuditoria, exigirPermissao } from '../../http/middlewares/autenticacao.js';
 import { caixaService } from '../sessoes/caixa.service.js';
 import { sessoesService } from '../sessoes/sessoes.service.js';
@@ -117,4 +122,43 @@ financeiroRouter.post('/pagamentos/:id/estornar', exigirPermissao('pagamento.est
       motivo,
     ),
   );
+});
+
+/**
+ * Correção de um caixa JÁ FECHADO (ex.: dinheiro achado depois, erro de
+ * contagem). Vira uma movimentação AJUSTE com motivo, de quem autorizou. O
+ * fechamento original não muda: o painel mostra a diferença corrigida à parte.
+ */
+financeiroRouter.post('/caixas/:id/correcoes', exigirPermissao('caixa.supervisionar'), async (req, res) => {
+  const d = z
+    .object({
+      direcao: z.enum(['ENTRADA', 'SAIDA'], { message: 'Escolha entrada ou saída' }),
+      valorCentavos: z.number().int().min(1, 'Informe um valor maior que zero').max(100_000_00),
+      formaCodigo: z.string().regex(/^[A-Z_]{2,20}$/),
+      motivo: z.string().trim().min(5, 'Explique a correção (mínimo 5 caracteres)').max(255),
+    })
+    .parse(req.body);
+  const caixaId = idDe(req);
+  const site = await obterSiteAtual();
+  await comTransacao(contextoAuditoria(req, d.motivo), async (c) => {
+    const [[cx]] = await c.query<RowDataPacket[]>(
+      'SELECT status FROM caixa_sessoes WHERE id = ? AND site_id = ? FOR UPDATE',
+      [caixaId, site.id],
+    );
+    if (!cx) throw erros.naoEncontrado('Caixa não encontrado');
+    if (cx.status !== 'FECHADO') {
+      throw erros.regraDeNegocio('O caixa ainda está aberto: use sangria ou suprimento.');
+    }
+    const [[forma]] = await c.query<RowDataPacket[]>('SELECT codigo FROM formas_pagamento WHERE codigo = ?', [
+      d.formaCodigo,
+    ]);
+    if (!forma) throw erros.requisicaoInvalida('Forma de pagamento inválida');
+    await c.query(
+      `INSERT INTO movimentacoes_financeiras
+         (id, site_id, caixa_sessao_id, tipo, direcao, valor_centavos, forma_codigo, descricao, registrado_por, registrado_em)
+       VALUES (?, ?, ?, 'AJUSTE', ?, ?, ?, ?, ?, NOW(3))`,
+      [ulid(), site.id, caixaId, d.direcao, d.valorCentavos, d.formaCodigo, d.motivo, req.auth!.id],
+    );
+  });
+  res.status(201).json(await financeiroService.caixa(req.auth!, caixaId));
 });

@@ -32,7 +32,7 @@ const schemaDados = z.object({
 
 const schemaAcesso = z.object({
   login: z.string().trim().min(1, 'Informe o login').max(60),
-  nivel: z.enum(['admin', 'funcionario']),
+  nivel: z.enum(['admin', 'gerente', 'funcionario']),
   permissoes: z.array(z.string().max(60)).max(200).default([]),
   senhaProvisoria: z.string().max(POLITICA_SENHA.maximo).optional(),
 });
@@ -42,7 +42,7 @@ const schemaNovo = schemaDados.extend({ acesso: schemaAcesso.nullish() });
 const filtro = z.object({
   busca: z.string().trim().max(80).optional(),
   situacao: z.enum(['ativos', 'inativos', 'todos']).default('ativos'),
-  nivel: z.enum(['admin', 'funcionario', 'sem_acesso']).optional(),
+  nivel: z.enum(['admin', 'gerente', 'funcionario', 'sem_acesso']).optional(),
 });
 
 const parametroId = z.object({ id: z.string().regex(/^[0-9A-Z]{26}$/, 'Identificador inválido') });

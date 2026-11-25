@@ -10,6 +10,7 @@ import { pool } from '../../db/pool.js';
 
 export const PERFIL_ID: Record<NivelAcesso, string> = {
   admin: '00000000000000000000000001',
+  gerente: '00000000000000000000000005',
   funcionario: '00000000000000000000000004',
 };
 
@@ -26,7 +27,7 @@ const SELECT_BASE = `
          u.ultimo_login_em,
          (SELECT p.codigo FROM usuario_perfis up JOIN perfis p ON p.id = up.perfil_id
            WHERE up.usuario_id = u.id AND up.site_id = f.site_id AND p.uso = 'NIVEL'
-           ORDER BY p.codigo = 'admin' DESC LIMIT 1) AS nivel
+           ORDER BY FIELD(p.codigo, 'admin', 'gerente', 'funcionario') LIMIT 1) AS nivel
     FROM funcionarios f
     LEFT JOIN usuarios u ON u.id = f.usuario_id`;
 
@@ -45,6 +46,7 @@ function paraResumo(l: RowDataPacket): FuncionarioResumo {
     cargo: l.cargo ?? null,
     ativo: flag(l.ativo),
     situacao: situacao(l),
+    cadastradoEm: iso(l.criado_em) ?? '',
     acesso: l.usuario_id
       ? {
           usuarioId: l.usuario_id,

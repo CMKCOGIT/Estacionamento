@@ -165,3 +165,20 @@ export interface PreviaSaida {
   /** Vazio = pode confirmar a saída com este pedido. */
   problemas: { mensagem: string; linha?: number; acao?: 'ABRIR_CAIXA' }[];
 }
+
+/** Linha do histórico de movimentações (Operação → Movimentações). */
+export interface MovimentacaoHistorico {
+  id: string;
+  numero: string;
+  placa: string;
+  categoria: string;
+  categoriaCodigo: string;
+  vaga: string | null;
+  entradaEm: string;
+  saidaEm: string | null;
+  canceladoEm: string | null;
+  status: 'ABERTA' | 'ENCERRADA' | 'CANCELADA';
+  operadorEntrada: string | null;
+  operadorSaida: string | null;
+  valorFinalCentavos: number | null;
+}

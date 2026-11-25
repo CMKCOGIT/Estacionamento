@@ -7,12 +7,14 @@ import {
   type RespostaSessao,
   type UsuarioAutenticado,
 } from '@estacionamento/shared';
+import { permissaoCabeNoNivel, type NivelAcesso, type RegrasSenha } from '@estacionamento/shared';
 import { env } from '../../config/env.js';
 import { logger } from '../../config/logger.js';
 import { obterSiteAtual } from '../../config/site.js';
 import { registrarAtividade } from '../../db/atividades.js';
 import { comTransacao } from '../../db/transacao.js';
 import { AppError } from '../../http/erros.js';
+import { carregarConfig } from '../configuracoes/preferencias.js';
 import { authRepository as repo } from './auth.repository.js';
 import { LimitadorDeTentativas } from './limitador.js';
 import { conferirSenha, gastarTempoDeVerificacao, gerarHashSenha } from './senha.js';
@@ -38,6 +40,33 @@ const MSG_CREDENCIAIS = 'Usuário ou senha inválidos.';
 
 export function hashDoToken(token: string): Buffer {
   return createHash('sha256').update(token, 'utf8').digest();
+}
+
+/** Endereço da rede local (ou do próprio computador)? */
+export function ipDaRedeLocal(ip: string | null): boolean {
+  if (!ip) return false;
+  const v4 = ip.replace(/^::ffff:/, '');
+  if (v4 === '::1' || v4 === '127.0.0.1' || /^127\./.test(v4)) return true;
+  if (/^10\./.test(v4) || /^192\.168\./.test(v4) || /^169\.254\./.test(v4)) return true;
+  const m = /^172\.(\d+)\./.exec(v4);
+  if (m && Number(m[1]) >= 16 && Number(m[1]) <= 31) return true;
+  return /^f[cd][0-9a-f]{2}:/i.test(ip) || /^fe80:/i.test(ip);
+}
+
+/** Nível de acesso pelos perfis do usuário (admin > gerente > operador). */
+export function nivelDosPerfis(perfis: { codigo: string }[]): NivelAcesso {
+  if (perfis.some((p) => p.codigo === 'admin')) return 'admin';
+  if (perfis.some((p) => p.codigo === 'gerente')) return 'gerente';
+  return 'funcionario';
+}
+
+export async function regrasSenhaAtuais(): Promise<RegrasSenha> {
+  const { seguranca: s } = await carregarConfig();
+  return {
+    minimo: s.senhaMinimo,
+    exigirMaiuscula: s.senhaExigirMaiuscula,
+    exigirSimbolo: s.senhaExigirSimbolo,
+  };
 }
 
 function minutos(segundos: number): string {
@@ -73,6 +102,21 @@ export const authService = {
 
     const login = normalizarLogin(dados.login);
     const site = await obterSiteAtual();
+    const { seguranca } = await carregarConfig();
+    if (seguranca.somenteRedeLocal && !ipDaRedeLocal(meta.ip)) {
+      await registrarAtividade({
+        acao: 'auth.login_recusado_rede',
+        siteId: site.id,
+        ip: meta.ip,
+        correlacaoId: meta.correlacaoId,
+        dados: { login },
+      });
+      throw new AppError(
+        403,
+        'ACESSO_RESTRITO',
+        'O acesso ao painel só é permitido a partir da rede do estacionamento.',
+      );
+    }
 
     const resultado = await comTransacao<ResultadoLogin>({ correlacaoId: meta.correlacaoId }, async (c) => {
       const u = await repo.buscarUsuarioParaLogin(c, login);
@@ -94,12 +138,12 @@ export const authService = {
       if (!senhaOk) {
         // Bloqueio anterior já venceu: a contagem recomeça.
         const tentativas = (u.bloqueioExpirado ? 0 : u.tentativasFalhas) + 1;
-        if (tentativas >= env.LOGIN_MAX_TENTATIVAS) {
-          await repo.registrarFalha(c, u.id, tentativas, env.LOGIN_BLOQUEIO_MIN);
+        if (tentativas >= seguranca.maxTentativas) {
+          await repo.registrarFalha(c, u.id, tentativas, seguranca.bloqueioMin);
           return {
             tipo: 'bloqueado',
             usuarioId: u.id,
-            segundos: env.LOGIN_BLOQUEIO_MIN * 60,
+            segundos: seguranca.bloqueioMin * 60,
             acabouDeBloquear: true,
           };
         }
@@ -121,7 +165,7 @@ export const authService = {
         usuarioId: u.id,
         siteId: site.id,
         tokenHash: hashDoToken(token),
-        duracaoHoras: env.SESSAO_DURACAO_MAX_HORAS,
+        duracaoHoras: seguranca.duracaoMaxHoras,
         ip: meta.ip,
         userAgent: meta.userAgent,
       });
@@ -147,7 +191,8 @@ export const authService = {
           resposta: {
             usuario,
             expiraEm: resultado.expiraEm.toISOString(),
-            inatividadeMinutos: env.SESSAO_INATIVIDADE_MIN,
+            inatividadeMinutos: seguranca.inatividadeMin,
+            regrasSenha: await regrasSenhaAtuais(),
           },
         };
       }
@@ -205,7 +250,16 @@ export const authService = {
     ]);
     const dados = base ?? (await repo.dadosBasicosUsuario(usuarioId));
     if (!dados) throw new AppError(401, 'SESSAO_EXPIRADA', 'Usuário não encontrado. Entre novamente.');
-    return { id: usuarioId, siteId, perfis, permissoes, ...dados } satisfies UsuarioAutenticado;
+    // O nível é o teto: Gerente e Operador nunca têm permissões acima do nível,
+    // mesmo que tenham sido gravadas antes (ou direto no banco).
+    const nivel = nivelDosPerfis(perfis);
+    return {
+      id: usuarioId,
+      siteId,
+      perfis,
+      permissoes: permissoes.filter((p) => permissaoCabeNoNivel(nivel, p)),
+      ...dados,
+    } satisfies UsuarioAutenticado;
   },
 
   /**
@@ -213,7 +267,8 @@ export const authService = {
    * lança 401 SESSAO_EXPIRADA. Retorna a autenticação completa.
    */
   async autenticar(token: string): Promise<Autenticacao> {
-    const s = await repo.buscarSessaoPorToken(hashDoToken(token), env.SESSAO_INATIVIDADE_MIN);
+    const { seguranca } = await carregarConfig();
+    const s = await repo.buscarSessaoPorToken(hashDoToken(token), seguranca.inatividadeMin);
     const expirada = (msg: string) => new AppError(401, 'SESSAO_EXPIRADA', msg);
 
     if (!s || s.encerrada) throw expirada('Sua sessão foi encerrada. Entre novamente.');
@@ -266,7 +321,7 @@ export const authService = {
 
   /** Troca a própria senha. Encerra as OUTRAS sessões do usuário. */
   async trocarSenha(auth: Autenticacao, dados: RequisicaoTrocaSenha, meta: MetaRequisicao): Promise<void> {
-    const problemas = problemasDaSenha(dados.novaSenha, auth.login);
+    const problemas = problemasDaSenha(dados.novaSenha, auth.login, await regrasSenhaAtuais());
     if (dados.novaSenha === dados.senhaAtual) problemas.push('A nova senha deve ser diferente da atual');
     if (problemas.length) {
       throw new AppError(
@@ -292,7 +347,8 @@ export const authService = {
     );
   },
 
-  encerrarSessoesVencidas(): Promise<number> {
-    return repo.encerrarSessoesVencidas(env.SESSAO_INATIVIDADE_MIN);
+  async encerrarSessoesVencidas(): Promise<number> {
+    const { seguranca } = await carregarConfig();
+    return repo.encerrarSessoesVencidas(seguranca.inatividadeMin);
   },
 };

@@ -4,6 +4,7 @@ import {
   formatarCpf,
   NIVEIS_ACESSO,
   POLITICA_SENHA,
+  permissaoCabeNoNivel,
   problemasDaSenha,
   type CatalogoPermissoes,
   type DadosFuncionario,
@@ -75,14 +76,17 @@ interface FormProps {
 
 function Formulario({ catalogo, inicial, aoSalvar, mensagem, setMensagem }: FormProps) {
   const navegar = useNavigate();
-  const { usuario, temPermissao } = useAuth();
+  const { usuario, temPermissao, regrasSenha } = useAuth();
   const souAdmin = usuario?.perfis.some((p) => p.codigo === 'admin') ?? false;
   const novo = inicial === null;
   const ehVoceMesmo = inicial?.acesso?.usuarioId === usuario?.id;
   const alvoEhAdmin = inicial?.acesso?.nivel === 'admin';
+  // Gerente só cuida de Operadores
+  const alvoEhGerente = inicial?.acesso?.nivel === 'gerente';
   const podeEditarDados =
     temPermissao('funcionario.gerenciar', 'usuario.gerenciar') && (souAdmin || !alvoEhAdmin);
-  const podeEditarAcesso = temPermissao('usuario.gerenciar') && !ehVoceMesmo && (souAdmin || !alvoEhAdmin);
+  const podeEditarAcesso =
+    temPermissao('usuario.gerenciar') && !ehVoceMesmo && (souAdmin || (!alvoEhAdmin && !alvoEhGerente));
 
   const [dados, setDados] = useState<Required<DadosFuncionario>>({
     nome: inicial?.nome ?? '',
@@ -95,15 +99,35 @@ function Formulario({ catalogo, inicial, aoSalvar, mensagem, setMensagem }: Form
   const [comAcesso, setComAcesso] = useState(Boolean(inicial?.acesso));
   const [login, setLogin] = useState(inicial?.acesso?.login ?? '');
   const [nivel, setNivel] = useState<NivelAcesso>(inicial?.acesso?.nivel ?? 'funcionario');
-  const [permissoes, setPermissoes] = useState<string[]>(inicial?.permissoes ?? []);
+  const [permissoes, setPermissoes] = useState<string[]>(
+    () =>
+      inicial?.permissoes ??
+      catalogo.modelos
+        .find((m) => m.codigo === 'padrao_operador')
+        ?.permissoes.filter((c) => permissaoCabeNoNivel('funcionario', c) && (souAdmin || temPermissao(c))) ??
+      [],
+  );
   const [senha, setSenha] = useState('');
 
   const [salvando, setSalvando] = useState<'dados' | 'acesso' | null>(null);
   const [dialogo, setDialogo] = useState<'desativar' | 'reativar' | 'senha' | null>(null);
 
   const precisaSenha = comAcesso && !inicial?.acesso;
-  const problemasSenha = precisaSenha && senha ? problemasDaSenha(senha, login) : [];
-  const podeConceder = (c: string) => souAdmin || temPermissao(c);
+  const problemasSenha =
+    precisaSenha && senha ? problemasDaSenha(senha, login, regrasSenha ?? undefined) : [];
+  const podeConceder = (c: string) => permissaoCabeNoNivel(nivel, c) && (souAdmin || temPermissao(c));
+  /** Troca de nível: novo cadastro recebe as permissões padrão; existente perde as que não cabem. */
+  function escolherNivel(n: NivelAcesso) {
+    setNivel(n);
+    if (n === 'admin') return;
+    const padrao = catalogo.modelos.find(
+      (m) => m.codigo === (n === 'gerente' ? 'padrao_gerente' : 'padrao_operador'),
+    );
+    const cabe = (c: string) => permissaoCabeNoNivel(n, c) && (souAdmin || temPermissao(c));
+    setPermissoes((atuais) =>
+      (novo || !inicial?.acesso) && padrao ? padrao.permissoes.filter(cabe) : atuais.filter(cabe),
+    );
+  }
   const campo = (k: keyof DadosFuncionario) => ({
     value: dados[k] ?? '',
     onChange: (e: React.ChangeEvent<HTMLInputElement>) => setDados((d) => ({ ...d, [k]: e.target.value })),
@@ -287,8 +311,8 @@ function Formulario({ catalogo, inicial, aoSalvar, mensagem, setMensagem }: Form
                       name="nivel"
                       value={n.codigo}
                       checked={nivel === n.codigo}
-                      disabled={n.codigo === 'admin' && !souAdmin}
-                      onChange={() => setNivel(n.codigo)}
+                      disabled={(n.codigo === 'admin' || n.codigo === 'gerente') && !souAdmin}
+                      onChange={() => escolherNivel(n.codigo)}
                     />
                     <strong>{n.nome}</strong>
                     <span className="mudo">{n.descricao}</span>
@@ -296,7 +320,7 @@ function Formulario({ catalogo, inicial, aoSalvar, mensagem, setMensagem }: Form
                 ))}
               </div>
 
-              {nivel === 'funcionario' ? (
+              {nivel !== 'admin' ? (
                 <SeletorPermissoes
                   catalogo={catalogo}
                   valor={permissoes}

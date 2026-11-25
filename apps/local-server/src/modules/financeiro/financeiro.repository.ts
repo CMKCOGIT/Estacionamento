@@ -146,7 +146,8 @@ export async function montarCaixas(c: Db, linhas: RowDataPacket[]): Promise<Caix
     [ids],
   );
   const [porTipo] = await c.query<RowDataPacket[]>(
-    `SELECT caixa_sessao_id, tipo, COUNT(*) AS qtd, SUM(valor_centavos) AS total
+    `SELECT caixa_sessao_id, tipo, COUNT(*) AS qtd, SUM(valor_centavos) AS total,
+            SUM(IF(direcao = 'ENTRADA', valor_centavos, -CAST(valor_centavos AS SIGNED))) AS liquido
        FROM movimentacoes_financeiras WHERE caixa_sessao_id IN (?) GROUP BY caixa_sessao_id, tipo`,
     [ids],
   );
@@ -174,6 +175,12 @@ export async function montarCaixas(c: Db, linhas: RowDataPacket[]): Promise<Caix
       estornadoCentavos: n(tipo('ESTORNO')?.total),
       sangriasCentavos: n(tipo('SANGRIA')?.total),
       suprimentosCentavos: n(tipo('SUPRIMENTO')?.total),
+      ajustesCentavos: n(tipo('AJUSTE')?.liquido),
+      quantidadeAjustes: n(tipo('AJUSTE')?.qtd),
+      diferencaCorrigidaCentavos:
+        l.diferenca_centavos === null || l.diferenca_centavos === undefined
+          ? null
+          : n(l.diferenca_centavos) + n(tipo('AJUSTE')?.liquido),
       porForma: formas.map((f) => ({
         forma: f.forma_codigo,
         nome: f.nome,

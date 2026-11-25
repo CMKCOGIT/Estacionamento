@@ -2,6 +2,7 @@ import { Router } from 'express';
 import type { RowDataPacket } from 'mysql2/promise';
 import { z } from 'zod';
 import type { AtividadeRegistrada, PaginaAtividades } from '@estacionamento/shared';
+import { env } from '../../config/env.js';
 import { obterSiteAtual } from '../../config/site.js';
 import { pool } from '../../db/pool.js';
 import { exigirPermissao } from '../../http/middlewares/autenticacao.js';
@@ -34,6 +35,15 @@ const filtro = z.object({
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}$/)
     .optional(),
+  /** Faixa de horário do dia (HH:MM), combinável com as datas. */
+  horaDe: z
+    .string()
+    .regex(/^([01]\d|2[0-3]):[0-5]\d$/)
+    .optional(),
+  horaAte: z
+    .string()
+    .regex(/^([01]\d|2[0-3]):[0-5]\d$/)
+    .optional(),
   antesDe: z.string().regex(/^\d+$/).optional(),
   limite: z.coerce.number().int().min(1).max(200).default(50),
 });
@@ -58,6 +68,9 @@ atividadesRouter.get('/', exigirPermissao('auditoria.ver'), async (req, res) => 
   // Datas no fuso do estacionamento (America/Sao_Paulo = UTC-3, sem horário de verão desde 2019)
   if (f.de) condicao('h.criado_em >= ? + INTERVAL 3 HOUR', f.de);
   if (f.ate) condicao('h.criado_em < ? + INTERVAL 1 DAY + INTERVAL 3 HOUR', f.ate);
+  const horaLocal = `TIME(CONVERT_TZ(h.criado_em, '+00:00', '${env.FUSO_OFFSET}'))`;
+  if (f.horaDe) condicao(`${horaLocal} >= ?`, `${f.horaDe}:00`);
+  if (f.horaAte) condicao(`${horaLocal} <= ?`, `${f.horaAte}:59.999`);
   if (f.antesDe) condicao('h.id < ?', f.antesDe);
 
   const [linhas] = await pool.query<RowDataPacket[]>(

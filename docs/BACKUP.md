@@ -6,7 +6,7 @@ O banco MySQL do servidor local tem **todos** os registros operacionais e financ
 
 | Item | Como |
 |------|------|
-| **Automático** | Todo dia às `BACKUP_HORA` (padrão 03:00). Se o computador estava desligado nesse horário, faz o backup 2 minutos depois de ligar (quando o último tem mais de 26 h) |
+| **Automático** | Todo dia no horário de Sistema → Backups → **Agenda do backup automático** (o Administrador liga, desliga e muda o horário; enquanto não for salvo, vale o `BACKUP_HORA` do .env, padrão 03:00). Se o computador estava desligado nesse horário, faz o backup 2 minutos depois de ligar (quando o último tem mais de 26 h) |
 | **Manual** | Painel → **Backups → Fazer backup agora**, ou `Fazer-Backup.cmd` |
 | **Sem parar o estacionamento** | `mysqldump --single-transaction`: fotografia consistente do banco **sem travar as tabelas**. Entradas, saídas e pagamentos continuam durante o backup (há teste disso). O processo roda com prioridade baixa no processador |
 | **Conteúdo** | Tabelas, dados, gatilhos (triggers), procedimentos e eventos. Tudo o que é preciso para o sistema funcionar |
@@ -80,6 +80,17 @@ O que você precisa:
    - os tickets em aberto, em **Entrada e saída**.
 
 ### B) Dados apagados ou estragados por engano (o computador está bom)
+
+**Pelo painel** (Sistema → Backups → **Restaurar**, só Administrador):
+
+1. Escolha o backup de **antes** do problema e clique em **Restaurar**.
+2. Confirme a sua senha e digite `RESTAURAR`.
+3. O sistema confere a integridade do arquivo, faz um **backup de segurança** do estado atual (tipo "Antes de restaurar", guardado por 30 dias, para desfazer), coloca a API em manutenção (todos recebem "O sistema está restaurando um backup"), restaura, aplica as migrations que faltarem e marca a nuvem para receber tudo de novo.
+4. Quem estava com o painel aberto precisa recarregar a página (e, se entrou depois do backup, fazer login de novo).
+
+A restauração fica no histórico (`backup.restaurado`); senha errada também (`backup.restauracao_recusada`). O botão **Baixar** entrega o arquivo ainda criptografado: só abre com a chave.
+
+**Pelo Restaurar-Backup.cmd** (se o painel não abrir):
 
 1. Feche o **Iniciar.cmd** (servidor parado).
 2. Antes de mexer, rode o **Fazer-Backup.cmd**. Isso guarda o estado atual, caso seja preciso voltar.

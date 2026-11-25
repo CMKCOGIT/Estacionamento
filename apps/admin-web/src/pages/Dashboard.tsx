@@ -9,6 +9,7 @@ import {
   type SituacaoSync,
 } from '@estacionamento/shared';
 import { useAuth } from '../auth/contexto';
+import { GraficoColunas } from '../components/graficos/GraficoColunas';
 import { GraficoFaturamento } from '../components/graficos/GraficoFaturamento';
 import { GraficoOcupacao } from '../components/graficos/GraficoOcupacao';
 import { useAtualizacaoAutomatica } from '../hooks/useAtualizacaoAutomatica';
@@ -104,6 +105,8 @@ export function Dashboard() {
             />
             <Indicador rotulo="Vagas bloqueadas" valor={operacao.vagas.bloqueadas} extra="em manutenção" />
             <Indicador rotulo="Veículos estacionados" valor={operacao.veiculosEstacionados} />
+            <Indicador rotulo="Entradas hoje" valor={operacao.hoje.entradas} />
+            <Indicador rotulo="Saídas hoje" valor={operacao.hoje.saidas} />
           </>
         )}
         {financeiro && (
@@ -112,6 +115,11 @@ export function Dashboard() {
               rotulo="Faturamento hoje"
               valor={formatarCentavos(financeiro.faturamentoHojeCentavos)}
               extra={`Ontem: ${formatarCentavos(financeiro.faturamentoOntemCentavos)}`}
+            />
+            <Indicador
+              rotulo="Recebido no caixa hoje"
+              valor={formatarCentavos(financeiro.caixa.recebidoNoCaixaCentavos)}
+              extra={`${financeiro.caixa.recebimentos} pagamento${financeiro.caixa.recebimentos === 1 ? '' : 's'} no guichê`}
             />
             <Indicador
               rotulo="Pagamentos pendentes"
@@ -125,6 +133,26 @@ export function Dashboard() {
           </>
         )}
       </section>
+
+      {operacao && (
+        <section className="cartao">
+          <h2>Movimentação por horário (hoje)</h2>
+          <p className="mudo legenda-grafico">Entradas e saídas registradas em cada hora do dia.</p>
+          <GraficoColunas
+            formato="numero"
+            descricao="Entradas e saídas por hora hoje"
+            pontos={operacao.movimentoPorHora
+              .filter((h) => h.hora <= new Date().getHours())
+              .map((h) => ({
+                chave: String(h.hora),
+                eixo: [`${String(h.hora).padStart(2, '0')}h`],
+                valorCentavos: h.entradas + h.saidas,
+                titulo: `${String(h.hora).padStart(2, '0')}:00 – ${String(h.hora).padStart(2, '0')}:59`,
+                linhas: [`${h.entradas} entrada(s)`, `${h.saidas} saída(s)`],
+              }))}
+          />
+        </section>
+      )}
 
       {operacao && (
         <div className="grade-painel">
@@ -213,6 +241,24 @@ export function Dashboard() {
                 {formatarCentavos(financeiro.estornosHoje.centavos)})
               </p>
             )}
+            <h3>Situação do caixa</h3>
+            <dl className="lista-definicoes">
+              <dt>Caixas</dt>
+              <dd>
+                {financeiro.caixa.abertos ? `${financeiro.caixa.abertos} aberto(s)` : 'Fechado'}
+                {financeiro.caixa.fechadosHoje > 0 && ` · ${financeiro.caixa.fechadosHoje} fechado(s) hoje`}
+              </dd>
+              <dt>Troco inicial</dt>
+              <dd>{formatarCentavos(financeiro.caixa.saldoInicialCentavos)}</dd>
+              <dt>Dinheiro em caixa</dt>
+              <dd>
+                <strong>{formatarCentavos(financeiro.caixa.dinheiroEmCaixaCentavos)}</strong>
+              </dd>
+            </dl>
+            <p className="mudo pequeno">
+              Faturamento = pagamentos − estornos. Recebido no caixa = pagamentos no guichê hoje (todas as
+              formas). Dinheiro em caixa = o que deve estar nas gavetas abertas agora.
+            </p>
             <h3>Caixas abertos</h3>
             {financeiro.caixasAbertos.length === 0 ? (
               <p className="mudo">Nenhum caixa aberto.</p>

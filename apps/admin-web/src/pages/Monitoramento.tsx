@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
+import { useAuth } from '../auth/contexto';
+import { syncFilaApi, type RegistroNaoSincronizado } from '../services/configuracoes';
 import {
   monitoramentoApi,
   type Componente,
@@ -217,6 +219,8 @@ export function Monitoramento() {
             </div>
           </div>
 
+          <FilaSincronizacao />
+
           <h2>Falhas de comunicação com a nuvem</h2>
           {p.falhasComunicacao.length === 0 ? (
             <p className="pequeno">Nenhuma falha registrada.</p>
@@ -277,5 +281,98 @@ export function Monitoramento() {
         </>
       )}
     </section>
+  );
+}
+
+/** Registros que ainda não chegaram à nuvem, com o botão "Reenviar agora". */
+function FilaSincronizacao() {
+  const { temPermissao } = useAuth();
+  const [itens, setItens] = useState<RegistroNaoSincronizado[] | null>(null);
+  const [msg, setMsg] = useState<{ tipo: 'ok' | 'erro'; texto: string } | null>(null);
+  const [enviando, setEnviando] = useState(false);
+  const carregar = useCallback(
+    () =>
+      syncFilaApi.pendentes().then(
+        (r) => setItens(r.itens),
+        (e: unknown) => setMsg({ tipo: 'erro', texto: e instanceof Error ? e.message : 'Falhou.' }),
+      ),
+    [],
+  );
+  useEffect(() => {
+    void carregar();
+  }, [carregar]);
+  const podeReenviar = temPermissao('sync.gerenciar') || temPermissao('config.gerenciar');
+  return (
+    <>
+      <h2>Registros não sincronizados</h2>
+      <p className="pequeno">
+        Sem internet, a operação continua normalmente e os registros ficam guardados aqui. O envio é
+        automático, com novas tentativas; cada registro tem identificação única, então reenviar nunca duplica
+        nada na nuvem.
+      </p>
+      {msg && (
+        <p className={`alerta alerta--${msg.tipo}`} role="status">
+          {msg.texto}
+        </p>
+      )}
+      {itens && itens.length === 0 && <p className="pequeno">Nenhum registro aguardando envio.</p>}
+      {itens && itens.length > 0 && (
+        <div className="tabela-rolagem">
+          <table className="tabela tabela--compacta">
+            <thead>
+              <tr>
+                <th>Desde</th>
+                <th>Registro</th>
+                <th>Situação</th>
+                <th className="numero">Tentativas</th>
+                <th>Último erro</th>
+              </tr>
+            </thead>
+            <tbody>
+              {itens.map((r) => (
+                <tr key={r.seq}>
+                  <td className="sem-quebra">{quando(r.criadoEm)}</td>
+                  <td>
+                    {r.tipo}
+                    <div className="mudo pequeno">{r.eventoId}</div>
+                  </td>
+                  <td>{r.status === 'PENDENTE' ? 'Na fila' : 'Recusado pela nuvem'}</td>
+                  <td className="numero">{r.tentativas}</td>
+                  <td>{r.ultimoErro ?? '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {podeReenviar && (
+        <div className="acoes">
+          <button
+            type="button"
+            className="botao botao--secundario"
+            disabled={enviando || !itens?.length}
+            onClick={() => {
+              setEnviando(true);
+              setMsg(null);
+              syncFilaApi
+                .reenviar()
+                .then((r) => {
+                  setMsg({
+                    tipo: 'ok',
+                    texto: `Reenvio pedido: ${r.pendentes} na fila${r.recolocados ? ` e ${r.recolocados} recusado(s) devolvido(s) à fila` : ''}.`,
+                  });
+                  return carregar();
+                })
+                .catch((e: unknown) =>
+                  setMsg({ tipo: 'erro', texto: e instanceof Error ? e.message : 'Falhou.' }),
+                )
+                .finally(() => setEnviando(false));
+            }}
+          >
+            {enviando ? 'Reenviando…' : 'Reenviar agora'}
+          </button>
+        </div>
+      )}
+    </>
   );
 }

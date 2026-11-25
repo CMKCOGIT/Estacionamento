@@ -15,6 +15,7 @@ import {
 } from '@estacionamento/shared';
 import { GraficoBarras } from '../components/graficos/GraficoBarras';
 import { GraficoColunas } from '../components/graficos/GraficoColunas';
+import { imprimirPdf } from '../components/exportar';
 import { baixarCsv, reaisCsv } from '../components/relatorios/csv';
 import {
   diaMes,
@@ -414,7 +415,14 @@ function AbaMovimento({ f }: { f: FiltrosAdm }) {
                 onClick={() => csvMovimento(`entradas-saidas-${f.de}-a-${f.ate}`, d.itens)}
                 disabled={!d.itens.length}
               >
-                Exportar planilha
+                Excel
+              </button>
+              <button
+                type="button"
+                className="botao botao--secundario botao--pequeno nao-imprimir"
+                onClick={() => imprimirPdf(document.querySelector('h1')?.textContent ?? 'relatorio')}
+              >
+                PDF
               </button>
             </div>
             {d.truncado && (
@@ -535,7 +543,14 @@ function AbaPlaca() {
                 onClick={() => csvMovimento(`historico-${d.placa}`, d.estadias)}
                 disabled={!d.estadias.length}
               >
-                Exportar planilha
+                Excel
+              </button>
+              <button
+                type="button"
+                className="botao botao--secundario botao--pequeno nao-imprimir"
+                onClick={() => imprimirPdf(document.querySelector('h1')?.textContent ?? 'relatorio')}
+              >
+                PDF
               </button>
             </div>
             <Estado erro={null} carregando={false} vazio={!d.estadias.length} />
@@ -756,7 +771,14 @@ function AbaFuncionarios({ f }: { f: FiltrosAdm }) {
                   )
                 }
               >
-                Exportar planilha
+                Excel
+              </button>
+              <button
+                type="button"
+                className="botao botao--secundario botao--pequeno nao-imprimir"
+                onClick={() => imprimirPdf(document.querySelector('h1')?.textContent ?? 'relatorio')}
+              >
+                PDF
               </button>
             </div>
             <div className="tabela-rolagem">

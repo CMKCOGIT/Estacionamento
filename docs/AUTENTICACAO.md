@@ -78,12 +78,24 @@ sequenceDiagram
 
 ## 6. Níveis de acesso e permissões
 
-Dois níveis (migration `006`):
+Três níveis (migrations `006` e `016`):
 
 | Nível | Permissões |
 |-------|-----------|
-| **Administrador** | **Todas**, calculadas na hora a partir do catálogo, inclusive as que forem criadas no futuro |
-| **Funcionário** | **Somente as marcadas** pelo administrador, por funcionalidade, na tela do funcionário (tabela `usuario_permissoes`) |
+| **Administrador** (proprietário) | **Todas**, calculadas na hora a partir do catálogo, inclusive as que forem criadas no futuro |
+| **Gerente** | As marcadas individualmente, **menos** as exclusivas do Administrador: `backup.gerenciar`, `config.seguranca`, `perfil.gerenciar` e `usuario.sessoes` |
+| **Operador** (código `funcionario`) | As marcadas individualmente, **menos** as do Administrador e as de supervisão: tarifas (alterar/publicar), relatório financeiro, funcionários e usuários, configurações, supervisão de caixa, estorno, cancelamento, auditoria, LGPD, monitoramento e reenvio da sincronização |
+
+- **O nível é o teto**, conferido no servidor a cada requisição (`permissaoCabeNoNivel`, em `packages/shared/src/usuarios.ts`). Uma permissão acima do nível não vale, nem se for gravada direto no banco. O cadastro recusa (400) permissões que não cabem no nível.
+- **Gerente** cadastra e ajusta só Operadores. Criar Gerentes e Administradores é do Administrador.
+- **Permissões padrão por nível:** os modelos **Padrão do Gerente** e **Padrão do Operador** vêm marcados ao escolher o nível no cadastro. O Administrador muda em Configurações → Usuários e permissões (`PUT /api/v1/permissoes/modelos/:codigo`).
+- **Limite de desconto:** Gerente e Operador concedem desconto na saída só até o limite definido pelo Administrador (percentual do valor e/ou valor em reais; vale o menor). Acima disso, a API responde **403 `LIMITE_AJUSTE`** com o máximo permitido. Padrão: Gerente 50%, Operador 0%.
+- **Migração sem perda de acesso:** na atualização, funcionários que já tinham alguma permissão de supervisão viraram Gerente.
+- **Tentativas de acesso sem permissão** (403) ficam no histórico como `acesso.negado`, uma vez por usuário e rota a cada 10 minutos.
+
+### Regras de sessão e senha pelo painel
+
+Configurações → Segurança e acessos (só Administrador) define: tempo sem uso, duração máxima da sessão, tentativas até bloquear, tempo de bloqueio, tamanho mínimo da senha, exigir maiúscula, exigir símbolo e **acesso só pela rede local** (recusa login vindo de IP público, `403 ACESSO_RESTRITO`). Enquanto nada for salvo, valem os valores do `.env`. A mesma aba lista as **sessões abertas** e permite encerrar a de outro usuário.
 
 - Os perfis antigos **Operador de caixa** e **Financeiro** viraram **modelos** (`perfis.uso = MODELO`). Eles preenchem os checkboxes com um clique e não podem ser atribuídos diretamente (o banco recusa).
 - **Mudanças de permissão valem na hora:** as permissões são lidas a cada requisição, então as sessões abertas já seguem as novas regras.

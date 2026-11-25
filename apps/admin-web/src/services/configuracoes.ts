@@ -1,4 +1,9 @@
-import type { PoliticaAcessoCliente } from '@estacionamento/shared';
+import type {
+  ConfiguracoesGerais,
+  PoliticaAcessoCliente,
+  PreferenciasOperacao,
+  SessaoLoginAtiva,
+} from '@estacionamento/shared';
 import { api } from './api';
 
 export const configuracoesApi = {
@@ -44,4 +49,46 @@ export const syncApi = {
   status: () => api<StatusSync>('/sync/status'),
   ressincronizar: () => api<StatusSync>('/sync/ressincronizar', { method: 'POST', corpo: {} }),
   conferir: () => api<StatusSync>('/sync/conferir', { method: 'POST', corpo: {} }),
+};
+
+// ---------------------------------------------------------------------------
+// Configurações por categoria
+// ---------------------------------------------------------------------------
+export type CategoriaEditavel =
+  'estacionamento' | 'operacao' | 'notificacoes' | 'seguranca' | 'limitesAjuste' | 'backup';
+
+export interface DadosDoPainel {
+  nome: string;
+  logo: string | null;
+  operacao: PreferenciasOperacao;
+}
+
+export const configGeralApi = {
+  obter: () => api<ConfiguracoesGerais>('/configuracoes'),
+  painel: () => api<DadosDoPainel>('/configuracoes/painel'),
+  salvar: (categoria: CategoriaEditavel, valor: unknown) =>
+    api<ConfiguracoesGerais>(`/configuracoes/${categoria}`, { method: 'PUT', corpo: valor }),
+  sessoes: () => api<{ itens: SessaoLoginAtiva[] }>('/configuracoes/seguranca/sessoes'),
+  encerrarSessao: (id: string) =>
+    api<void>(`/configuracoes/seguranca/sessoes/${id}/encerrar`, { method: 'POST', corpo: {} }),
+  salvarPadrao: (codigo: 'padrao_gerente' | 'padrao_operador', permissoes: string[]) =>
+    api<void>(`/permissoes/modelos/${codigo}`, { method: 'PUT', corpo: { permissoes } }),
+};
+
+export interface RegistroNaoSincronizado {
+  seq: string;
+  eventoId: string;
+  tipo: string;
+  entidade: string;
+  status: 'PENDENTE' | 'REJEITADO';
+  tentativas: number;
+  proximaTentativaEm: string | null;
+  ultimoErro: string | null;
+  criadoEm: string;
+}
+
+export const syncFilaApi = {
+  pendentes: () => api<{ itens: RegistroNaoSincronizado[] }>('/sync/pendentes'),
+  reenviar: () =>
+    api<{ pendentes: number; recolocados: number }>('/sync/reenviar', { method: 'POST', corpo: {} }),
 };

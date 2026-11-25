@@ -5,6 +5,7 @@ import type {
   ListaMovimentacoes,
   ListaPagamentos,
   ListaPendencias,
+  PedidoCorrecaoCaixa,
   PedidoMovimentacaoCaixa,
   PedidoPagamento,
   ResultadoPagamento,
@@ -56,6 +57,8 @@ export const financeiroApi = {
     }),
   receber: (sessaoId: string, p: PedidoPagamento) =>
     api<ResultadoPagamento>(`/sessoes/${sessaoId}/pagamentos`, { method: 'POST', corpo: p }),
+  corrigirCaixa: (id: string, p: PedidoCorrecaoCaixa) =>
+    api<CaixaDetalhe>(`/financeiro/caixas/${id}/correcoes`, { method: 'POST', corpo: p }),
   movimentarCaixa: (p: PedidoMovimentacaoCaixa) =>
     api<CaixaAtual>('/caixa/movimentar', { method: 'POST', corpo: p }),
 };

@@ -32,7 +32,7 @@ export function Relatorios() {
     <>
       <header className="cabecalho">
         <div>
-          <h1>Relatórios financeiros</h1>
+          <h1>Indicadores financeiros</h1>
           <p className="mudo">
             Faturamento, formas de pagamento, histórico, pendências e fechamentos de caixa.
           </p>

@@ -19,7 +19,8 @@ import { obterSiteAtual } from '../../config/site.js';
 import type { Conexao } from '../../db/pool.js';
 import { comTransacao, type ContextoAuditoria } from '../../db/transacao.js';
 import { AppError, erros } from '../../http/erros.js';
-import type { Autenticacao } from '../auth/auth.service.js';
+import { nivelDosPerfis, type Autenticacao } from '../auth/auth.service.js';
+import { carregarConfig } from '../configuracoes/preferencias.js';
 import { publicarDisponibilidade, publicarTicket } from '../../sync/outbox.js';
 import { exigirVeiculoForaDoEstacionamento, validarPlaca } from '../veiculos/veiculos.service.js';
 import { gerarToken, montarAcessoCliente } from './acesso-cliente.js';
@@ -100,6 +101,31 @@ function exigirAjustePermitido(
     throw erros.requisicaoInvalida('Informe o motivo do desconto/acréscimo', [
       { campo: 'motivoAjuste', mensagem: 'Obrigatório' },
     ]);
+  }
+}
+
+/**
+ * Gerente e Operador concedem desconto só até o limite definido pelo
+ * Administrador (Configurações → Usuários e permissões). Administrador: sem limite.
+ */
+async function exigirDescontoNoLimite(ator: Ator, desconto: number, calculado: number) {
+  if (!desconto) return;
+  const nivel = nivelDosPerfis(ator.auth.perfis);
+  if (nivel === 'admin') return;
+  const { limitesAjuste } = await carregarConfig();
+  const limite = limitesAjuste[nivel];
+  const pelaPorcentagem = Math.floor((calculado * limite.percentualMax) / 100);
+  const maximo =
+    limite.valorMaxCentavos > 0 ? Math.min(pelaPorcentagem, limite.valorMaxCentavos) : pelaPorcentagem;
+  if (desconto > maximo) {
+    throw new AppError(
+      403,
+      'LIMITE_AJUSTE',
+      maximo > 0
+        ? `O desconto máximo que você pode conceder neste ticket é ${formatarCentavos(maximo)}. Acima disso, peça a um administrador.`
+        : 'Você não pode conceder desconto. Peça a um gerente ou administrador.',
+      { maximoCentavos: maximo },
+    );
   }
 }
 
@@ -331,6 +357,7 @@ export const sessoesService = {
       descontoCentavos: desconto,
       acrescimoCentavos: acrescimo,
     });
+    await exigirDescontoNoLimite(ator, desconto, estadia.valorCalculadoCentavos);
     const conferencia = conferirPagamentos(
       estadia.aPagarCentavos,
       pedido.pagamentos,
@@ -564,6 +591,7 @@ export const sessoesService = {
         });
         const calculado = estadia.valorCalculadoCentavos;
         const final = estadia.valorFinalCentavos;
+        await exigirDescontoNoLimite(ator, desconto, calculado);
 
         // O valor mudou desde que o operador conferiu (ex.: virou a fração)?
         if (calculado !== pedido.valorEsperadoCentavos) {

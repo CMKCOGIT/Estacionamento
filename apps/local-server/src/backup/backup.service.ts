@@ -8,7 +8,7 @@ import { Transform, Writable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { fileURLToPath } from 'node:url';
 import { createGunzip, createGzip } from 'node:zlib';
-import type { ResultSetHeader, RowDataPacket } from 'mysql2/promise';
+import mysql, { type ResultSetHeader, type RowDataPacket } from 'mysql2/promise';
 import { ulid } from 'ulid';
 import { mascararDadosPessoais } from '@estacionamento/shared';
 import { appInfo } from '../config/app-info.js';
@@ -16,6 +16,12 @@ import { env } from '../config/env.js';
 import { logger } from '../config/logger.js';
 import { registrarAtividade } from '../db/atividades.js';
 import { pool } from '../db/pool.js';
+import { migrarBancoLocal } from '../db/scripts-sql.js';
+import { manutencao } from '../http/manutencao.js';
+import { carregarConfig, configEmCache, limparCacheConfig } from '../modules/configuracoes/preferencias.js';
+
+/** Backup inexistente ou impossível de usar agora (vira 409 na rota). */
+export class BackupIndisponivel extends Error {}
 import { carregarChave, cifrador, decifrarArquivo, idDaChave } from './cripto.js';
 
 /**
@@ -37,7 +43,7 @@ export interface Manifesto {
   formato: 1;
   id: string;
   banco: string;
-  tipo: 'AUTOMATICO' | 'MANUAL';
+  tipo: TipoBackup;
   criadoEm: string;
   arquivo: string;
   tamanhoBytes: number;
@@ -147,8 +153,12 @@ function observador() {
   const t = new Transform({
     transform(p: Buffer, _e, feito) {
       const texto = resto + p.toString('utf8');
-      tabelas += (texto.match(/\nCREATE TABLE `/g) ?? []).length;
-      gatilhos += (texto.match(/\*\/ \/\*!50003 TRIGGER `/g) ?? []).length;
+      // Só conta o que termina depois do pedaço repetido do bloco anterior
+      // (senão um nome que caiu inteiro no fim do bloco seria contado duas vezes)
+      const novos = (re: RegExp) =>
+        [...texto.matchAll(re)].filter((m) => m.index + m[0].length > resto.length).length;
+      tabelas += novos(/\nCREATE TABLE `/g);
+      gatilhos += novos(/\*\/ \/\*!50003 TRIGGER `/g);
       resto = texto.slice(-60);
       fim = (fim + p.toString('utf8')).slice(-300);
       feito(null, p);
@@ -216,11 +226,13 @@ function lerRegistro(l: RowDataPacket): RegistroBackup {
 }
 
 let emAndamento: Promise<RegistroBackup> | null = null;
+let restaurando = false;
+export type TipoBackup = 'AUTOMATICO' | 'MANUAL' | 'PRE_RESTAURACAO';
 
 // ---------------------------------------------------------------------- serviço
 export const backupService = {
   /** Faz um backup agora (um por vez; um segundo pedido espera o que está rodando). */
-  criar(tipo: 'AUTOMATICO' | 'MANUAL', usuarioId: string | null = null): Promise<RegistroBackup> {
+  criar(tipo: TipoBackup, usuarioId: string | null = null): Promise<RegistroBackup> {
     if (emAndamento) return emAndamento;
     emAndamento = criarBackup(tipo, usuarioId).finally(() => {
       emAndamento = null;
@@ -327,9 +339,13 @@ export const backupService = {
   /** Retenção: últimos N diários, N semanais (domingo) e N mensais; o resto é apagado. */
   async aplicarRetencao(): Promise<number> {
     const [l] = await pool.query<RowDataPacket[]>(
-      "SELECT id, arquivo, iniciado_em FROM backups WHERE status = 'SUCESSO' AND removido_em IS NULL ORDER BY iniciado_em DESC",
+      "SELECT id, tipo, arquivo, iniciado_em FROM backups WHERE status = 'SUCESSO' AND removido_em IS NULL ORDER BY iniciado_em DESC",
     );
     const manter = new Set<string>();
+    // Backups de segurança de restaurações ficam 30 dias (servem para desfazer)
+    for (const b of l)
+      if (b.tipo === 'PRE_RESTAURACAO' && Date.now() - (b.iniciado_em as Date).getTime() < 30 * 86_400_000)
+        manter.add(String(b.id));
     const escolher = (chave: (d: Date) => string, quantos: number) => {
       const vistos = new Set<string>();
       for (const b of l) {
@@ -369,8 +385,13 @@ export const backupService = {
     if (!existsSync(pasta)) return 0;
     let n = 0;
     for (const f of readdirSync(pasta).filter((x) => x.endsWith('.sql.gz.enc.json'))) {
-      const m = JSON.parse(readFileSync(join(pasta, f), 'utf8')) as Manifesto;
-      if (!existsSync(join(pasta, m.arquivo))) continue;
+      let m: Manifesto;
+      try {
+        m = JSON.parse(readFileSync(join(pasta, f), 'utf8')) as Manifesto;
+      } catch {
+        continue; // manifesto ilegível: o arquivo não é listado, mas nada quebra
+      }
+      if (!m?.id || !m.arquivo || !existsSync(join(pasta, m.arquivo))) continue;
       const [r] = await pool.query<ResultSetHeader>(
         `INSERT IGNORE INTO backups (id, tipo, status, iniciado_em, concluido_em, arquivo, tamanho_bytes, sha256, chave_id, tabelas)
          VALUES (?, ?, 'SUCESSO', ?, ?, ?, ?, ?, ?, ?)`,
@@ -391,6 +412,115 @@ export const backupService = {
     return n;
   },
 
+  /** Caminho do arquivo para download (o arquivo continua cifrado: só abre com a chave). */
+  async arquivoParaDownload(id: string): Promise<{ caminho: string; nome: string; bytes: number }> {
+    const [[l]] = await pool.query<RowDataPacket[]>(
+      "SELECT arquivo, tamanho_bytes FROM backups WHERE id = ? AND status = 'SUCESSO' AND removido_em IS NULL",
+      [id],
+    );
+    if (!l?.arquivo) throw new BackupIndisponivel('Backup não encontrado ou já removido pela retenção.');
+    const p = join(pastaBackups(), String(l.arquivo));
+    if (!existsSync(p)) throw new BackupIndisponivel('O arquivo deste backup não está mais na pasta.');
+    return { caminho: p, nome: String(l.arquivo), bytes: Number(l.tamanho_bytes ?? 0) };
+  },
+
+  restaurando: () => restaurando,
+
+  /**
+   * Restaura um backup NO BANCO EM USO, pelo painel:
+   *  1. confere a integridade do arquivo (hash, chave, gzip e fim do dump);
+   *  2. liga o modo manutenção (a API responde 503 para todos);
+   *  3. faz um backup de segurança do estado atual (para desfazer);
+   *  4. recria o banco com o conteúdo do backup e aplica as migrations novas;
+   *  5. marca a sincronização para reenviar tudo e registra no histórico.
+   * Quem pede precisa ter confirmado a própria senha (na rota).
+   */
+  async restaurarNoBancoAtual(
+    id: string,
+    usuarioId: string,
+    meta: { ip: string | null },
+  ): Promise<{ arquivo: string; backupSeguranca: string; tabelas: number; migracoes: string[] }> {
+    if (restaurando) throw new BackupIndisponivel('Já há uma restauração em andamento.');
+    if (emAndamento)
+      throw new BackupIndisponivel('Há um backup em andamento. Espere terminar e tente de novo.');
+    const [[l]] = await pool.query<RowDataPacket[]>(
+      "SELECT * FROM backups WHERE id = ? AND status = 'SUCESSO' AND removido_em IS NULL",
+      [id],
+    );
+    if (!l) throw new BackupIndisponivel('Backup não encontrado ou já removido pela retenção.');
+    const registro = lerRegistro(l);
+    const conferido = await this.verificar(id);
+    if (conferido.verificacao !== 'OK') {
+      throw new BackupIndisponivel(
+        `Este backup não passou na conferência de integridade (${conferido.erro ?? conferido.verificacao}). Escolha outro.`,
+      );
+    }
+    restaurando = true;
+    manutencao.ativar('O sistema está restaurando um backup.');
+    try {
+      // Dá tempo para as requisições que já estavam em andamento terminarem
+      await new Promise((r) => setTimeout(r, 1500));
+      const seguranca = await criarBackup('PRE_RESTAURACAO', usuarioId);
+      if (seguranca.status !== 'SUCESSO' || !seguranca.arquivo) {
+        throw new Error(
+          `O backup de segurança falhou (${seguranca.erro ?? 'erro desconhecido'}). Nada foi alterado.`,
+        );
+      }
+      await restaurarEm(join(pastaBackups(), registro.arquivo!), env.DB_NAME);
+      // Backup de uma versão anterior do sistema: aplica as migrations que faltam
+      const migracao = await migrarBancoLocal({
+        host: env.DB_HOST,
+        port: env.DB_PORT,
+        user: env.DB_USER,
+        password: env.DB_PASSWORD,
+        banco: env.DB_NAME,
+      });
+      await pool.query('UPDATE sync_estado SET snapshot_pendente = TRUE, conferencia_pendente = TRUE');
+      // Os registros de backup do banco restaurado são antigos: relê os manifestos da pasta
+      await this.sincronizarHistorico().catch((e: unknown) =>
+        logger.warn({ err: e }, 'Restauração feita, mas a lista de backups não foi relida'),
+      );
+      const [[t]] = await pool.query<RowDataPacket[]>(
+        "SELECT COUNT(*) AS n FROM information_schema.tables WHERE table_schema = DATABASE() AND table_type = 'BASE TABLE'",
+      );
+      const tabelas = Number(t?.n ?? 0);
+      const [[u]] = await pool.query<RowDataPacket[]>('SELECT id FROM usuarios WHERE id = ?', [usuarioId]);
+      await pool.query(
+        'INSERT INTO backup_restauracoes (id, arquivo, backup_seguranca, restaurado_por, tabelas) VALUES (?, ?, ?, ?, ?)',
+        [ulid(), registro.arquivo, seguranca.arquivo, u ? usuarioId : null, tabelas],
+      );
+      const site = await pool.query<RowDataPacket[]>('SELECT id FROM sites LIMIT 1');
+      await registrarAtividade({
+        acao: 'backup.restaurado',
+        siteId: (site[0][0]?.id as string | undefined) ?? null,
+        usuarioId: u ? usuarioId : null,
+        entidade: 'backups',
+        entidadeId: id,
+        ip: meta.ip,
+        dados: {
+          arquivo: registro.arquivo,
+          criadoEm: registro.iniciadoEm,
+          backupSeguranca: seguranca.arquivo,
+          migracoesAplicadas: migracao.aplicadas,
+        },
+      });
+      limparCacheConfig();
+      logger.warn(
+        { arquivo: registro.arquivo, seguranca: seguranca.arquivo },
+        'Backup restaurado pelo painel',
+      );
+      return {
+        arquivo: registro.arquivo!,
+        backupSeguranca: seguranca.arquivo,
+        tabelas,
+        migracoes: migracao.aplicadas,
+      };
+    } finally {
+      manutencao.desativar();
+      restaurando = false;
+    }
+  },
+
   async situacao() {
     const [[ultimo]] = await pool.query<RowDataPacket[]>(
       "SELECT * FROM backups WHERE status = 'SUCESSO' ORDER BY iniciado_em DESC LIMIT 1",
@@ -405,12 +535,28 @@ export const backupService = {
       "SELECT COUNT(*) AS n, COALESCE(SUM(tamanho_bytes), 0) AS bytes FROM backups WHERE status = 'SUCESSO' AND removido_em IS NULL",
     );
     const { chave } = carregarChave(env.BACKUP_CHAVE, arquivoChave());
+    const { backup: agenda } = await carregarConfig();
+    const [[restauracao]] = await pool.query<RowDataPacket[]>(
+      `SELECT r.arquivo, r.backup_seguranca, r.restaurado_em, COALESCE(f.nome, u.login) AS nome
+         FROM backup_restauracoes r
+         LEFT JOIN usuarios u ON u.id = r.restaurado_por
+         LEFT JOIN funcionarios f ON f.usuario_id = u.id
+        ORDER BY r.restaurado_em DESC LIMIT 1`,
+    );
     return {
-      ativo: env.BACKUP_ATIVO,
+      ativo: agenda.ativo,
       pasta: pastaBackups(),
       copia: env.BACKUP_COPIA_DIR ? caminho(env.BACKUP_COPIA_DIR) : null,
-      horario: env.BACKUP_HORA,
-      proximoEm: proximoHorario().toISOString(),
+      horario: agenda.horario,
+      proximoEm: proximoHorario(new Date(), agenda.horario).toISOString(),
+      ultimaRestauracao: restauracao
+        ? {
+            arquivo: String(restauracao.arquivo),
+            backupSeguranca: (restauracao.backup_seguranca as string | null) ?? null,
+            em: (restauracao.restaurado_em as Date).toISOString(),
+            por: (restauracao.nome as string | null) ?? null,
+          }
+        : null,
       chaveId: idDaChave(chave),
       chaveNoArquivo: !env.BACKUP_CHAVE,
       retencao: {
@@ -429,7 +575,7 @@ export const backupService = {
 };
 
 // ------------------------------------------------------------------- internos
-async function criarBackup(tipo: 'AUTOMATICO' | 'MANUAL', usuarioId: string | null): Promise<RegistroBackup> {
+async function criarBackup(tipo: TipoBackup, usuarioId: string | null): Promise<RegistroBackup> {
   const id = ulid();
   const inicio = new Date();
   const pasta = pastaBackups();
@@ -438,7 +584,8 @@ async function criarBackup(tipo: 'AUTOMATICO' | 'MANUAL', usuarioId: string | nu
     .replace(/[-:]/g, '')
     .replace('T', '-')
     .slice(0, 15);
-  const arquivo = `backup-${carimbo}-${tipo === 'MANUAL' ? 'manual' : 'auto'}.sql.gz.enc`;
+  const sufixo = { MANUAL: 'manual', AUTOMATICO: 'auto', PRE_RESTAURACAO: 'antes-restauracao' }[tipo];
+  const arquivo = `backup-${carimbo}-${sufixo}.sql.gz.enc`;
   const final = join(pasta, arquivo);
   const parcial = `${final}.parcial`;
   let cred: string | null = null;
@@ -551,9 +698,12 @@ async function criarBackup(tipo: 'AUTOMATICO' | 'MANUAL', usuarioId: string | nu
       dados: { tipo, arquivo, tamanhoBytes: h.bytes, tabelas: info.tabelas, copia: Boolean(copiaEm) },
     });
     logger.info({ arquivo, bytes: h.bytes, ms: Date.now() - inicio.getTime() }, 'Backup do banco concluído');
-    await backupService
-      .aplicarRetencao()
-      .catch((e: unknown) => logger.warn({ err: e }, 'Falha na retenção de backups'));
+    // O backup de segurança da restauração não aplica a retenção: ela poderia
+    // apagar justamente o backup (do mesmo dia) que vai ser restaurado
+    if (tipo !== 'PRE_RESTAURACAO')
+      await backupService
+        .aplicarRetencao()
+        .catch((e: unknown) => logger.warn({ err: e }, 'Falha na retenção de backups'));
   } catch (e) {
     const erro = mascararDadosPessoais((e as Error).message).slice(0, 1000);
     await unlink(parcial).catch(() => undefined);
@@ -616,8 +766,20 @@ function lerManifesto(arquivo: string): Manifesto | null {
 export async function restaurarEm(arquivo: string, banco: string): Promise<void> {
   if (!/^[A-Za-z0-9_]+$/.test(banco)) throw new Error(`Nome de banco inválido: ${banco}`);
   const { chave } = carregarChave(env.BACKUP_CHAVE, arquivoChave());
-  await pool.query(`DROP DATABASE IF EXISTS \`${banco}\``);
-  await pool.query(`CREATE DATABASE \`${banco}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci`);
+  // Conexão própria, sem banco padrão: as conexões do pool continuam apontando
+  // para o nome do banco e voltam a funcionar quando ele é recriado
+  const admin = await mysql.createConnection({
+    host: env.DB_HOST,
+    port: env.DB_PORT,
+    user: env.DB_USER,
+    password: env.DB_PASSWORD,
+  });
+  try {
+    await admin.query(`DROP DATABASE IF EXISTS \`${banco}\``);
+    await admin.query(`CREATE DATABASE \`${banco}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci`);
+  } finally {
+    await admin.end();
+  }
   const cred = await arquivoDeCredenciais();
   try {
     const { filho, terminou } = executar(programaMysql('mysql'), [
@@ -650,8 +812,8 @@ function semanaIso(d: Date): string {
 }
 
 /** Próximo horário do backup automático (BACKUP_HORA no fuso do estacionamento). */
-export function proximoHorario(agora = new Date()): Date {
-  const [h, m] = env.BACKUP_HORA.split(':').map(Number) as [number, number];
+export function proximoHorario(agora = new Date(), horario = configEmCache().backup.horario): Date {
+  const [h, m] = horario.split(':').map(Number) as [number, number];
   const local = new Date(agora.getTime() + desvioFusoMs());
   const alvo =
     Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), local.getUTCDate(), h, m) - desvioFusoMs();
@@ -664,10 +826,7 @@ export function proximoHorario(agora = new Date()): Date {
  * guardados; uma vez por mês, testa a restauração do mais recente.
  */
 export function iniciarAgendadorBackup(): void {
-  if (!env.BACKUP_ATIVO) {
-    logger.warn('Backup automático DESLIGADO (BACKUP_ATIVO=false).');
-    return;
-  }
+  if (!env.BACKUP_ATIVO) logger.warn('Backup automático DESLIGADO no .env (BACKUP_ATIVO=false).');
   const rodar = async () => {
     try {
       const r = await backupService.criar('AUTOMATICO');
@@ -682,12 +841,22 @@ export function iniciarAgendadorBackup(): void {
       logger.error({ err: e }, 'Falha na rotina de backup');
     }
   };
-  let proximo = proximoHorario();
+  // O horário e o liga/desliga vêm de Configurações → Backup (ou do .env, se nunca salvos)
+  let horario = configEmCache().backup.horario;
+  let proximo = proximoHorario(new Date(), horario);
   setInterval(() => {
-    if (Date.now() >= proximo.getTime()) {
-      proximo = proximoHorario(new Date(Date.now() + 60_000));
-      void rodar();
-    }
+    void carregarConfig()
+      .then(({ backup }) => {
+        if (backup.horario !== horario) {
+          horario = backup.horario;
+          proximo = proximoHorario(new Date(), horario);
+        }
+        if (Date.now() >= proximo.getTime()) {
+          proximo = proximoHorario(new Date(Date.now() + 60_000), horario);
+          if (backup.ativo) void rodar();
+        }
+      })
+      .catch(() => undefined);
   }, 30_000).unref();
   // Ao iniciar: se o último backup bom for antigo (PC desligado no horário), faz um em 2 minutos
   setTimeout(() => {
@@ -697,9 +866,10 @@ export function iniciarAgendadorBackup(): void {
         pool.query<RowDataPacket[]>("SELECT MAX(iniciado_em) AS t FROM backups WHERE status = 'SUCESSO'"),
       )
       .then(([[u]]) => {
-        if (!u?.t || Date.now() - (u.t as Date).getTime() > 26 * 3_600_000) void rodar();
+        if (configEmCache().backup.ativo && (!u?.t || Date.now() - (u.t as Date).getTime() > 26 * 3_600_000))
+          void rodar();
       })
       .catch((e: unknown) => logger.warn({ err: e }, 'Não foi possível conferir o último backup'));
   }, 2 * 60_000).unref();
-  logger.info({ horario: env.BACKUP_HORA, pasta: pastaBackups() }, 'Backup automático agendado');
+  logger.info({ horario, pasta: pastaBackups() }, 'Backup automático agendado');
 }

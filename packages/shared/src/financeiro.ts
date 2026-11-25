@@ -137,7 +137,20 @@ export interface CaixaResumo {
   estornadoCentavos: number;
   sangriasCentavos: number;
   suprimentosCentavos: number;
+  /** Correções feitas depois do fechamento (entradas − saídas). O fechamento original não muda. */
+  ajustesCentavos: number;
+  quantidadeAjustes: number;
+  /** Diferença do fechamento somada às correções (null se aberto). */
+  diferencaCorrigidaCentavos: number | null;
   porForma: ValoresPorForma[];
+}
+
+/** Correção de um caixa já fechado (vira uma movimentação AJUSTE, com motivo). */
+export interface PedidoCorrecaoCaixa {
+  direcao: 'ENTRADA' | 'SAIDA';
+  valorCentavos: number;
+  formaCodigo: string;
+  motivo: string;
 }
 
 export interface CaixaDetalhe extends CaixaResumo {

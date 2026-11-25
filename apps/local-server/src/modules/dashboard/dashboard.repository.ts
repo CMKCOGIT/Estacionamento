@@ -238,21 +238,89 @@ export const dashboardRepository = {
   },
 
   /** Contagens para alertas operacionais. */
-  async contagensParaAlertas(siteId: string) {
+  async contagensParaAlertas(siteId: string, horasPermanencia: number) {
     const [[l]] = await pool.query<RowDataPacket[]>(
       `SELECT
          (SELECT COUNT(*) FROM vagas WHERE site_id = ? AND situacao <> 'INATIVA') AS vagas,
          (SELECT COUNT(*) FROM tabelas_tarifa WHERE site_id = ? AND status = 'PUBLICADA' AND vigente_desde <= NOW(3)) AS tarifas_vigentes,
-         (SELECT COUNT(*) FROM sessoes_estacionamento WHERE site_id = ? AND status = 'ABERTA' AND entrada_em <= NOW(3) - INTERVAL 24 HOUR) AS sessoes_24h,
+         (SELECT COUNT(*) FROM sessoes_estacionamento WHERE site_id = ? AND status = 'ABERTA' AND ? > 0
+            AND entrada_em <= NOW(3) - INTERVAL ? HOUR) AS sessoes_longas,
          (SELECT COUNT(*) FROM usuarios u JOIN usuario_perfis up ON up.usuario_id = u.id AND up.site_id = ?
-           WHERE u.ativo = TRUE AND u.bloqueado_ate > NOW(3)) AS contas_bloqueadas`,
-      [siteId, siteId, siteId, siteId],
+           WHERE u.ativo = TRUE AND u.bloqueado_ate > NOW(3)) AS contas_bloqueadas,
+         (SELECT COUNT(*) FROM historico_atividades WHERE acao = 'auth.login_falhou'
+           AND criado_em >= NOW(3) - INTERVAL 24 HOUR) AS logins_falhos,
+         (SELECT COUNT(*) FROM historico_atividades WHERE acao = 'acesso.negado'
+           AND criado_em >= NOW(3) - INTERVAL 24 HOUR) AS acessos_negados,
+         (SELECT COUNT(*) FROM erros_sistema WHERE ocorrido_em >= NOW(3) - INTERVAL 24 HOUR) AS erros_24h,
+         (SELECT MAX(iniciado_em) FROM backups WHERE status = 'SUCESSO') AS ultimo_backup,
+         (SELECT MAX(iniciado_em) FROM backups WHERE status = 'FALHA') AS ultima_falha_backup`,
+      [siteId, siteId, siteId, horasPermanencia, horasPermanencia, siteId],
     );
     return {
       vagas: n(l?.vagas),
       tarifasVigentes: n(l?.tarifas_vigentes),
-      sessoesMais24h: n(l?.sessoes_24h),
+      sessoesLongas: n(l?.sessoes_longas),
       contasBloqueadas: n(l?.contas_bloqueadas),
+      loginsFalhos: n(l?.logins_falhos),
+      acessosNegados: n(l?.acessos_negados),
+      erros24h: n(l?.erros_24h),
+      ultimoBackup: (l?.ultimo_backup as Date | null) ?? null,
+      ultimaFalhaBackup: (l?.ultima_falha_backup as Date | null) ?? null,
+    };
+  },
+
+  /** Entradas e saídas de hoje, hora a hora (fuso do estacionamento). */
+  async movimentoPorHora(siteId: string): Promise<{ hora: number; entradas: number; saidas: number }[]> {
+    const [ent] = await pool.query<RowDataPacket[]>(
+      `SELECT HOUR(CONVERT_TZ(entrada_em, '+00:00', '${FUSO}')) AS h, COUNT(*) AS n
+         FROM sessoes_estacionamento WHERE site_id = ? AND entrada_em >= ${INICIO_HOJE} GROUP BY h`,
+      [siteId],
+    );
+    const [sai] = await pool.query<RowDataPacket[]>(
+      `SELECT HOUR(CONVERT_TZ(saida_em, '+00:00', '${FUSO}')) AS h, COUNT(*) AS n
+         FROM sessoes_estacionamento WHERE site_id = ? AND status = 'ENCERRADA' AND saida_em >= ${INICIO_HOJE} GROUP BY h`,
+      [siteId],
+    );
+    return Array.from({ length: 24 }, (_, hora) => ({
+      hora,
+      entradas: n(ent.find((l) => Number(l.h) === hora)?.n),
+      saidas: n(sai.find((l) => Number(l.h) === hora)?.n),
+    }));
+  },
+
+  /**
+   * Caixa hoje: quantos abertos, saldo inicial e dinheiro na gaveta (dos
+   * abertos) e o recebido presencialmente hoje (todos os caixas).
+   */
+  async caixaHoje(siteId: string) {
+    const [[a]] = await pool.query<RowDataPacket[]>(
+      `SELECT COUNT(*) AS abertos, COALESCE(SUM(saldo_inicial_centavos), 0) AS inicial
+         FROM caixa_sessoes WHERE site_id = ? AND status = 'ABERTO'`,
+      [siteId],
+    );
+    const [[d]] = await pool.query<RowDataPacket[]>(
+      `SELECT COALESCE(SUM(r.saldo_centavos), 0) AS dinheiro
+         FROM vw_caixa_resumo r JOIN caixa_sessoes cx ON cx.id = r.caixa_sessao_id
+        WHERE cx.site_id = ? AND cx.status = 'ABERTO' AND r.forma_codigo = 'DINHEIRO'`,
+      [siteId],
+    );
+    const [[r]] = await pool.query<RowDataPacket[]>(
+      `SELECT COALESCE(SUM(valor_centavos), 0) AS recebido, COUNT(*) AS qtd
+         FROM movimentacoes_financeiras
+        WHERE site_id = ? AND tipo = 'RECEBIMENTO' AND registrado_em >= ${INICIO_HOJE}`,
+      [siteId],
+    );
+    const [[f]] = await pool.query<RowDataPacket[]>(
+      `SELECT COUNT(*) AS n FROM caixa_sessoes WHERE site_id = ? AND status = 'FECHADO' AND fechado_em >= ${INICIO_HOJE}`,
+      [siteId],
+    );
+    return {
+      abertos: n(a?.abertos),
+      fechadosHoje: n(f?.n),
+      saldoInicialCentavos: n(a?.inicial),
+      dinheiroEmCaixaCentavos: n(d?.dinheiro),
+      recebidoNoCaixaCentavos: n(r?.recebido),
+      recebimentos: n(r?.qtd),
     };
   },
 };

@@ -11,9 +11,10 @@ import {
 } from '@estacionamento/shared';
 import { useAuth } from '../auth/contexto';
 import { ErroDaApi } from '../services/api';
+import { Incidentes, Inventario } from '../components/privacidade/Incidentes';
 import { privacidadeApi } from '../services/privacidade';
 
-type Aba = 'solicitacoes' | 'titular' | 'politica';
+type Aba = 'solicitacoes' | 'titular' | 'politica' | 'incidentes' | 'dados';
 const quando = (iso: string | null) =>
   iso ? new Date(iso).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : '—';
 const dia = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString('pt-BR') : '—');
@@ -38,10 +39,12 @@ export function Privacidade() {
     ['solicitacoes', 'Solicitações dos titulares'],
     ['titular', 'Dados de um titular'],
     ['politica', 'Retenção e encarregado'],
+    ['incidentes', 'Incidentes de segurança'],
+    ['dados', 'Dados armazenados e política'],
   ];
   return (
     <section className="cartao">
-      <h1>Privacidade (LGPD)</h1>
+      <h1>Privacidade e LGPD</h1>
       <p className="mudo">
         Atendimento aos direitos dos titulares (art. 18). Toda consulta, exportação e anonimização fica
         registrada no histórico de atividades.
@@ -70,6 +73,8 @@ export function Privacidade() {
       )}
       {aba === 'titular' && <Titular placaInicial={placaTitular} />}
       {aba === 'politica' && <Politica />}
+      {aba === 'incidentes' && <Incidentes />}
+      {aba === 'dados' && <Inventario />}
     </section>
   );
 }

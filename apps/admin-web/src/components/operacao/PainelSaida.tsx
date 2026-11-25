@@ -8,7 +8,9 @@ import {
   type ReciboSaida,
   type SessaoDetalhe,
 } from '@estacionamento/shared';
+import { useConfigPainel } from '../../hooks/useConfigPainel';
 import { ErroDaApi } from '../../services/api';
+import { Dialogo } from '../Dialogo';
 import { formatarDataHora } from '../../services/rotulos';
 import { sessoesApi } from '../../services/sessoes';
 import { Placa } from '../Placa';
@@ -146,6 +148,9 @@ function Fechamento({
   const [desconto, setDesconto] = useState('');
   const [motivo, setMotivo] = useState('');
   const [enviando, setEnviando] = useState(false);
+  const prefs = useConfigPainel().operacao;
+  const [confirmando, setConfirmando] = useState(false);
+  const refForm = useRef<HTMLFormElement>(null);
   const [erro, setErro] = useState<{ texto: string; abrirCaixa?: boolean } | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
   const [previa, setPrevia] = useState<PreviaSaida | null>(null);
@@ -230,6 +235,19 @@ function Fechamento({
   async function confirmar(e: FormEvent) {
     e.preventDefault();
     setErro(null);
+    // Configurações → Operação: confirmação antes de encerrar (valor e formas)
+    if (prefs.confirmarSaida && !confirmando) {
+      if (digitacaoInvalida) return setErro({ texto: digitacaoInvalida });
+      if (!previa || !pedido) return setErro({ texto: 'Aguarde o cálculo do valor.' });
+      if (previa.problemas[0])
+        return setErro({
+          texto: previa.problemas[0].mensagem,
+          abrirCaixa: previa.problemas[0].acao === 'ABRIR_CAIXA',
+        });
+      setConfirmando(true);
+      return;
+    }
+    setConfirmando(false);
     if (digitacaoInvalida) return setErro({ texto: digitacaoInvalida });
     if (!previa || !pedido) return setErro({ texto: 'Aguarde o cálculo do valor.' });
     if (pedido.descontoCentavos > 0 && motivo.trim().length < 3)
@@ -266,243 +284,262 @@ function Fechamento({
   }
 
   return (
-    <form className="fechamento" onSubmit={confirmar}>
-      <div className="fechamento__topo">
-        <Placa placa={sessao.placa} grande />
-        <div>
+    <>
+      <Dialogo
+        aberto={confirmando}
+        titulo="Confirmar saída"
+        textoConfirmar="Confirmar saída"
+        onFechar={() => setConfirmando(false)}
+        onConfirmar={() => refForm.current?.requestSubmit()}
+      >
+        {previa && (
+          <p>
+            Encerrar o ticket da placa <strong>{sessao.placa}</strong>
+            {sessao.vaga ? ` (vaga ${sessao.vaga})` : ''} com{' '}
+            <strong>{formatarCentavos(previa.aPagarCentavos)}</strong> a receber
+            {previa.pagamentos.length > 0 && ` em ${previa.pagamentos.map((p) => p.formaNome).join(' + ')}`}?
+            A vaga é liberada na hora.
+          </p>
+        )}
+      </Dialogo>
+      <form className="fechamento" onSubmit={confirmar} ref={refForm}>
+        <div className="fechamento__topo">
+          <Placa placa={sessao.placa} grande />
           <div>
-            Ticket <strong>nº {sessao.numero}</strong> · vaga <strong>{sessao.vaga ?? '—'}</strong>
-          </div>
-          <div className="mudo pequeno">
-            {sessao.categoria} · {sessao.modalidade === 'DIARIA' ? 'Diária' : 'Avulso'}
+            <div>
+              Ticket <strong>nº {sessao.numero}</strong> · vaga <strong>{sessao.vaga ?? '—'}</strong>
+            </div>
+            <div className="mudo pequeno">
+              {sessao.categoria} · {sessao.modalidade === 'DIARIA' ? 'Diária' : 'Avulso'}
+            </div>
           </div>
         </div>
-      </div>
-      <dl className="lista-dados">
-        <dt>Entrada</dt>
-        <dd>{formatarDataHora(sessao.entradaEm)}</dd>
-        <dt>Permanência</dt>
-        <dd>{duracaoCurta(c.permanenciaMin)}</dd>
-        <dt>Tarifa</dt>
-        <dd>
-          {sessao.tarifaAplicada.tipo === 'ESPECIAL' && <strong>{sessao.tarifaAplicada.nome}: </strong>}
-          {c.tarifa}
-          {sessao.tarifaAplicada.tabelaVersao !== null && (
-            <span className="mudo"> (tabela v{sessao.tarifaAplicada.tabelaVersao}, da entrada)</span>
-          )}
-        </dd>
-        {c.itens.length > 0 && (
-          <>
-            <dt>Cálculo</dt>
-            <dd>
-              <ul className="itens-calculo">
-                {c.itens.map((i) => (
-                  <li key={i.descricao}>
-                    <span>
-                      {i.quantidade > 1 ? `${i.quantidade} × ` : ''}
-                      {i.descricao}
-                    </span>
-                    <span>{formatarCentavos(i.totalCentavos)}</span>
-                  </li>
-                ))}
-                {previa && previa.descontoCentavos > 0 && (
-                  <li>
-                    <span>Desconto</span>
-                    <span>− {formatarCentavos(previa.descontoCentavos)}</span>
-                  </li>
-                )}
-              </ul>
-            </dd>
-          </>
-        )}
-        {c.pagoCentavos > 0 && (
-          <>
-            <dt>Já pago</dt>
-            <dd>{formatarCentavos(c.pagoCentavos)}</dd>
-          </>
-        )}
-      </dl>
-      {aviso && (
-        <p className="alerta alerta--info" role="status">
-          {aviso} Confira o novo valor.
-        </p>
-      )}
-      <p className="fechamento__total">
-        <span>A pagar</span>
-        <strong>{aPagar === null ? '…' : formatarCentavos(aPagar)}</strong>
-      </p>
-      {proxima && (
-        <p className="pequeno mudo fechamento__proxima">
-          O valor passa a {formatarCentavos(proxima.valorCentavos)} a partir de {quandoCurto(proxima.em)}.
-        </p>
-      )}
-      {erroPrevia && (
-        <p className="alerta alerta--erro" role="alert">
-          {erroPrevia}
-        </p>
-      )}
-
-      {podeAjustar && (
-        <details className="fechamento__ajuste" open={!!desconto}>
-          <summary>Conceder desconto</summary>
-          <div className="grade-campos">
-            <label className="campo">
-              <span>Desconto (R$)</span>
-              <input
-                value={desconto}
-                onChange={(e) => setDesconto(e.target.value)}
-                inputMode="decimal"
-                placeholder="0,00"
-              />
-            </label>
-            <label className="campo">
-              <span>Motivo{descontoCentavos ? ' *' : ''}</span>
-              <input value={motivo} onChange={(e) => setMotivo(e.target.value)} maxLength={255} />
-            </label>
-          </div>
-        </details>
-      )}
-
-      {aPagar === 0 ? (
-        <p className="alerta alerta--ok">
-          {c.valorCalculadoCentavos === 0 ? 'Dentro da tolerância: sem cobrança.' : 'Nada a pagar.'}
-        </p>
-      ) : !podeReceber ? (
-        <p className="alerta alerta--erro">Você não tem permissão para receber pagamentos.</p>
-      ) : (
-        <fieldset className="pagamentos">
-          <legend>Pagamento</legend>
-          {linhas.map((l, i) => {
-            const f = formaDe(l.forma);
-            const conferido = linhaDaPrevia(i);
-            return (
-              <div key={l.chave} className="pagamento">
-                <label className="campo">
-                  <span>Forma</span>
-                  <select value={l.forma} onChange={(e) => mudar(i, 'forma', e.target.value)}>
-                    {formas.map((x) => (
-                      <option key={x.codigo} value={x.codigo}>
-                        {x.nome}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="campo">
-                  <span>Valor (R$)</span>
-                  <input
-                    value={l.valor ?? (conferido ? centavosParaCampo(conferido.valorCentavos) : '')}
-                    onChange={(e) => mudar(i, 'valor', e.target.value)}
-                    inputMode="decimal"
-                    placeholder={l.valor === null ? 'O que faltar' : '0,00'}
-                  />
-                  {l.valor === null && linhas.length > 1 && (
-                    <small className="mudo">completa o restante</small>
-                  )}
-                </label>
-                {f?.permiteTroco && (
-                  <label className="campo">
-                    <span>Recebido (R$)</span>
-                    <input
-                      value={l.recebido}
-                      onChange={(e) => mudar(i, 'recebido', e.target.value)}
-                      inputMode="decimal"
-                      placeholder="Para calcular o troco"
-                    />
-                  </label>
-                )}
-                {linhas.length > 1 && (
-                  <button
-                    type="button"
-                    className="botao-texto pagamento__remover"
-                    onClick={() =>
-                      setLinhas((ls) => {
-                        const resto = ls.filter((_, j) => j !== i);
-                        return resto.length === 1 ? [{ ...resto[0]!, valor: null }] : resto;
-                      })
-                    }
-                    aria-label={`Remover pagamento ${i + 1}`}
-                  >
-                    Remover
-                  </button>
-                )}
-                {conferido && conferido.trocoCentavos > 0 && (
-                  <p className="pequeno pagamento__aviso">
-                    Troco deste pagamento: {formatarCentavos(conferido.trocoCentavos)}
-                  </p>
-                )}
-                {problemasDaLinha(i).map((p) => (
-                  <p key={p.mensagem} className="pequeno erro pagamento__aviso">
-                    {p.mensagem}
-                  </p>
-                ))}
-              </div>
-            );
-          })}
-          <div className="pagamentos__rodape">
-            <button
-              type="button"
-              className="botao-texto"
-              onClick={() =>
-                setLinhas((ls) => [
-                  ...ls,
-                  { ...novaLinha(formas[1]?.codigo ?? formaPadrao, null), valor: '' },
-                ])
-              }
-              disabled={linhas.length >= 4}
-            >
-              + Dividir em outra forma
-            </button>
-            {previa && previa.diferencaCentavos !== 0 && (
-              <span className="erro pequeno">
-                {previa.diferencaCentavos > 0
-                  ? `Faltam ${formatarCentavos(previa.diferencaCentavos)}`
-                  : `Sobram ${formatarCentavos(-previa.diferencaCentavos)}`}
-              </span>
+        <dl className="lista-dados">
+          <dt>Entrada</dt>
+          <dd>{formatarDataHora(sessao.entradaEm)}</dd>
+          <dt>Permanência</dt>
+          <dd>{duracaoCurta(c.permanenciaMin)}</dd>
+          <dt>Tarifa</dt>
+          <dd>
+            {sessao.tarifaAplicada.tipo === 'ESPECIAL' && <strong>{sessao.tarifaAplicada.nome}: </strong>}
+            {c.tarifa}
+            {sessao.tarifaAplicada.tabelaVersao !== null && (
+              <span className="mudo"> (tabela v{sessao.tarifaAplicada.tabelaVersao}, da entrada)</span>
             )}
-          </div>
-          {previa && previa.trocoTotalCentavos > 0 && (
-            <p className="fechamento__troco" role="status">
-              Troco: <strong>{formatarCentavos(previa.trocoTotalCentavos)}</strong>
-            </p>
+          </dd>
+          {c.itens.length > 0 && (
+            <>
+              <dt>Cálculo</dt>
+              <dd>
+                <ul className="itens-calculo">
+                  {c.itens.map((i) => (
+                    <li key={i.descricao}>
+                      <span>
+                        {i.quantidade > 1 ? `${i.quantidade} × ` : ''}
+                        {i.descricao}
+                      </span>
+                      <span>{formatarCentavos(i.totalCentavos)}</span>
+                    </li>
+                  ))}
+                  {previa && previa.descontoCentavos > 0 && (
+                    <li>
+                      <span>Desconto</span>
+                      <span>− {formatarCentavos(previa.descontoCentavos)}</span>
+                    </li>
+                  )}
+                </ul>
+              </dd>
+            </>
           )}
-          {(pedeCaixa || !caixaAberto) && (
-            <p className="alerta alerta--info">
-              Seu caixa está fechado.{' '}
-              <button type="button" className="botao-texto" onClick={onAbrirCaixa}>
-                Abrir caixa
-              </button>
-            </p>
+          {c.pagoCentavos > 0 && (
+            <>
+              <dt>Já pago</dt>
+              <dd>{formatarCentavos(c.pagoCentavos)}</dd>
+            </>
           )}
-        </fieldset>
-      )}
-
-      {erro && (
-        <p className="alerta alerta--erro" role="alert">
-          {erro.texto}{' '}
-          {erro.abrirCaixa && (
-            <button type="button" className="botao-texto" onClick={onAbrirCaixa}>
-              Abrir caixa agora
-            </button>
-          )}
+        </dl>
+        {aviso && (
+          <p className="alerta alerta--info" role="status">
+            {aviso} Confira o novo valor.
+          </p>
+        )}
+        <p className="fechamento__total">
+          <span>A pagar</span>
+          <strong>{aPagar === null ? '…' : formatarCentavos(aPagar)}</strong>
         </p>
-      )}
-      <div className="acoes acoes--direita acoes--quebrar">
-        <button
-          type="button"
-          className="botao botao--secundario"
-          onClick={() => onSessao(null)}
-          disabled={enviando}
-        >
-          Limpar
-        </button>
-        <button
-          type="submit"
-          className="botao"
-          disabled={enviando || !previa || (aPagar !== null && aPagar > 0 && !podeReceber)}
-        >
-          {enviando ? 'Registrando…' : `Registrar saída${aPagar ? ` · ${formatarCentavos(aPagar)}` : ''}`}
-        </button>
-      </div>
-    </form>
+        {proxima && (
+          <p className="pequeno mudo fechamento__proxima">
+            O valor passa a {formatarCentavos(proxima.valorCentavos)} a partir de {quandoCurto(proxima.em)}.
+          </p>
+        )}
+        {erroPrevia && (
+          <p className="alerta alerta--erro" role="alert">
+            {erroPrevia}
+          </p>
+        )}
+
+        {podeAjustar && (
+          <details className="fechamento__ajuste" open={!!desconto}>
+            <summary>Conceder desconto</summary>
+            <div className="grade-campos">
+              <label className="campo">
+                <span>Desconto (R$)</span>
+                <input
+                  value={desconto}
+                  onChange={(e) => setDesconto(e.target.value)}
+                  inputMode="decimal"
+                  placeholder="0,00"
+                />
+              </label>
+              <label className="campo">
+                <span>Motivo{descontoCentavos ? ' *' : ''}</span>
+                <input value={motivo} onChange={(e) => setMotivo(e.target.value)} maxLength={255} />
+              </label>
+            </div>
+          </details>
+        )}
+
+        {aPagar === 0 ? (
+          <p className="alerta alerta--ok">
+            {c.valorCalculadoCentavos === 0 ? 'Dentro da tolerância: sem cobrança.' : 'Nada a pagar.'}
+          </p>
+        ) : !podeReceber ? (
+          <p className="alerta alerta--erro">Você não tem permissão para receber pagamentos.</p>
+        ) : (
+          <fieldset className="pagamentos">
+            <legend>Pagamento</legend>
+            {linhas.map((l, i) => {
+              const f = formaDe(l.forma);
+              const conferido = linhaDaPrevia(i);
+              return (
+                <div key={l.chave} className="pagamento">
+                  <label className="campo">
+                    <span>Forma</span>
+                    <select value={l.forma} onChange={(e) => mudar(i, 'forma', e.target.value)}>
+                      {formas.map((x) => (
+                        <option key={x.codigo} value={x.codigo}>
+                          {x.nome}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="campo">
+                    <span>Valor (R$)</span>
+                    <input
+                      value={l.valor ?? (conferido ? centavosParaCampo(conferido.valorCentavos) : '')}
+                      onChange={(e) => mudar(i, 'valor', e.target.value)}
+                      inputMode="decimal"
+                      placeholder={l.valor === null ? 'O que faltar' : '0,00'}
+                    />
+                    {l.valor === null && linhas.length > 1 && (
+                      <small className="mudo">completa o restante</small>
+                    )}
+                  </label>
+                  {f?.permiteTroco && (
+                    <label className="campo">
+                      <span>Recebido (R$)</span>
+                      <input
+                        value={l.recebido}
+                        onChange={(e) => mudar(i, 'recebido', e.target.value)}
+                        inputMode="decimal"
+                        placeholder="Para calcular o troco"
+                      />
+                    </label>
+                  )}
+                  {linhas.length > 1 && (
+                    <button
+                      type="button"
+                      className="botao-texto pagamento__remover"
+                      onClick={() =>
+                        setLinhas((ls) => {
+                          const resto = ls.filter((_, j) => j !== i);
+                          return resto.length === 1 ? [{ ...resto[0]!, valor: null }] : resto;
+                        })
+                      }
+                      aria-label={`Remover pagamento ${i + 1}`}
+                    >
+                      Remover
+                    </button>
+                  )}
+                  {conferido && conferido.trocoCentavos > 0 && (
+                    <p className="pequeno pagamento__aviso">
+                      Troco deste pagamento: {formatarCentavos(conferido.trocoCentavos)}
+                    </p>
+                  )}
+                  {problemasDaLinha(i).map((p) => (
+                    <p key={p.mensagem} className="pequeno erro pagamento__aviso">
+                      {p.mensagem}
+                    </p>
+                  ))}
+                </div>
+              );
+            })}
+            <div className="pagamentos__rodape">
+              <button
+                type="button"
+                className="botao-texto"
+                onClick={() =>
+                  setLinhas((ls) => [
+                    ...ls,
+                    { ...novaLinha(formas[1]?.codigo ?? formaPadrao, null), valor: '' },
+                  ])
+                }
+                disabled={linhas.length >= 4}
+              >
+                + Dividir em outra forma
+              </button>
+              {previa && previa.diferencaCentavos !== 0 && (
+                <span className="erro pequeno">
+                  {previa.diferencaCentavos > 0
+                    ? `Faltam ${formatarCentavos(previa.diferencaCentavos)}`
+                    : `Sobram ${formatarCentavos(-previa.diferencaCentavos)}`}
+                </span>
+              )}
+            </div>
+            {previa && previa.trocoTotalCentavos > 0 && (
+              <p className="fechamento__troco" role="status">
+                Troco: <strong>{formatarCentavos(previa.trocoTotalCentavos)}</strong>
+              </p>
+            )}
+            {(pedeCaixa || !caixaAberto) && (
+              <p className="alerta alerta--info">
+                Seu caixa está fechado.{' '}
+                <button type="button" className="botao-texto" onClick={onAbrirCaixa}>
+                  Abrir caixa
+                </button>
+              </p>
+            )}
+          </fieldset>
+        )}
+
+        {erro && (
+          <p className="alerta alerta--erro" role="alert">
+            {erro.texto}{' '}
+            {erro.abrirCaixa && (
+              <button type="button" className="botao-texto" onClick={onAbrirCaixa}>
+                Abrir caixa agora
+              </button>
+            )}
+          </p>
+        )}
+        <div className="acoes acoes--direita acoes--quebrar">
+          <button
+            type="button"
+            className="botao botao--secundario"
+            onClick={() => onSessao(null)}
+            disabled={enviando}
+          >
+            Limpar
+          </button>
+          <button
+            type="submit"
+            className="botao"
+            disabled={enviando || !previa || (aPagar !== null && aPagar > 0 && !podeReceber)}
+          >
+            {enviando ? 'Registrando…' : `Registrar saída${aPagar ? ` · ${formatarCentavos(aPagar)}` : ''}`}
+          </button>
+        </div>
+      </form>
+    </>
   );
 }

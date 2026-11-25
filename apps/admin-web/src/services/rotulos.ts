@@ -47,6 +47,25 @@ export const ROTULOS_ACOES: Record<string, string> = {
   'perfil.permissao_removida': 'Permissão removida de um modelo',
   'config.criada': 'Configuração criada',
   'config.alterada': 'Configuração alterada',
+  'auth.login_recusado_rede': 'Login recusado (fora da rede do estacionamento)',
+  'auth.sessao_encerrada': 'Sessão de outro usuário encerrada',
+  'acesso.negado': 'Tentativa de acesso sem permissão',
+  'caixa.ajuste': 'Correção de caixa fechado',
+  'perfil.padrao_alterado': 'Permissões padrão de um nível alteradas',
+  'backup.criado': 'Backup feito',
+  'backup.falhou': 'Backup falhou',
+  'backup.baixado': 'Arquivo de backup baixado',
+  'backup.restaurado': 'Backup restaurado',
+  'backup.restauracao_recusada': 'Restauração recusada (senha incorreta)',
+  'backup.restauracao_testada': 'Restauração testada',
+  'backup.restauracao_falhou': 'Teste de restauração falhou',
+  'lgpd.incidente_registrado': 'Incidente de segurança registrado',
+  'lgpd.incidente_atualizado': 'Incidente de segurança atualizado',
+  'lgpd.solicitacao_registrada': 'Solicitação LGPD registrada',
+  'lgpd.solicitacao_atualizada': 'Solicitação LGPD atualizada',
+  'sync.reenviar': 'Reenvio dos registros pendentes',
+  'sync.ressincronizar': 'Carga completa para a nuvem',
+  'sync.conferir': 'Conferência com a nuvem',
 };
 
 export const MODULOS_HISTORICO: { codigo: string; nome: string }[] = [
@@ -58,7 +77,12 @@ export const MODULOS_HISTORICO: { codigo: string; nome: string }[] = [
   { codigo: 'funcionario', nome: 'Funcionários' },
   { codigo: 'usuario', nome: 'Usuários e permissões' },
   { codigo: 'auth', nome: 'Login e logout' },
+  { codigo: 'acesso', nome: 'Acessos negados' },
   { codigo: 'config', nome: 'Configurações' },
+  { codigo: 'perfil', nome: 'Permissões padrão' },
+  { codigo: 'backup', nome: 'Backups' },
+  { codigo: 'lgpd', nome: 'Privacidade (LGPD)' },
+  { codigo: 'sync', nome: 'Sincronização' },
 ];
 
 export const ROTULOS_SITUACAO: Record<SituacaoAcesso, string> = {

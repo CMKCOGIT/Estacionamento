@@ -1,4 +1,8 @@
 import type {
+  AtualizacaoIncidente,
+  IncidenteSeguranca,
+  InventarioDados,
+  NovoIncidente,
   EncarregadoDados,
   NovaSolicitacaoLgpd,
   PoliticaRetencao,
@@ -35,4 +39,13 @@ export const privacidadeApi = {
   encarregado: () => api<EncarregadoDados>('/privacidade/encarregado'),
   salvarEncarregado: (e: EncarregadoDados) =>
     api<EncarregadoDados>('/privacidade/encarregado', { method: 'PUT', corpo: e }),
+};
+
+export const incidentesApi = {
+  listar: () => api<{ itens: IncidenteSeguranca[] }>('/privacidade/incidentes'),
+  registrar: (d: NovoIncidente) =>
+    api<IncidenteSeguranca>('/privacidade/incidentes', { method: 'POST', corpo: d }),
+  atualizar: (id: string, d: AtualizacaoIncidente) =>
+    api<IncidenteSeguranca>(`/privacidade/incidentes/${id}`, { method: 'PATCH', corpo: d }),
+  inventario: () => api<InventarioDados>('/privacidade/inventario'),
 };

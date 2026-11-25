@@ -81,6 +81,21 @@ export function ResumoDoCaixa({ c }: { c: CaixaDetalhe | Omit<CaixaDetalhe, 'mov
             <dd>{c.observacao}</dd>
           </>
         )}
+        {c.quantidadeAjustes > 0 && (
+          <>
+            <dt>Correções depois do fechamento</dt>
+            <dd>
+              {c.quantidadeAjustes} · {c.ajustesCentavos >= 0 ? '+' : '−'}{' '}
+              {formatarCentavos(Math.abs(c.ajustesCentavos))}
+              {c.diferencaCorrigidaCentavos !== null && (
+                <span className={c.diferencaCorrigidaCentavos ? 'erro' : 'mudo'}>
+                  {' '}
+                  (diferença corrigida: {formatarCentavos(c.diferencaCorrigidaCentavos)})
+                </span>
+              )}
+            </dd>
+          </>
+        )}
       </dl>
       {c.porForma.length > 0 && (
         <div className="tabela-rolagem">

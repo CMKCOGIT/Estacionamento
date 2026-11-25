@@ -20,6 +20,9 @@ const LIVRES_COM_LOGIN = new Set([
   'GET /dashboard/',
   'GET /permissoes/',
   'GET /permissoes/modelos',
+  'GET /configuracoes/painel',
+  // Cada categoria confere a permissão dentro da rota (as críticas são do Administrador)
+  'PUT /configuracoes/:categoria',
 ]);
 
 function rotas(): { metodo: string; caminho: string; publico: boolean }[] {

@@ -6,6 +6,7 @@ import { useAuth } from './auth/contexto';
 import { Atividades } from './pages/Atividades';
 import { Backups } from './pages/Backups';
 import { Monitoramento } from './pages/Monitoramento';
+import { Movimentacoes } from './pages/Movimentacoes';
 import { Caixa } from './pages/Caixa';
 import { Configuracoes } from './pages/Configuracoes';
 import { Dashboard } from './pages/Dashboard';
@@ -182,8 +183,16 @@ export function App() {
             <Route
               path="configuracoes"
               element={
-                <RotaProtegida permissoes={['config.gerenciar']}>
+                <RotaProtegida permissoes={['config.gerenciar', 'config.seguranca']}>
                   <Configuracoes />
+                </RotaProtegida>
+              }
+            />
+            <Route
+              path="movimentacoes"
+              element={
+                <RotaProtegida permissoes={['sessao.consultar', 'sessao.entrada', 'sessao.saida']}>
+                  <Movimentacoes />
                 </RotaProtegida>
               }
             />

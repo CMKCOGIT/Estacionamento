@@ -15,6 +15,7 @@ Sistema de gerenciamento de estacionamento:
 | [`docs/EXPANSAO.md`](docs/EXPANSAO.md) | Preparação para expansões: sensores, LPR, câmeras, cancelas, pagamento online, comprovantes, notificações, impressoras, mensalistas, descontos e várias unidades |
 | [`docs/PUBLICAR.md`](docs/PUBLICAR.md) | **Passo a passo para publicar o app do cliente** (TiDB Cloud + Render + Cloudflare) e ligar este computador à nuvem |
 | [`docs/INTERFACE.md`](docs/INTERFACE.md) | Menu, tela de Vagas e organização do painel |
+| [`docs/MODULOS.md`](docs/MODULOS.md) | Os 8 módulos, níveis de acesso, configurações, mudanças no banco e testes da expansão |
 | [`docs/MONITORAMENTO.md`](docs/MONITORAMENTO.md) | Painel de monitoramento técnico: servidor, banco, internet, API externa, sincronização, backup, falhas e erros recentes |
 | [`docs/SEGURANCA.md`](docs/SEGURANCA.md) | Medidas de segurança: autenticação, permissões, senhas, tokens, HTTPS, validação, SQL Injection, registro, erros, checklist de implantação |
 | [`docs/LGPD.md`](docs/LGPD.md) | LGPD: inventário de dados, bases legais, minimização, retenção, atendimento aos titulares, anonimização, encarregado, incidentes |

@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react';
 import { Link } from 'react-router';
-import type { FuncionarioResumo } from '@estacionamento/shared';
+import { nomeDoNivel, type FuncionarioResumo } from '@estacionamento/shared';
 import { useCarregar } from '../hooks/useCarregar';
 import { ROTULOS_SITUACAO, formatarDataHora } from '../services/rotulos';
 import { usuariosApi } from '../services/usuarios';
@@ -67,7 +67,8 @@ export function Usuarios() {
           >
             <option value="">Todos</option>
             <option value="admin">Administrador</option>
-            <option value="funcionario">Funcionário</option>
+            <option value="gerente">Gerente</option>
+            <option value="funcionario">Operador</option>
             <option value="sem_acesso">Sem acesso ao sistema</option>
           </select>
         </label>
@@ -93,6 +94,7 @@ export function Usuarios() {
                   <th>Nível</th>
                   <th>Situação</th>
                   <th>Último acesso</th>
+                  <th>Cadastro</th>
                 </tr>
               </thead>
               <tbody>
@@ -118,13 +120,16 @@ function Linha({ f }: { f: FuncionarioResumo }) {
       </td>
       <td>{f.cargo ?? '—'}</td>
       <td>{f.acesso ? <code>{f.acesso.login}</code> : '—'}</td>
-      <td>{f.acesso?.nivel === 'admin' ? 'Administrador' : f.acesso ? 'Funcionário' : '—'}</td>
+      <td>{f.acesso ? nomeDoNivel(f.acesso.nivel) : '—'}</td>
       <td>
         <span className={`etiqueta etiqueta--${f.situacao.toLowerCase()}`}>
           {ROTULOS_SITUACAO[f.situacao]}
         </span>
       </td>
       <td>{formatarDataHora(f.acesso?.ultimoLoginEm ?? null)}</td>
+      <td className="sem-quebra">
+        {f.cadastradoEm ? new Date(f.cadastradoEm).toLocaleDateString('pt-BR') : '—'}
+      </td>
     </tr>
   );
 }

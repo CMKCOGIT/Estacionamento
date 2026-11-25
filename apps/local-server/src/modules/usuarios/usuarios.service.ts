@@ -1,6 +1,8 @@
 import { ulid } from 'ulid';
 import {
   cpfValido,
+  nomeDoNivel,
+  permissaoCabeNoNivel,
   problemasDaSenha,
   type DadosAcesso,
   type DadosFuncionario,
@@ -14,7 +16,7 @@ import { comTransacao, type ContextoAuditoria } from '../../db/transacao.js';
 import { AppError, erros } from '../../http/erros.js';
 import { authRepository } from '../auth/auth.repository.js';
 import type { Autenticacao } from '../auth/auth.service.js';
-import { normalizarLogin } from '../auth/auth.service.js';
+import { normalizarLogin, regrasSenhaAtuais } from '../auth/auth.service.js';
 import { gerarHashSenha } from '../auth/senha.js';
 import { usuariosRepository as repo, type FiltroListagem } from './usuarios.repository.js';
 
@@ -72,7 +74,18 @@ async function validarAcesso(ator: Autenticacao, acesso: DadosAcesso, alvo: Func
   if (!ehAdmin(ator) && (acesso.nivel === 'admin' || alvo?.acesso?.nivel === 'admin')) {
     throw semPermissao('Somente um Administrador pode conceder ou alterar acesso de Administrador.');
   }
-  if (acesso.nivel === 'funcionario') {
+  // Gerente cadastra e ajusta só Operadores; criar Gerentes é do Administrador
+  if (!ehAdmin(ator) && (acesso.nivel === 'gerente' || alvo?.acesso?.nivel === 'gerente')) {
+    throw semPermissao('Somente o Administrador pode criar Gerentes ou alterar o acesso de um Gerente.');
+  }
+  if (acesso.nivel !== 'admin') {
+    const foraDoNivel = acesso.permissoes.filter((p) => !permissaoCabeNoNivel(acesso.nivel, p));
+    if (foraDoNivel.length) {
+      throw erros.requisicaoInvalida(
+        `Estas permissões não podem ser dadas ao nível ${nomeDoNivel(acesso.nivel)}`,
+        foraDoNivel.map((p) => ({ campo: 'permissoes', mensagem: p })),
+      );
+    }
     const existentes = await repo.permissoesExistentes(acesso.permissoes);
     const invalidas = acesso.permissoes.filter((p) => !existentes.has(p));
     if (invalidas.length) {
@@ -92,12 +105,12 @@ async function validarAcesso(ator: Autenticacao, acesso: DadosAcesso, alvo: Func
   }
 }
 
-function validarSenhaProvisoria(senha: string | undefined, login: string): string {
+async function validarSenhaProvisoria(senha: string | undefined, login: string): Promise<string> {
   if (!senha)
     throw erros.requisicaoInvalida('Informe uma senha provisória', [
       { campo: 'senhaProvisoria', mensagem: 'Obrigatória' },
     ]);
-  const problemas = problemasDaSenha(senha, login);
+  const problemas = problemasDaSenha(senha, login, await regrasSenhaAtuais());
   if (problemas.length) {
     throw erros.requisicaoInvalida(
       'A senha provisória não atende às regras',
@@ -135,6 +148,14 @@ function exigirPodeAlterar(ator: Autenticacao, alvo: FuncionarioDetalhe, mexeNoA
   if (alvo.acesso?.nivel === 'admin' && !ehAdmin(ator)) {
     throw semPermissao('Somente um Administrador pode alterar os dados de outro Administrador.');
   }
+  if (
+    mexeNoAcesso &&
+    alvo.acesso?.nivel === 'gerente' &&
+    !ehAdmin(ator) &&
+    alvo.acesso.usuarioId !== ator.id
+  ) {
+    throw semPermissao('Somente o Administrador pode alterar o acesso de um Gerente.');
+  }
   if (mexeNoAcesso && alvo.acesso && !ator.temPermissao('usuario.gerenciar')) {
     throw semPermissao('Você não tem permissão para alterar o acesso ao sistema deste funcionário.');
   }
@@ -155,7 +176,7 @@ async function aplicarAcesso(
 
   let usuarioId = funcionario.usuarioId;
   if (!usuarioId) {
-    const senha = validarSenhaProvisoria(acesso.senhaProvisoria, login);
+    const senha = await validarSenhaProvisoria(acesso.senhaProvisoria, login);
     usuarioId = ulid();
     await repo.inserirUsuario(c, {
       id: usuarioId,
@@ -280,7 +301,7 @@ export const usuariosService = {
     if (alvo.acesso.usuarioId === auth.id) {
       throw erros.regraDeNegocio('Para trocar a sua própria senha, use "Trocar senha" no menu.');
     }
-    const senha = validarSenhaProvisoria(senhaProvisoria, alvo.acesso.login);
+    const senha = await validarSenhaProvisoria(senhaProvisoria, alvo.acesso.login);
     const hash = await gerarHashSenha(senha);
     const usuarioId = alvo.acesso.usuarioId;
     await comTransacao(contexto, async (c) => {

@@ -47,6 +47,14 @@ export interface RelatorioFaturamento {
   /** Variação do líquido em relação ao período anterior (null se o anterior foi zero). */
   variacaoLiquidoPct: number | null;
   nomesFormas: Record<string, string>;
+  /** Receita líquida por tipo de veículo no período (carro, moto...). */
+  porCategoria: {
+    codigo: string;
+    nome: string;
+    liquidoCentavos: number;
+    pagamentos: number;
+    tickets: number;
+  }[];
 }
 
 export interface LinhaForma {

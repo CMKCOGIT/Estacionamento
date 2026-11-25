@@ -19,6 +19,7 @@ import { TabelaMovimentacoes, TabelaPagamentos } from '../financeiro/Tabelas';
 import { GraficoBarras } from '../graficos/GraficoBarras';
 import { GraficoColunas } from '../graficos/GraficoColunas';
 import { duracaoCurta } from '../vagas/MapaVagas';
+import { imprimirPdf } from '../exportar';
 import { baixarCsv, reaisCsv } from './csv';
 import { DialogoDetalhe } from './DialogoDetalhe';
 import { dataBr, diaMes, diaSemana, intervaloBr, mesAno, periodoDoAtalho, type Atalho } from './periodo';
@@ -176,7 +177,14 @@ export function AbaFaturamento() {
                 Faturamento {NOME_AGRUPAMENTO[agrupar].toLowerCase()} · {intervaloBr(r.de, r.ate)}
               </h2>
               <button type="button" className="botao botao--secundario botao--pequeno" onClick={exportar}>
-                Exportar planilha
+                Excel
+              </button>
+              <button
+                type="button"
+                className="botao botao--secundario botao--pequeno nao-imprimir"
+                onClick={() => imprimirPdf(document.querySelector('h1')?.textContent ?? 'relatorio')}
+              >
+                PDF
               </button>
             </div>
             <GraficoColunas
@@ -197,6 +205,26 @@ export function AbaFaturamento() {
               Faturamento = pagamentos recebidos no período menos os estornos. Passe o mouse sobre uma coluna
               para ver o detalhe por forma de pagamento.
             </p>
+          </section>
+          <section className="cartao">
+            <h2>Receita por tipo de veículo</h2>
+            {r.porCategoria.length === 0 ? (
+              <p className="mudo">Nenhum pagamento no período.</p>
+            ) : (
+              <GraficoBarras
+                descricao="Faturamento líquido por tipo de veículo"
+                barras={r.porCategoria.map((c) => {
+                  const total = r.porCategoria.reduce((t, c) => t + c.liquidoCentavos, 0);
+                  return {
+                    chave: c.codigo,
+                    rotulo: c.nome,
+                    valor: c.liquidoCentavos,
+                    texto: `${formatarCentavos(c.liquidoCentavos)}${total > 0 ? ` · ${Math.round((c.liquidoCentavos / total) * 100)}%` : ''}`,
+                    linhas: [`${c.tickets} ticket(s) · ${c.pagamentos} pagamento(s)`],
+                  };
+                })}
+              />
+            )}
           </section>
           <section className="cartao">
             <div className="tabela-rolagem">
@@ -312,7 +340,14 @@ export function AbaFormas() {
             <div className="cartao__topo">
               <h2>Faturamento por forma de pagamento · {intervaloBr(r.de, r.ate)}</h2>
               <button type="button" className="botao botao--secundario botao--pequeno" onClick={exportar}>
-                Exportar planilha
+                Excel
+              </button>
+              <button
+                type="button"
+                className="botao botao--secundario botao--pequeno nao-imprimir"
+                onClick={() => imprimirPdf(document.querySelector('h1')?.textContent ?? 'relatorio')}
+              >
+                PDF
               </button>
             </div>
             {r.formas.length === 0 ? (
@@ -759,7 +794,14 @@ export function AbaFechamentos() {
             <div className="cartao__topo">
               <h2>Fechamentos de caixa · {intervaloBr(r.de, r.ate)}</h2>
               <button type="button" className="botao botao--secundario botao--pequeno" onClick={exportar}>
-                Exportar planilha
+                Excel
+              </button>
+              <button
+                type="button"
+                className="botao botao--secundario botao--pequeno nao-imprimir"
+                onClick={() => imprimirPdf(document.querySelector('h1')?.textContent ?? 'relatorio')}
+              >
+                PDF
               </button>
             </div>
             {r.itens.length === 0 ? (

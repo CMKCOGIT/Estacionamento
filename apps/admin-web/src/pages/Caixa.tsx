@@ -2,11 +2,12 @@ import { useCallback, useEffect, useState } from 'react';
 import type { FormaPagamento } from '@estacionamento/shared';
 import { useAuth } from '../auth/contexto';
 import { AbaMovimentacoes, AbaPagamentos, AbaPendentes, AbaResumo } from '../components/financeiro/Abas';
+import { CaixasAnteriores } from '../components/financeiro/CaixasAnteriores';
 import { MeuCaixa } from '../components/financeiro/MeuCaixa';
 import { useAtualizacaoAutomatica } from '../hooks/useAtualizacaoAutomatica';
 import { caixaApi } from '../services/sessoes';
 
-type Aba = 'meu' | 'resumo' | 'pagamentos' | 'pendentes' | 'movimentacoes';
+type Aba = 'meu' | 'resumo' | 'pagamentos' | 'pendentes' | 'movimentacoes' | 'anteriores';
 
 /** Caixa e financeiro: caixa do operador, resumo do dia, pagamentos, pendências e movimentações. */
 export function Caixa() {
@@ -21,6 +22,7 @@ export function Caixa() {
       vePendentes && ['pendentes', 'Pendentes'],
       supervisiona && ['pagamentos', 'Pagamentos'],
       supervisiona && ['movimentacoes', 'Movimentações'],
+      supervisiona && ['anteriores', 'Caixas anteriores'],
     ] as (false | [Aba, string])[]
   ).filter((x): x is [Aba, string] => !!x);
   const [aba, setAba] = useState<Aba>(abas[0]?.[0] ?? 'pendentes');
@@ -93,6 +95,7 @@ export function Caixa() {
       )}
       {aba === 'pagamentos' && <AbaPagamentos formas={formas} avisar={avisar} />}
       {aba === 'movimentacoes' && <AbaMovimentacoes formas={formas} />}
+      {aba === 'anteriores' && <CaixasAnteriores formas={formas} avisar={avisar} />}
     </>
   );
 }

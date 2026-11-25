@@ -1,5 +1,15 @@
 import { useCallback, useEffect, useState } from 'react';
+import { useAuth } from '../auth/contexto';
+import { Dialogo } from '../components/Dialogo';
+import { ErroDaApi } from '../services/api';
 import { backupsApi, type RegistroBackup, type SituacaoBackups } from '../services/backups';
+import { configGeralApi } from '../services/configuracoes';
+
+const TIPOS: Record<string, string> = {
+  MANUAL: 'Manual',
+  AUTOMATICO: 'Automático',
+  PRE_RESTAURACAO: 'Antes de restaurar',
+};
 
 const quando = (iso: string | null) =>
   iso ? new Date(iso).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : '—';
@@ -12,6 +22,8 @@ export function Backups() {
   const [dados, setDados] = useState<{ situacao: SituacaoBackups; itens: RegistroBackup[] } | null>(null);
   const [msg, setMsg] = useState<{ tipo: 'ok' | 'erro' | 'info'; texto: string } | null>(null);
   const [ocupado, setOcupado] = useState<string | null>(null);
+  const [restaurar, setRestaurar] = useState<RegistroBackup | null>(null);
+  const { temPermissao } = useAuth();
 
   const carregar = useCallback(
     () =>
@@ -58,7 +70,7 @@ export function Backups() {
             role="status"
           >
             {!s.ativo
-              ? 'Backup automático DESLIGADO (BACKUP_ATIVO=false no .env).'
+              ? 'Backup automático DESLIGADO. Ligue em "Agenda do backup automático", abaixo.'
               : falhaRecente
                 ? `O último backup falhou (${quando(s.ultimaFalha!.iniciadoEm)}): ${s.ultimaFalha!.erro}`
                 : s.comProblema
@@ -67,6 +79,19 @@ export function Backups() {
                     ? 'Nenhum backup nas últimas 26 horas.'
                     : `Em dia. Último backup: ${quando(s.ultimoSucesso?.iniciadoEm ?? null)}, conferido.`}
           </p>
+          {s.ultimaRestauracao && (
+            <p className="alerta alerta--info">
+              Última restauração: {quando(s.ultimaRestauracao.em)}
+              {s.ultimaRestauracao.por && ` por ${s.ultimaRestauracao.por}`}, do arquivo{' '}
+              <code>{s.ultimaRestauracao.arquivo}</code>
+              {s.ultimaRestauracao.backupSeguranca && (
+                <>
+                  . O estado anterior foi guardado em <code>{s.ultimaRestauracao.backupSeguranca}</code>
+                </>
+              )}
+              .
+            </p>
+          )}
           <dl className="detalhes-sync">
             <div>
               <dt>Próximo automático</dt>
@@ -142,7 +167,7 @@ export function Backups() {
               {dados.itens.map((b) => (
                 <tr key={b.id} className={b.removidoEm ? 'linha-apagada' : undefined}>
                   <td>{quando(b.iniciadoEm)}</td>
-                  <td>{b.tipo === 'MANUAL' ? 'Manual' : 'Automático'}</td>
+                  <td>{TIPOS[b.tipo] ?? b.tipo}</td>
                   <td>
                     <span
                       className={`etiqueta ${b.status === 'SUCESSO' ? 'etiqueta--ativo' : b.status === 'FALHA' ? 'etiqueta--bloqueado' : 'etiqueta--inativo'}`}
@@ -202,6 +227,17 @@ export function Backups() {
                         >
                           Testar restauração
                         </button>
+                        <a className="botao-texto" href={backupsApi.urlArquivo(b.id)} download>
+                          Baixar
+                        </a>
+                        <button
+                          type="button"
+                          className="botao-texto texto-falha"
+                          disabled={!!ocupado}
+                          onClick={() => setRestaurar(b)}
+                        >
+                          Restaurar
+                        </button>
                       </span>
                     )}
                   </td>
@@ -212,9 +248,169 @@ export function Backups() {
         </div>
       )}
       <p className="mudo pequeno">
-        Para restaurar um backup (servidor danificado ou perda de dados), siga o docs/BACKUP.md: pare o
-        servidor e use o Restaurar-Backup.cmd.
+        O arquivo baixado continua criptografado: só abre com a chave do backup. Se o servidor não abrir
+        (computador danificado), restaure pelo Restaurar-Backup.cmd, conforme o docs/BACKUP.md.
       </p>
+      {s && temPermissao('config.seguranca') && <Agenda situacao={s} onSalvo={() => void carregar()} />}
+      <DialogoRestaurar
+        backup={restaurar}
+        onFechar={() => setRestaurar(null)}
+        onRestaurado={(texto) => {
+          setRestaurar(null);
+          setMsg({ tipo: 'ok', texto });
+          void carregar();
+        }}
+      />
     </section>
+  );
+}
+
+/** Liga/desliga e muda o horário do backup automático (só Administrador). */
+function Agenda({ situacao, onSalvo }: { situacao: SituacaoBackups; onSalvo: () => void }) {
+  const [ativo, setAtivo] = useState(situacao.ativo);
+  const [horario, setHorario] = useState(situacao.horario);
+  const [erro, setErro] = useState<string | null>(null);
+  const [ok, setOk] = useState(false);
+  const [enviando, setEnviando] = useState(false);
+  const alterado = ativo !== situacao.ativo || horario !== situacao.horario;
+  return (
+    <section className="cartao cartao--interno">
+      <h2>Agenda do backup automático</h2>
+      <div className="grade-config">
+        <label className="opcao-check">
+          <input type="checkbox" checked={ativo} onChange={(e) => setAtivo(e.target.checked)} />
+          <span>
+            <strong>Fazer backup todo dia</strong>
+            <small>Recomendado. Desligar só em computador de testes.</small>
+          </span>
+        </label>
+        <label className="campo">
+          <span>Horário</span>
+          <input type="time" value={horario} onChange={(e) => setHorario(e.target.value)} required />
+          <small>Escolha um horário com o computador ligado e pouco movimento.</small>
+        </label>
+      </div>
+      {erro && (
+        <p className="alerta alerta--erro" role="alert">
+          {erro}
+        </p>
+      )}
+      {ok && (
+        <p className="alerta alerta--ok" role="status">
+          Agenda salva.
+        </p>
+      )}
+      <div className="acoes">
+        <button
+          type="button"
+          className="botao"
+          disabled={!alterado || enviando || !/^\d{2}:\d{2}$/.test(horario)}
+          onClick={() => {
+            setEnviando(true);
+            setErro(null);
+            setOk(false);
+            configGeralApi
+              .salvar('backup', { ativo, horario })
+              .then(() => {
+                setOk(true);
+                onSalvo();
+              })
+              .catch((e: unknown) => setErro(e instanceof Error ? e.message : 'Não foi possível salvar.'))
+              .finally(() => setEnviando(false));
+          }}
+        >
+          {enviando ? 'Salvando…' : 'Salvar agenda'}
+        </button>
+      </div>
+    </section>
+  );
+}
+
+/**
+ * Restaurar substitui TODO o banco atual pelo conteúdo do backup. Pede a
+ * senha de quem está restaurando e que digite RESTAURAR.
+ */
+function DialogoRestaurar({
+  backup,
+  onFechar,
+  onRestaurado,
+}: {
+  backup: RegistroBackup | null;
+  onFechar: () => void;
+  onRestaurado: (texto: string) => void;
+}) {
+  const [senha, setSenha] = useState('');
+  const [confirmacao, setConfirmacao] = useState('');
+  const [erro, setErro] = useState<string | null>(null);
+  const [enviando, setEnviando] = useState(false);
+  const [anterior, setAnterior] = useState(backup);
+  if (anterior !== backup) {
+    setAnterior(backup);
+    setSenha('');
+    setConfirmacao('');
+    setErro(null);
+  }
+  return (
+    <Dialogo
+      aberto={!!backup}
+      titulo="Restaurar backup"
+      textoConfirmar={enviando ? 'Restaurando…' : 'Restaurar agora'}
+      perigo
+      enviando={enviando}
+      erro={erro}
+      onFechar={() => !enviando && onFechar()}
+      onConfirmar={() => {
+        if (!backup) return;
+        if (confirmacao !== 'RESTAURAR') {
+          setErro('Digite RESTAURAR (em maiúsculas) para confirmar.');
+          return;
+        }
+        if (!senha) {
+          setErro('Confirme a sua senha.');
+          return;
+        }
+        setEnviando(true);
+        setErro(null);
+        backupsApi
+          .restaurar(backup.id, senha)
+          .then((r) =>
+            onRestaurado(
+              `Backup restaurado (${r.tabelas} tabelas). O estado anterior foi guardado em ${r.backupSeguranca}. Se alguém estiver com o painel aberto, precisa recarregar a página.`,
+            ),
+          )
+          .catch((e: unknown) =>
+            setErro(e instanceof ErroDaApi || e instanceof Error ? e.message : 'Falhou.'),
+          )
+          .finally(() => setEnviando(false));
+      }}
+    >
+      {backup && (
+        <>
+          <p className="alerta alerta--erro">
+            Todos os dados atuais serão substituídos pelos do backup de{' '}
+            <strong>{quando(backup.iniciadoEm)}</strong>. Entradas, saídas e pagamentos feitos depois disso
+            deixam de existir.
+          </p>
+          <ul className="lista-simples">
+            <li>Antes, o sistema faz um backup de segurança do estado atual (para desfazer, se preciso).</li>
+            <li>Durante a restauração (alguns minutos), o painel fica indisponível para todos.</li>
+            <li>O app do cliente é atualizado sozinho depois.</li>
+          </ul>
+          <label className="campo">
+            <span>Sua senha</span>
+            <input
+              type="password"
+              autoComplete="current-password"
+              value={senha}
+              onChange={(e) => setSenha(e.target.value)}
+            />
+          </label>
+          <label className="campo">
+            <span>Digite RESTAURAR para confirmar</span>
+            <input value={confirmacao} onChange={(e) => setConfirmacao(e.target.value)} autoComplete="off" />
+          </label>
+        </>
+      )}
+    </Dialogo>
   );
 }

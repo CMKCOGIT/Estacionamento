@@ -15,6 +15,7 @@ import { useAuth } from '../auth/contexto';
 import { Placa } from '../components/Placa';
 import { BarraCaixa } from '../components/operacao/BarraCaixa';
 import { DialogoTicket } from '../components/operacao/DialogoTicket';
+import { useConfigPainel } from '../hooks/useConfigPainel';
 import { PainelEntrada } from '../components/operacao/PainelEntrada';
 import { PainelSaida } from '../components/operacao/PainelSaida';
 import { horaCurta, quandoCurto } from '../components/operacao/util';
@@ -47,6 +48,7 @@ export function Operacao() {
   const [recibo, setRecibo] = useState<ReciboSaida | null>(null);
   const [cancelando, setCancelando] = useState<SessaoDetalhe | null>(null);
   const [pedirCaixa, setPedirCaixa] = useState(false);
+  const prefs = useConfigPainel().operacao;
   const [mensagem, setMensagem] = useState<{ tipo: 'ok' | 'erro'; texto: string } | null>(null);
   const [filtro, setFiltro] = useState('');
   const refSaida = useRef<HTMLDivElement>(null);
@@ -166,12 +168,19 @@ export function Operacao() {
             onIrParaSaida={(p) => void irParaSaidaPorPlaca(p)}
             onEntrou={(r) => {
               setMensagem(null);
-              setTicket({
-                titulo: 'Entrada registrada',
-                sessao: r.sessao,
-                acesso: r.acesso,
-                veiculoCadastradoAgora: r.veiculoCadastradoAgora,
-              });
+              // Configurações → Operação: mostrar (ou não) o QR Code logo após a entrada
+              if (prefs.mostrarQrNaEntrada)
+                setTicket({
+                  titulo: 'Entrada registrada',
+                  sessao: r.sessao,
+                  acesso: r.acesso,
+                  veiculoCadastradoAgora: r.veiculoCadastradoAgora,
+                });
+              else
+                setMensagem({
+                  tipo: 'ok',
+                  texto: `Entrada registrada: ticket nº ${r.sessao.numero}${r.sessao.vaga ? `, vaga ${r.sessao.vaga}` : ''}.`,
+                });
               mudou();
             }}
           />

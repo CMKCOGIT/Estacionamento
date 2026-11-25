@@ -1,3 +1,4 @@
+import { useConfigPainel } from '../../hooks/useConfigPainel';
 import { useEffect, useState, type FormEvent } from 'react';
 import {
   formatarPlaca,
@@ -31,6 +32,7 @@ export function PainelEntrada({ categorias, rodada, onEntrou, onIrParaSaida }: P
   const [consulta, setConsulta] = useState<ConsultaPlaca | null>(null);
   const [categoriaEscolhida, setCategoriaEscolhida] = useState('');
   const [vagaId, setVagaId] = useState('');
+  const prefs = useConfigPainel().operacao;
   const [vagas, setVagas] = useState<VagaLivre[] | null>(null);
   const [modalidade, setModalidade] = useState<Modalidade>('AVULSO');
   const [tarifas, setTarifas] = useState<TarifasDaEntrada | null>(null);
@@ -109,8 +111,13 @@ export function PainelEntrada({ categorias, rodada, onEntrou, onIrParaSaida }: P
 
   async function registrar(e: FormEvent) {
     e.preventDefault();
-    setEnviando(true);
     setErro(null);
+    // Configurações → Operação: sem vaga automática, o operador escolhe a vaga
+    if (!prefs.vagaAutomatica && !vagaId) {
+      setErro('Escolha a vaga do veículo.');
+      return;
+    }
+    setEnviando(true);
     try {
       const r = await sessoesApi.entrada({
         placa: normalizada,
@@ -229,7 +236,9 @@ export function PainelEntrada({ categorias, rodada, onEntrou, onIrParaSaida }: P
         <label className="campo">
           <span>Vaga</span>
           <select value={vagaId} onChange={(e) => setVagaId(e.target.value)} disabled={lotado}>
-            <option value="">Automática (primeira livre)</option>
+            <option value="">
+              {prefs.vagaAutomatica ? 'Automática (primeira livre)' : 'Escolha a vaga…'}
+            </option>
             {vagas?.map((v) => (
               <option key={v.id} value={v.id}>
                 {v.codigo}

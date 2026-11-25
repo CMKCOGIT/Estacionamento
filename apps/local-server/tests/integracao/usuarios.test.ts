@@ -99,6 +99,8 @@ describe('cadastro e consulta', () => {
     expect(res.body.modelos.map((m: { nome: string }) => m.nome)).toEqual([
       'Financeiro',
       'Operador de caixa',
+      'Padrão do Gerente',
+      'Padrão do Operador',
     ]);
   });
 });
@@ -108,7 +110,7 @@ describe('níveis de acesso e permissões por funcionalidade', () => {
     const { agente } = await criarFuncionarioComAcesso('caixa1', ['sessao.entrada', 'sessao.saida']);
     const sessao = await agente.get('/api/v1/auth/sessao').expect(200);
     expect(sessao.body.usuario.permissoes).toEqual(['sessao.entrada', 'sessao.saida']);
-    expect(sessao.body.usuario.perfis).toEqual([{ codigo: 'funcionario', nome: 'Funcionário' }]);
+    expect(sessao.body.usuario.perfis).toEqual([{ codigo: 'funcionario', nome: 'Operador' }]);
     const negado = await agente.get(API).expect(403);
     expect(negado.body.erro.codigo).toBe('SEM_PERMISSAO');
     await agente.get('/api/v1/atividades').expect(403);
@@ -133,7 +135,7 @@ describe('níveis de acesso e permissões por funcionalidade', () => {
     const { id, agente } = await criarFuncionarioComAcesso('caixa2', ['sessao.entrada']);
     await admin
       .put(`${API}/${id}/acesso`)
-      .send({ login: 'caixa2', nivel: 'funcionario', permissoes: ['sessao.entrada', 'auditoria.ver'] })
+      .send({ login: 'caixa2', nivel: 'gerente', permissoes: ['sessao.entrada', 'auditoria.ver'] })
       .expect(200);
     const sessao = await agente.get('/api/v1/auth/sessao').expect(200);
     expect(sessao.body.usuario.permissoes).toEqual(['auditoria.ver', 'sessao.entrada']);
@@ -195,11 +197,11 @@ describe('proteções contra escalada de privilégio', () => {
   let supervisor: Awaited<ReturnType<typeof criarFuncionarioComAcesso>>;
 
   beforeAll(async () => {
-    supervisor = await criarFuncionarioComAcesso('supervisor', [
-      'usuario.gerenciar',
-      'funcionario.gerenciar',
-      'sessao.entrada',
-    ]);
+    supervisor = await criarFuncionarioComAcesso(
+      'supervisor',
+      ['usuario.gerenciar', 'funcionario.gerenciar', 'sessao.entrada'],
+      'gerente',
+    );
   });
 
   it('pode conceder apenas permissões que ele próprio tem', async () => {
@@ -222,12 +224,12 @@ describe('proteções contra escalada de privilégio', () => {
         acesso: {
           login: 'ajud2',
           nivel: 'funcionario',
-          permissoes: ['tarifa.publicar'],
+          permissoes: ['veiculo.gerenciar'],
           senhaProvisoria: 'Provisoria1',
         },
       })
       .expect(403);
-    expect(res.body.erro.detalhes).toEqual({ naoPermitidas: ['tarifa.publicar'] });
+    expect(res.body.erro.detalhes).toEqual({ naoPermitidas: ['veiculo.gerenciar'] });
   });
 
   it('não pode criar Administrador nem mexer em Administrador', async () => {
@@ -253,7 +255,7 @@ describe('proteções contra escalada de privilégio', () => {
       .put(`${API}/${supervisor.id}/acesso`)
       .send({
         login: 'supervisor',
-        nivel: 'funcionario',
+        nivel: 'gerente',
         permissoes: ['usuario.gerenciar', 'funcionario.gerenciar', 'sessao.entrada'],
       })
       .expect(403);

@@ -12,6 +12,7 @@ import { env } from './config/env.js';
 import { logger } from './config/logger.js';
 import { verificarOrigem } from './http/middlewares/origem.js';
 import { rotaNaoEncontrada, tratarErros } from './http/middlewares/tratar-erros.js';
+import { bloquearEmManutencao } from './http/manutencao.js';
 import { criarRotasApi } from './http/rotas.js';
 
 const ID_REQUISICAO_VALIDO = /^[A-Za-z0-9-]{8,64}$/;
@@ -71,6 +72,7 @@ export function criarApp(): Express {
   app.use(cookieParser());
   app.use('/api', verificarOrigem);
   app.use('/api', limiteDeTempo);
+  app.use('/api', bloquearEmManutencao);
 
   app.use('/api/v1', criarRotasApi());
   app.use('/api', rotaNaoEncontrada); // /api sem versão ou versão inexistente

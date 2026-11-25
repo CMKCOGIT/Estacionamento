@@ -1,6 +1,8 @@
 import type { Request, RequestHandler, Response } from 'express';
 import { env } from '../../config/env.js';
+import { registrarAtividade } from '../../db/atividades.js';
 import type { ContextoAuditoria } from '../../db/transacao.js';
+import { configEmCache } from '../../modules/configuracoes/preferencias.js';
 import { authService, type Autenticacao, type MetaRequisicao } from '../../modules/auth/auth.service.js';
 import { AppError, erros } from '../erros.js';
 
@@ -22,7 +24,7 @@ export function definirCookieSessao(res: Response, token: string): void {
     sameSite: 'strict', // não é enviado por sites de terceiros (proteção CSRF)
     secure: env.COOKIE_SECURE,
     path: '/',
-    maxAge: env.SESSAO_DURACAO_MAX_HORAS * 60 * 60 * 1000,
+    maxAge: configEmCache().seguranca.duracaoMaxHoras * 60 * 60 * 1000,
   });
 }
 
@@ -78,10 +80,34 @@ export function exigirAutenticacao(opcoes: OpcoesAutenticacao = {}): RequestHand
  * Exige UMA das permissões informadas (ex.: exigirPermissao('tarifa.publicar')).
  * Deve vir depois de `exigirAutenticacao`.
  */
+/**
+ * Tentativas de acesso sem permissão vão para o histórico (auditoria). Uma
+ * por usuário e rota a cada 10 min, para a tela que tenta de novo sozinha
+ * não encher o histórico.
+ */
+const negadosRecentes = new Map<string, number>();
+function registrarAcessoNegado(req: Request, permissoes: string[]) {
+  const auth = req.auth!;
+  const rota = `${req.method} ${req.baseUrl}${req.route?.path ?? req.path}`;
+  const chave = `${auth.id}|${rota}`;
+  const agora = Date.now();
+  if ((negadosRecentes.get(chave) ?? 0) > agora - 10 * 60_000) return;
+  negadosRecentes.set(chave, agora);
+  if (negadosRecentes.size > 5000) negadosRecentes.clear();
+  registrarAtividade({
+    acao: 'acesso.negado',
+    siteId: auth.siteId,
+    usuarioId: auth.id,
+    dados: { rota, necessaria: permissoes },
+    ip: metaDaRequisicao(req).ip,
+  }).catch(() => undefined);
+}
+
 export function exigirPermissao(...permissoes: [string, ...string[]]): RequestHandler {
   return (req, _res, next) => {
     if (!req.auth) throw erros.naoAutenticado();
     if (!permissoes.some((p) => req.auth?.temPermissao(p))) {
+      registrarAcessoNegado(req, permissoes);
       throw new AppError(403, 'SEM_PERMISSAO', 'Você não tem permissão para esta ação.', {
         necessaria: permissoes,
       });

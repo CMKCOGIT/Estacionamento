@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router';
 import type { AtividadeRegistrada, FuncionarioResumo } from '@estacionamento/shared';
 import { useAuth } from '../auth/contexto';
+import { BotoesExportar } from '../components/BotoesExportar';
 import { ErroDaApi } from '../services/api';
 import { MODULOS_HISTORICO, ROTULOS_ACOES, formatarDataHora } from '../services/rotulos';
 import { usuariosApi } from '../services/usuarios';
@@ -14,7 +15,8 @@ const OCULTOS = new Set(['userAgent', 'usuario_id', 'regras']);
 const BOOLEANOS = new Set(['ativo', 'permite_troco', 'coberta', 'deve_trocar_senha']);
 const NIVEIS: Record<string, string> = {
   '00000000000000000000000001': 'Administrador',
-  '00000000000000000000000004': 'Funcionário',
+  '00000000000000000000000004': 'Operador',
+  '00000000000000000000000005': 'Gerente',
 };
 const NOMES_CAMPOS: Record<string, string> = {
   perfil_id: 'nível',
@@ -57,6 +59,8 @@ export function Atividades() {
     modulo: params.get('modulo') ?? '',
     de: params.get('de') ?? '',
     ate: params.get('ate') ?? '',
+    horaDe: params.get('horaDe') ?? '',
+    horaAte: params.get('horaAte') ?? '',
   };
   const chave = params.toString();
 
@@ -128,12 +132,32 @@ export function Atividades() {
     <>
       <header className="cabecalho">
         <div>
-          <h1>Histórico de atividades</h1>
+          <h1>Auditoria</h1>
           <p className="mudo">
-            Quem fez o quê e quando: entradas, saídas, tarifas, pagamentos, exclusões e alterações
-            administrativas.
+            Quem fez o quê e quando: logins, entradas, saídas, tarifas, caixa, funcionários, configurações e
+            tentativas de acesso sem permissão. Somente consulta: ninguém altera nem apaga estes registros (o
+            banco também recusa).
           </p>
         </div>
+        <BotoesExportar
+          nome="auditoria"
+          desabilitado={!itens.length}
+          abas={() => [
+            {
+              nome: 'Auditoria',
+              cabecalho: ['Data e hora', 'Funcionário', 'Ação', 'Registro', 'Detalhes', 'Motivo', 'IP'],
+              linhas: itens.map((a) => [
+                formatarDataHora(a.criadoEm),
+                a.usuario?.nome ?? 'Sistema',
+                ROTULOS_ACOES[a.acao] ?? a.acao,
+                [a.entidade, a.entidadeId].filter(Boolean).join(' '),
+                resumir(a).join('; '),
+                a.motivo,
+                a.ip,
+              ]),
+            },
+          ]}
+        />
       </header>
 
       <div className="filtros cartao">
@@ -168,6 +192,14 @@ export function Atividades() {
         <label className="campo">
           <span>Até</span>
           <input type="date" value={filtro.ate} onChange={(e) => mudar('ate', e.target.value)} />
+        </label>
+        <label className="campo">
+          <span>Das (hora)</span>
+          <input type="time" value={filtro.horaDe} onChange={(e) => mudar('horaDe', e.target.value)} />
+        </label>
+        <label className="campo">
+          <span>Até (hora)</span>
+          <input type="time" value={filtro.horaAte} onChange={(e) => mudar('horaAte', e.target.value)} />
         </label>
         {chave && (
           <button

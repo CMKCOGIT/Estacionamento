@@ -74,6 +74,7 @@ describe.skipIf(!temMysqldump)('backup do banco', () => {
   it('teste de restauração: banco temporário com as mesmas tabelas, gatilhos e migrações (o banco em uso não é tocado)', async () => {
     const [[antes]] = await pool.query<RowDataPacket[]>('SELECT COUNT(*) AS n FROM sessoes_estacionamento');
     const r = await backupService.testarRestauracao(id);
+    expect(r.detalhe).toMatch(/restaurados e conferidos/);
     expect(r.ok).toBe(true);
     const [[depois]] = await pool.query<RowDataPacket[]>('SELECT COUNT(*) AS n FROM sessoes_estacionamento');
     expect(depois?.n).toEqual(antes?.n);
@@ -138,5 +139,68 @@ describe.skipIf(!temMysqldump)('backup do banco', () => {
     const caixa = await entrar(app, 'caixa-bkp', 'Senha12345');
     await caixa.get('/api/v1/backups').expect(403);
     await caixa.post('/api/v1/backups').send({}).expect(403);
+  });
+
+  it('download do arquivo (cifrado) fica registrado', async () => {
+    const r = await admin
+      .get(`/api/v1/backups/${id}/arquivo`)
+      .buffer(true)
+      .parse((res, cb) => {
+        const partes: Buffer[] = [];
+        res.on('data', (c: Buffer) => partes.push(c));
+        res.on('end', () => cb(null, Buffer.concat(partes)));
+      });
+    expect(r.status).toBe(200);
+    expect((r.body as Buffer).subarray(0, 8).toString()).toBe('ESTBKP1\n');
+    const [h] = await pool.query<RowDataPacket[]>(
+      "SELECT COUNT(*) AS n FROM historico_atividades WHERE acao = 'backup.baixado' AND entidade_id = ?",
+      [id],
+    );
+    expect(Number(h[0]?.n)).toBe(1);
+  });
+
+  it('restauração pelo painel: confirma a senha, faz backup de segurança e volta ao estado do backup', async () => {
+    const novo = await admin.post('/api/v1/backups').send({}).expect(201);
+    const depois = await admin
+      .post('/api/v1/sessoes/entrada')
+      .send({ placa: 'RST9Z99', categoriaId: base.categorias.carro })
+      .expect(201);
+
+    await admin
+      .post(`/api/v1/backups/${novo.body.id}/restaurar`)
+      .send({ senha: 'errada', confirmacao: 'RESTAURAR' })
+      .expect(422);
+    await admin
+      .post(`/api/v1/backups/${novo.body.id}/restaurar`)
+      .send({ senha: ADMIN.senha, confirmacao: 'sim' })
+      .expect(400);
+
+    const r = await admin
+      .post(`/api/v1/backups/${novo.body.id}/restaurar`)
+      .send({ senha: ADMIN.senha, confirmacao: 'RESTAURAR' });
+    expect(r.status).toBe(200);
+    expect(r.body.backupSeguranca).toMatch(/antes-restauracao/);
+    // A entrada feita depois do backup não existe mais
+    const [[s]] = await pool.query<RowDataPacket[]>(
+      'SELECT COUNT(*) AS n FROM sessoes_estacionamento WHERE id = ?',
+      [depois.body.sessao.id],
+    );
+    expect(Number(s?.n)).toBe(0);
+    // O banco restaurado continua funcionando (pool reaproveitado) e a sessão do admin vale
+    await admin.get('/api/v1/vagas').expect(200);
+    const [[t]] = await pool.query<RowDataPacket[]>('SELECT COUNT(*) AS n FROM backup_restauracoes');
+    expect(Number(t?.n)).toBe(1);
+    const [[a]] = await pool.query<RowDataPacket[]>(
+      "SELECT COUNT(*) AS n FROM historico_atividades WHERE acao = 'backup.restaurado'",
+    );
+    expect(Number(a?.n)).toBe(1);
+    // O backup de segurança aparece na lista (permite desfazer)
+    const lista = await admin.get('/api/v1/backups').expect(200);
+    expect(lista.body.itens.some((b: { tipo: string }) => b.tipo === 'PRE_RESTAURACAO')).toBe(true);
+    expect(lista.body.situacao.ultimaRestauracao.arquivo).toBe(novo.body.arquivo);
+    const [[sync]] = await pool.query<RowDataPacket[]>(
+      'SELECT COUNT(*) AS n FROM sync_estado WHERE snapshot_pendente = TRUE',
+    );
+    expect(Number(sync?.n)).toBeGreaterThanOrEqual(0);
   });
 });

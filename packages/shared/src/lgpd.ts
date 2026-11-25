@@ -127,3 +127,60 @@ export interface ResultadoAnonimizacao {
   clientesAnonimizados: number;
   removidosDaNuvem: number;
 }
+
+// ---------------------------------------------------------------------------
+// Incidentes de segurança (art. 48) e inventário de dados pessoais
+// ---------------------------------------------------------------------------
+export type GravidadeIncidente = 'BAIXA' | 'MEDIA' | 'ALTA';
+
+export interface IncidenteSeguranca {
+  id: string;
+  ocorridoEm: string | null;
+  detectadoEm: string;
+  descricao: string;
+  dadosAfetados: string;
+  titularesAfetados: number | null;
+  gravidade: GravidadeIncidente;
+  medidas: string | null;
+  comunicadoAnpdEm: string | null;
+  comunicadoTitularesEm: string | null;
+  status: 'ABERTO' | 'ENCERRADO';
+  registradoPor: string | null;
+  registradoEm: string;
+  encerradoEm: string | null;
+}
+
+export interface NovoIncidente {
+  ocorridoEm?: string | null;
+  detectadoEm: string;
+  descricao: string;
+  dadosAfetados: string;
+  titularesAfetados?: number | null;
+  gravidade: GravidadeIncidente;
+  medidas?: string | null;
+}
+
+export interface AtualizacaoIncidente {
+  gravidade?: GravidadeIncidente;
+  medidas?: string | null;
+  titularesAfetados?: number | null;
+  comunicadoAnpd?: boolean;
+  comunicadoTitulares?: boolean;
+  encerrar?: boolean;
+}
+
+/** Uma categoria de dado pessoal guardado, com a quantidade real no banco. */
+export interface ItemInventario {
+  categoria: string;
+  dados: string;
+  finalidade: string;
+  quemAcessa: string;
+  retencao: string;
+  quantidade: number;
+}
+export interface InventarioDados {
+  geradoEm: string;
+  itens: ItemInventario[];
+  /** Endereço da política de privacidade publicada no app do cliente. */
+  politicaUrl: string | null;
+}

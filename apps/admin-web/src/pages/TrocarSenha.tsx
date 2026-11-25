@@ -5,7 +5,8 @@ import { useAuth } from '../auth/contexto';
 import { ErroDaApi } from '../services/api';
 
 export function TrocarSenha() {
-  const { usuario, trocarSenha, sair } = useAuth();
+  const { usuario, trocarSenha, sair, regrasSenha } = useAuth();
+  const minimo = Math.max(POLITICA_SENHA.minimo, regrasSenha?.minimo ?? 0);
   const navegar = useNavigate();
   const [atual, setAtual] = useState('');
   const [nova, setNova] = useState('');
@@ -15,7 +16,7 @@ export function TrocarSenha() {
   const [sucesso, setSucesso] = useState(false);
 
   const obrigatoria = usuario?.deveTrocarSenha ?? false;
-  const problemas = nova ? problemasDaSenha(nova, usuario?.login) : [];
+  const problemas = nova ? problemasDaSenha(nova, usuario?.login, regrasSenha ?? undefined) : [];
   const confere = confirmacao.length > 0 && confirmacao === nova;
 
   async function aoEnviar(e: FormEvent) {
@@ -82,10 +83,14 @@ export function TrocarSenha() {
           />
         </label>
         <ul className="regras">
-          <li className={nova.length >= POLITICA_SENHA.minimo ? 'ok' : ''}>
-            Pelo menos {POLITICA_SENHA.minimo} caracteres
-          </li>
+          <li className={nova.length >= minimo ? 'ok' : ''}>Pelo menos {minimo} caracteres</li>
           <li className={/[A-Za-zÀ-ÿ]/.test(nova) && /[0-9]/.test(nova) ? 'ok' : ''}>Letras e números</li>
+          {regrasSenha?.exigirMaiuscula && (
+            <li className={/[A-ZÀ-Þ]/.test(nova) ? 'ok' : ''}>Uma letra maiúscula</li>
+          )}
+          {regrasSenha?.exigirSimbolo && (
+            <li className={/[^A-Za-zÀ-ÿ0-9]/.test(nova) ? 'ok' : ''}>Um símbolo (ex.: ! @ # $)</li>
+          )}
           <li className={nova && !problemas.some((p) => p.includes('login')) ? 'ok' : ''}>
             Não conter o login
           </li>

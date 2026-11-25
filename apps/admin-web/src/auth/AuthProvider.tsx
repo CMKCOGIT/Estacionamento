@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
-import type { RequisicaoTrocaSenha, RespostaSessao, UsuarioAutenticado } from '@estacionamento/shared';
+import type {
+  RegrasSenha,
+  RequisicaoTrocaSenha,
+  RespostaSessao,
+  UsuarioAutenticado,
+} from '@estacionamento/shared';
 import { api, ErroDaApi, EVENTO_SESSAO_ENCERRADA, EVENTO_TROCA_SENHA } from '../services/api';
 import { AuthContexto, type EstadoAuth } from './contexto';
 
@@ -7,11 +12,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [usuario, setUsuario] = useState<UsuarioAutenticado | null>(null);
   const [verificando, setVerificando] = useState(true);
   const [aviso, setAviso] = useState<string | null>(null);
+  const [regrasSenha, setRegrasSenha] = useState<RegrasSenha | null>(null);
 
   // Ao abrir o painel: já existe sessão válida neste navegador?
   useEffect(() => {
     api<RespostaSessao>('/auth/sessao', { ignorarSessao: true })
-      .then((r) => setUsuario(r.usuario))
+      .then((r) => {
+        setUsuario(r.usuario);
+        setRegrasSenha(r.regrasSenha ?? null);
+      })
       .catch((e: unknown) => {
         if (e instanceof ErroDaApi && e.status !== 401) setAviso(e.message);
       })
@@ -41,6 +50,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
     setAviso(null);
     setUsuario(r.usuario);
+    setRegrasSenha(r.regrasSenha ?? null);
   }, []);
 
   const sair = useCallback(async () => {
@@ -58,6 +68,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const permissoes = new Set(usuario?.permissoes ?? []);
     return {
       usuario,
+      regrasSenha,
       verificando,
       aviso,
       entrar,
@@ -65,7 +76,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       trocarSenha,
       temPermissao: (...codigos) => codigos.length === 0 || codigos.some((c) => permissoes.has(c)),
     };
-  }, [usuario, verificando, aviso, entrar, sair, trocarSenha]);
+  }, [usuario, regrasSenha, verificando, aviso, entrar, sair, trocarSenha]);
 
   return <AuthContexto.Provider value={valor}>{children}</AuthContexto.Provider>;
 }

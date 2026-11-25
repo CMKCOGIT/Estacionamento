@@ -32,6 +32,12 @@ export interface SituacaoBackups {
   guardados: number;
   bytesGuardados: number;
   comProblema: number;
+  ultimaRestauracao: {
+    arquivo: string;
+    backupSeguranca: string | null;
+    em: string;
+    por: string | null;
+  } | null;
 }
 
 export const backupsApi = {
@@ -43,4 +49,11 @@ export const backupsApi = {
       method: 'POST',
       corpo: {},
     }),
+  /** Endereço para baixar o arquivo (o navegador envia o cookie de sessão). */
+  urlArquivo: (id: string) => `/api/v1/backups/${id}/arquivo`,
+  restaurar: (id: string, senha: string) =>
+    api<{ arquivo: string; backupSeguranca: string; tabelas: number; migracoes: string[] }>(
+      `/backups/${id}/restaurar`,
+      { method: 'POST', corpo: { senha, confirmacao: 'RESTAURAR' } },
+    ),
 };

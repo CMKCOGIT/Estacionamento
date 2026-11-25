@@ -1,7 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { POLITICA_SENHA, type RespostaSessao } from '@estacionamento/shared';
-import { env } from '../../config/env.js';
 import {
   COOKIE_SESSAO,
   definirCookieSessao,
@@ -9,7 +8,8 @@ import {
   limparCookieSessao,
   metaDaRequisicao,
 } from '../../http/middlewares/autenticacao.js';
-import { authService } from './auth.service.js';
+import { carregarConfig } from '../configuracoes/preferencias.js';
+import { authService, regrasSenhaAtuais } from './auth.service.js';
 
 export const authRouter = Router();
 
@@ -45,12 +45,14 @@ authRouter.post('/logout', async (req, res) => {
 });
 
 /** GET /auth/sessao — quem está logado (o painel chama ao abrir). */
-authRouter.get('/sessao', autenticado, (req, res) => {
+authRouter.get('/sessao', autenticado, async (req, res) => {
   const { sessaoId: _s, temPermissao: _t, expiraEm, ...usuario } = req.auth!;
+  const { seguranca } = await carregarConfig();
   res.json({
     usuario,
     expiraEm: expiraEm.toISOString(),
-    inatividadeMinutos: env.SESSAO_INATIVIDADE_MIN,
+    inatividadeMinutos: seguranca.inatividadeMin,
+    regrasSenha: await regrasSenhaAtuais(),
   } satisfies RespostaSessao);
 });
 

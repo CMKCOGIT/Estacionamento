@@ -4,6 +4,7 @@ import { authRouter } from './auth/auth.routes.js';
 import { backupRouter } from './backup/backup.routes.js';
 import { configuracoesRouter } from './configuracoes/configuracoes.routes.js';
 import { dashboardRouter } from './dashboard/dashboard.routes.js';
+import { incidentesRouter } from './privacidade/incidentes.js';
 import { privacidadeRouter } from './privacidade/privacidade.routes.js';
 import { relatoriosOperacionaisRouter } from './relatorios-operacionais/relatorios-operacionais.routes.js';
 import { relatoriosRouter } from './relatorios/relatorios.routes.js';
@@ -60,6 +61,7 @@ export const modulos: ModuloApi[] = [
   { caminho: '/configuracoes', router: configuracoesRouter },
   { caminho: '/sync', router: syncRouter },
   { caminho: '/privacidade', router: privacidadeRouter },
+  { caminho: '/privacidade', router: incidentesRouter },
   { caminho: '/backups', router: backupRouter },
   { caminho: '/monitoramento', router: monitoramentoRouter },
 ];

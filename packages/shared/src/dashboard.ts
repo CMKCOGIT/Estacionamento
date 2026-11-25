@@ -64,6 +64,8 @@ export interface DashboardResposta {
       cancelamentos: number;
       permanenciaMediaMin: number | null;
     };
+    /** Entradas e saídas de hoje por hora (0–23, fuso do estacionamento). */
+    movimentoPorHora: { hora: number; entradas: number; saidas: number }[];
     ultimosMovimentos: Movimento[];
   } | null;
   financeiro: {
@@ -75,6 +77,19 @@ export interface DashboardResposta {
     pendentes: { quantidade: number; valorEstimadoCentavos: number; parcialmentePagas: number };
     faturamento7dias: FaturamentoDia[];
     caixasAbertos: { id: string; operador: string; posto: string; abertoEm: string }[];
+    /**
+     * Caixa hoje. "Recebido no caixa" são os pagamentos presenciais do dia
+     * (todas as formas); "dinheiro em caixa" é o que deve estar nas gavetas
+     * abertas agora (saldo inicial + dinheiro recebido − troco − sangrias...).
+     */
+    caixa: {
+      abertos: number;
+      fechadosHoje: number;
+      saldoInicialCentavos: number;
+      dinheiroEmCaixaCentavos: number;
+      recebidoNoCaixaCentavos: number;
+      recebimentos: number;
+    };
   } | null;
   sincronizacao: {
     situacao: SituacaoSync;

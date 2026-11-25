@@ -1,8 +1,10 @@
 import { createContext, useContext } from 'react';
-import type { RequisicaoTrocaSenha, UsuarioAutenticado } from '@estacionamento/shared';
+import type { RegrasSenha, RequisicaoTrocaSenha, UsuarioAutenticado } from '@estacionamento/shared';
 
 export interface EstadoAuth {
   usuario: UsuarioAutenticado | null;
+  /** Regras de senha definidas pelo administrador (Configurações → Segurança). */
+  regrasSenha: RegrasSenha | null;
   /** true enquanto verifica se já existe sessão (ao abrir o painel). */
   verificando: boolean;
   /** Mensagem mostrada na tela de login (ex.: "sessão expirou"). */

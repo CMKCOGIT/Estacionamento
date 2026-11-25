@@ -174,3 +174,19 @@ export const IconeCalculadora = (p: P) => (
     <path d="M8 6h8M8 11h.01M12 11h.01M16 11h.01M8 15h.01M12 15h.01M16 15h.01M8 19h.01M12 19h.01M16 19h.01" />
   </Base>
 );
+export const IconeMonitor = (p: P) => (
+  <Base {...p}>
+    <rect x="2" y="4" width="20" height="13" rx="2" />
+    <path d="M8 21h8M12 17v4M6 12l3-3 3 3 4-4 2 2" />
+  </Base>
+);
+export const IconeDownload = (p: P) => (
+  <Base {...p}>
+    <path d="M12 3v12M7 10l5 5 5-5M4 21h16" />
+  </Base>
+);
+export const IconeAlerta = (p: P) => (
+  <Base {...p}>
+    <path d="M12 3 2 20h20L12 3zM12 10v4M12 17h.01" />
+  </Base>
+);

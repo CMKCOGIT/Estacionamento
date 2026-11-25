@@ -10,6 +10,7 @@ import {
 import { env } from '../../config/env.js';
 import { obterSiteAtual } from '../../config/site.js';
 import type { Autenticacao } from '../auth/auth.service.js';
+import { carregarConfig } from '../configuracoes/preferencias.js';
 import { dashboardRepository as repo } from './dashboard.repository.js';
 
 /** Limites dos alertas operacionais. */
@@ -79,12 +80,13 @@ export const dashboardService = {
 
     let operacao: DashboardResposta['operacao'] = null;
     if (verOperacao) {
-      const [porCategoria, veiculos, janela, hoje, ultimos] = await Promise.all([
+      const [porCategoria, veiculos, janela, hoje, ultimos, porHora] = await Promise.all([
         repo.ocupacaoPorCategoria(site.id),
         repo.veiculosEstacionados(site.id),
         repo.sessoesNaJanela(site.id, new Date(agora.getTime() - 24 * HORA)),
         repo.movimentoHoje(site.id),
         repo.ultimosMovimentos(site.id, 10),
+        repo.movimentoPorHora(site.id),
       ]);
       const vagas = porCategoria.reduce(
         (t, c) => ({
@@ -101,6 +103,7 @@ export const dashboardService = {
         veiculosEstacionados: veiculos,
         ocupacao24h: calcularOcupacao24h(janela, agora),
         hoje,
+        movimentoPorHora: porHora,
         ultimosMovimentos: ultimos,
       };
 
@@ -150,7 +153,8 @@ export const dashboardService = {
       }
     }
 
-    const contagens = await repo.contagensParaAlertas(site.id);
+    const config = await carregarConfig();
+    const contagens = await repo.contagensParaAlertas(site.id, config.operacao.alertaPermanenciaHoras);
     if (contagens.vagas === 0) {
       alertas.push({
         codigo: 'config.sem_vagas',
@@ -167,13 +171,61 @@ export const dashboardService = {
         detalhe: 'Sem tarifa vigente não é possível registrar entradas.',
       });
     }
-    if (verOperacao && contagens.sessoesMais24h > 0) {
+    const h = config.operacao.alertaPermanenciaHoras;
+    if (verOperacao && contagens.sessoesLongas > 0) {
       alertas.push({
         codigo: 'sessoes.longas',
         nivel: 'atencao',
-        titulo: plural(contagens.sessoesMais24h, 'veículo há mais de 24h', 'veículos há mais de 24h'),
+        titulo: plural(contagens.sessoesLongas, `veículo há mais de ${h}h`, `veículos há mais de ${h}h`),
         detalhe: 'Confira se a saída não deixou de ser registrada.',
       });
+    }
+    if (auth.temPermissao('auditoria.ver') && contagens.loginsFalhos >= 5) {
+      alertas.push({
+        codigo: 'seguranca.logins',
+        nivel: contagens.loginsFalhos >= 20 ? 'serio' : 'atencao',
+        titulo: plural(
+          contagens.loginsFalhos,
+          'tentativa de login errada em 24h',
+          'tentativas de login erradas em 24h',
+        ),
+        detalhe: 'Veja em Auditoria → Atividades (filtro "Login e acesso").',
+      });
+    }
+    if (auth.temPermissao('auditoria.ver') && contagens.acessosNegados > 0) {
+      alertas.push({
+        codigo: 'seguranca.negados',
+        nivel: 'info',
+        titulo: plural(contagens.acessosNegados, 'acesso negado em 24h', 'acessos negados em 24h'),
+        detalhe: 'Alguém tentou usar uma função sem permissão. Veja em Auditoria.',
+      });
+    }
+    if (auth.temPermissao('sistema.monitorar') && contagens.erros24h > 0) {
+      alertas.push({
+        codigo: 'falhas.erros',
+        nivel: contagens.erros24h >= 10 ? 'serio' : 'atencao',
+        titulo: plural(contagens.erros24h, 'erro do sistema em 24h', 'erros do sistema em 24h'),
+        detalhe: 'Detalhes em Sistema → Monitoramento.',
+      });
+    }
+    if (auth.temPermissao('backup.gerenciar') && config.backup.ativo) {
+      const ultimo = contagens.ultimoBackup?.getTime() ?? 0;
+      const falha = contagens.ultimaFalhaBackup?.getTime() ?? 0;
+      if (falha > ultimo) {
+        alertas.push({
+          codigo: 'backup.falhou',
+          nivel: 'serio',
+          titulo: 'O último backup falhou',
+          detalhe: 'Veja o erro em Sistema → Backups e faça um backup manual.',
+        });
+      } else if (agora.getTime() - ultimo > 26 * HORA) {
+        alertas.push({
+          codigo: 'backup.atrasado',
+          nivel: 'atencao',
+          titulo: ultimo ? 'Backup com mais de 1 dia' : 'Nenhum backup feito ainda',
+          detalhe: 'Faça um backup manual em Sistema → Backups.',
+        });
+      }
     }
     if (auth.temPermissao('usuario.gerenciar') && contagens.contasBloqueadas > 0) {
       alertas.push({
@@ -186,13 +238,14 @@ export const dashboardService = {
 
     let financeiro: DashboardResposta['financeiro'] = null;
     if (verFinanceiro) {
-      const [hoje, linhas, estornos, abertas, formas, caixas] = await Promise.all([
+      const [hoje, linhas, estornos, abertas, formas, caixas, caixaHoje] = await Promise.all([
         repo.hojeLocal(),
         repo.faturamentoPorDia(site.id, 7),
         repo.estornosHoje(site.id),
         repo.sessoesAbertasParaCalculo(site.id),
         repo.formasPagamento(),
         repo.caixasAbertos(site.id),
+        repo.caixaHoje(site.id),
       ]);
       const dias = montarFaturamentoDias(linhas, hoje, 7);
       const hojeLinhas = linhas.filter((l) => l.dia === hoje);
@@ -226,6 +279,7 @@ export const dashboardService = {
         pendentes: { quantidade, valorEstimadoCentavos: valorEstimado, parcialmentePagas: parciais },
         faturamento7dias: dias,
         caixasAbertos: caixas.map(({ minutos: _m, ...c }) => c),
+        caixa: caixaHoje,
       };
 
       for (const c of caixas.filter((x) => x.minutos >= LIMITES.caixaAbertoHoras * 60)) {
@@ -276,7 +330,20 @@ export const dashboardService = {
     }
 
     const ordem = { critico: 0, serio: 1, atencao: 2, info: 3 } as const;
-    alertas.sort((a, b) => ordem[a.nivel] - ordem[b.nivel]);
-    return { geradoEm: agora.toISOString(), operacao, financeiro, sincronizacao, alertas };
+    // Configurações → Notificações: categorias desligadas não aparecem (críticos sempre aparecem)
+    const n = config.notificacoes;
+    const categoria = (c: string) =>
+      c.startsWith('sync.')
+        ? n.sincronizacao
+        : c.startsWith('backup.')
+          ? n.backup
+          : c.startsWith('seguranca.') || c === 'usuarios.bloqueados'
+            ? n.seguranca
+            : c.startsWith('falhas.')
+              ? n.falhas
+              : n.operacao;
+    const visiveis = alertas.filter((a) => a.nivel === 'critico' || categoria(a.codigo));
+    visiveis.sort((a, b) => ordem[a.nivel] - ordem[b.nivel]);
+    return { geradoEm: agora.toISOString(), operacao, financeiro, sincronizacao, alertas: visiveis };
   },
 };
