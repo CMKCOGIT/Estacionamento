@@ -118,9 +118,28 @@ export interface CaixaAtual {
   postoId: string;
   abertoEm: string;
   saldoInicialCentavos: number;
-  /** Dinheiro que deveria estar na gaveta (abertura + recebimentos − estornos − sangrias). */
-  dinheiroEsperadoCentavos: number;
+  /**
+   * Dinheiro que deveria estar na gaveta (abertura + recebimentos − estornos − sangrias).
+   * null para quem não supervisiona caixas: a conferência é às cegas (o
+   * operador conta sem saber quanto o sistema espera).
+   */
+  dinheiroEsperadoCentavos: number | null;
+  /** Vazio para quem não supervisiona (mesmo motivo). */
   recebidoPorForma: { forma: string; nome: string; centavos: number }[];
+  /** true = valores ocultos (conferência às cegas). */
+  conferenciaOculta: boolean;
+}
+
+/** Resposta do fechamento. Esperado e diferença só para quem supervisiona. */
+export interface ResultadoFechamentoCaixa {
+  caixaId: string;
+  posto: string;
+  abertoEm: string;
+  fechadoEm: string;
+  contadoCentavos: number;
+  esperadoCentavos: number | null;
+  diferencaCentavos: number | null;
+  conferenciaOculta: boolean;
 }
 
 export interface Posto {

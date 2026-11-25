@@ -1,5 +1,11 @@
-import { Fragment, useState } from 'react';
-import { centavosParaCampo, formatarCentavos, lerCentavos, type CaixaAtual } from '@estacionamento/shared';
+import { useState } from 'react';
+import {
+  formatarCentavos,
+  lerCentavos,
+  type CaixaAtual,
+  type ResultadoFechamentoCaixa,
+} from '@estacionamento/shared';
+import { formatarDataHora } from '../../services/rotulos';
 import { caixaApi } from '../../services/sessoes';
 import { Dialogo } from '../Dialogo';
 import { mensagemDeErro } from '../vagas/Dialogos';
@@ -35,9 +41,11 @@ export function BarraCaixa({ caixa, carregando, pedirAbertura, onPedidoAtendido,
           <span className="mudo">
             {caixa.posto} · desde {horaCurta(caixa.abertoEm)}
           </span>
-          <span>
-            Dinheiro na gaveta: <strong>{formatarCentavos(caixa.dinheiroEsperadoCentavos)}</strong>
-          </span>
+          {caixa.dinheiroEsperadoCentavos !== null && (
+            <span>
+              Dinheiro na gaveta: <strong>{formatarCentavos(caixa.dinheiroEsperadoCentavos)}</strong>
+            </span>
+          )}
           {caixa.recebidoPorForma
             .filter((f) => f.forma !== 'DINHEIRO' && f.centavos !== 0)
             .map((f) => (
@@ -129,6 +137,11 @@ function DialogoAbrir({ onFechar, onAberto }: { onFechar: () => void; onAberto: 
   );
 }
 
+/**
+ * Fechamento às cegas: o funcionário conta e informa o total, confirma, e só
+ * então o servidor compara com o esperado. Operador não vê o esperado nem a
+ * diferença (nem antes, nem depois): isso fica para o gerente/administrador.
+ */
 function DialogoFechar({
   caixa,
   onFechar,
@@ -138,26 +151,38 @@ function DialogoFechar({
   onFechar: () => void;
   onFechado: (msg: string) => void;
 }) {
-  const [contado, setContado] = useState(centavosParaCampo(caixa.dinheiroEsperadoCentavos));
+  const [etapa, setEtapa] = useState<'contar' | 'confirmar' | 'pronto'>('contar');
+  const [contado, setContado] = useState('');
   const [observacao, setObservacao] = useState('');
   const [enviando, setEnviando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
+  const [resultado, setResultado] = useState<ResultadoFechamentoCaixa | null>(null);
   const centavos = lerCentavos(contado);
-  const diferenca = centavos === null ? null : centavos - caixa.dinheiroEsperadoCentavos;
 
-  async function fechar() {
-    if (centavos === null) return setErro('Informe o dinheiro contado, ex.: 150,00');
-    setEnviando(true);
+  async function avancar() {
     setErro(null);
-    try {
-      const r = await caixaApi.fechar(centavos, observacao.trim() || null);
+    if (etapa === 'contar') {
+      if (centavos === null || !contado.trim()) return setErro('Informe o total contado, ex.: 150,00');
+      setEtapa('confirmar');
+      return;
+    }
+    if (etapa === 'pronto') {
       onFechado(
-        r.diferencaCentavos === 0
-          ? 'Caixa fechado. O dinheiro conferiu.'
-          : `Caixa fechado com diferença de ${formatarCentavos(r.diferencaCentavos)}.`,
+        resultado?.conferenciaOculta
+          ? 'Caixa fechado. O valor informado foi registrado para conferência.'
+          : resultado?.diferencaCentavos === 0
+            ? 'Caixa fechado. O dinheiro conferiu.'
+            : `Caixa fechado com diferença de ${formatarCentavos(resultado?.diferencaCentavos ?? 0)}.`,
       );
+      return;
+    }
+    setEnviando(true);
+    try {
+      setResultado(await caixaApi.fechar(centavos!, observacao.trim() || null));
+      setEtapa('pronto');
     } catch (e) {
       setErro(mensagemDeErro(e));
+      setEtapa('contar');
     } finally {
       setEnviando(false);
     }
@@ -166,55 +191,94 @@ function DialogoFechar({
   return (
     <Dialogo
       aberto
-      titulo="Fechar caixa"
-      textoConfirmar="Fechar caixa"
+      titulo={etapa === 'pronto' ? 'Caixa fechado' : 'Fechar caixa'}
+      textoConfirmar={
+        etapa === 'contar' ? 'Continuar' : etapa === 'confirmar' ? 'Confirmar fechamento' : 'Concluir'
+      }
+      perigo={etapa === 'confirmar'}
       enviando={enviando}
       erro={erro}
-      onFechar={onFechar}
-      onConfirmar={() => void fechar()}
+      onFechar={() => (etapa === 'pronto' ? void avancar() : onFechar())}
+      onConfirmar={() => void avancar()}
     >
-      <dl className="lista-dados">
-        <dt>Aberto às</dt>
-        <dd>{horaCurta(caixa.abertoEm)}</dd>
-        <dt>Troco inicial</dt>
-        <dd>{formatarCentavos(caixa.saldoInicialCentavos)}</dd>
-        {caixa.recebidoPorForma.map((f) => (
-          <Fragment key={f.forma}>
-            <dt>{f.nome}</dt>
-            <dd>{formatarCentavos(f.centavos)}</dd>
-          </Fragment>
-        ))}
-        <dt>Dinheiro esperado</dt>
-        <dd>
-          <strong>{formatarCentavos(caixa.dinheiroEsperadoCentavos)}</strong>
-        </dd>
-      </dl>
-      <label className="campo">
-        <span>Dinheiro contado na gaveta (R$)</span>
-        <input
-          value={contado}
-          onChange={(e) => setContado(e.target.value)}
-          inputMode="decimal"
-          autoFocus
-          required
-        />
-      </label>
-      {diferenca !== null && diferenca !== 0 && (
-        <p className="alerta alerta--erro" role="status">
-          {diferenca > 0 ? 'Sobram' : 'Faltam'} {formatarCentavos(Math.abs(diferenca))} na gaveta. Explique
-          abaixo.
-        </p>
+      {etapa === 'contar' && (
+        <>
+          <dl className="lista-dados">
+            <dt>Caixa</dt>
+            <dd>
+              {caixa.posto} · aberto às {horaCurta(caixa.abertoEm)}
+            </dd>
+            <dt>Troco inicial</dt>
+            <dd>{formatarCentavos(caixa.saldoInicialCentavos)}</dd>
+          </dl>
+          <p className="mudo pequeno">
+            Conte todo o dinheiro da gaveta (incluindo o troco inicial) e informe o total encontrado.
+          </p>
+          <label className="campo">
+            <span>Total contado na gaveta (R$)</span>
+            <input
+              value={contado}
+              onChange={(e) => setContado(e.target.value)}
+              inputMode="decimal"
+              placeholder="0,00"
+              autoFocus
+              required
+            />
+          </label>
+          <label className="campo">
+            <span>Observação (opcional)</span>
+            <textarea
+              value={observacao}
+              onChange={(e) => setObservacao(e.target.value)}
+              rows={2}
+              maxLength={500}
+            />
+          </label>
+        </>
       )}
-      <label className="campo">
-        <span>Observação{diferenca ? ' *' : ''}</span>
-        <textarea
-          value={observacao}
-          onChange={(e) => setObservacao(e.target.value)}
-          rows={2}
-          maxLength={500}
-          required={!!diferenca}
-        />
-      </label>
+      {etapa === 'confirmar' && (
+        <>
+          <p>
+            Você vai fechar o caixa <strong>{caixa.posto}</strong> informando{' '}
+            <strong>{formatarCentavos(centavos ?? 0)}</strong> contados na gaveta.
+          </p>
+          <p className="alerta alerta--info">
+            Depois de confirmar, o valor não pode ser alterado. Se houver erro, o gerente registra uma
+            correção.
+          </p>
+        </>
+      )}
+      {etapa === 'pronto' && resultado && (
+        <dl className="lista-dados">
+          <dt>Caixa</dt>
+          <dd>{resultado.posto}</dd>
+          <dt>Turno</dt>
+          <dd>
+            {formatarDataHora(resultado.abertoEm)} → {horaCurta(resultado.fechadoEm)}
+          </dd>
+          <dt>Valor informado</dt>
+          <dd>
+            <strong>{formatarCentavos(resultado.contadoCentavos)}</strong>
+          </dd>
+          {resultado.conferenciaOculta ? (
+            <>
+              <dt>Conferência</dt>
+              <dd>Registrada. O resultado fica disponível para o gerente.</dd>
+            </>
+          ) : (
+            <>
+              <dt>Esperado pelo sistema</dt>
+              <dd>{formatarCentavos(resultado.esperadoCentavos ?? 0)}</dd>
+              <dt>Diferença</dt>
+              <dd className={resultado.diferencaCentavos ? 'erro' : undefined}>
+                {resultado.diferencaCentavos === 0
+                  ? 'Nenhuma: conferiu'
+                  : `${(resultado.diferencaCentavos ?? 0) > 0 ? 'Sobra' : 'Falta'} de ${formatarCentavos(Math.abs(resultado.diferencaCentavos ?? 0))}`}
+              </dd>
+            </>
+          )}
+        </dl>
+      )}
     </Dialogo>
   );
 }

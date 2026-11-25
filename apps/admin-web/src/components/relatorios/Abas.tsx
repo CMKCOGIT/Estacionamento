@@ -846,8 +846,8 @@ export function AbaFechamentos() {
                               )
                             : '—'}
                         </td>
-                        <td className="numero">{formatarCentavos(c.recebidoCentavos)}</td>
-                        <td className="numero">{formatarCentavos(c.dinheiroEsperadoCentavos)}</td>
+                        <td className="numero">{formatarCentavos(c.recebidoCentavos ?? 0)}</td>
+                        <td className="numero">{formatarCentavos(c.dinheiroEsperadoCentavos ?? 0)}</td>
                         <td className="numero">
                           {c.saldoContadoCentavos === null ? '—' : formatarCentavos(c.saldoContadoCentavos)}
                         </td>

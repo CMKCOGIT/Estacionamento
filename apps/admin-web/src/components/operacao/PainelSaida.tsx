@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import {
+  formatarPlaca,
   centavosParaCampo,
   formatarCentavos,
   lerCentavos,
@@ -13,6 +14,7 @@ import { ErroDaApi } from '../../services/api';
 import { Dialogo } from '../Dialogo';
 import { formatarDataHora } from '../../services/rotulos';
 import { sessoesApi } from '../../services/sessoes';
+import { veiculosApi } from '../../services/veiculos';
 import { Placa } from '../Placa';
 import { duracaoCurta } from '../vagas/MapaVagas';
 import { mensagemDeErro } from '../vagas/Dialogos';
@@ -35,6 +37,8 @@ interface Props {
   podeAjustar: boolean;
   onAbrirCaixa: () => void;
   onSaiu: (r: ReciboSaida) => void;
+  /** Veículos estacionados agora (atalho para escolher sem digitar). */
+  estacionados?: SessaoDetalhe[];
 }
 
 const novaLinha = (forma: string, centavos: number | null): Linha => ({
@@ -53,6 +57,7 @@ export function PainelSaida({
   podeAjustar,
   onAbrirCaixa,
   onSaiu,
+  estacionados = [],
 }: Props) {
   const [termo, setTermo] = useState('');
   const [buscando, setBuscando] = useState(false);
@@ -83,8 +88,15 @@ export function PainelSaida({
   }
 
   return (
-    <section className="cartao painel-op" aria-labelledby="titulo-saida">
-      <h2 id="titulo-saida">Saída</h2>
+    <section className="cartao painel-op painel-op--saida" aria-labelledby="titulo-saida">
+      <div className="painel-op__cabeca">
+        <h2 id="titulo-saida">
+          <span className="painel-op__icone painel-op__icone--saida" aria-hidden="true">
+            ↑
+          </span>
+          Saída
+        </h2>
+      </div>
       <form className="linha-busca" onSubmit={localizar}>
         <label className="campo campo--crescer">
           <span>Placa ou nº do ticket</span>
@@ -120,11 +132,30 @@ export function PainelSaida({
           onSaiu={onSaiu}
         />
       ) : (
-        !erroBusca && (
+        <div className="saida-vazia">
           <p className="mudo pequeno">
-            Digite a placa ou o número do ticket, ou clique em “Saída” na lista abaixo.
+            Digite a placa ou o número do ticket, ou escolha um veículo estacionado:
           </p>
-        )
+          {estacionados.length > 0 ? (
+            <ul className="saida-atalhos" aria-label="Estacionados agora">
+              {[...estacionados]
+                .sort((a, b) => b.entradaEm.localeCompare(a.entradaEm))
+                .slice(0, 8)
+                .map((x) => (
+                  <li key={x.id}>
+                    <button type="button" className="saida-atalho" onClick={() => onSessao(x)}>
+                      <code>{formatarPlaca(x.placa)}</code>
+                      <span className="mudo pequeno">
+                        vaga {x.vaga ?? '—'} · {duracaoCurta(x.calculo.permanenciaMin)}
+                      </span>
+                    </button>
+                  </li>
+                ))}
+            </ul>
+          ) : (
+            <p className="mudo pequeno">Nenhum veículo estacionado agora.</p>
+          )}
+        </div>
       )}
     </section>
   );
@@ -157,6 +188,18 @@ function Fechamento({
   const [erroPrevia, setErroPrevia] = useState<string | null>(null);
   const [rodada, setRodada] = useState(0);
   const ultimoValor = useRef(sessao.calculo.valorCalculadoCentavos);
+  // Modelo e cor do veículo (cadastro), para conferir com o carro na saída
+  const [modelo, setModelo] = useState('');
+  useEffect(() => {
+    let ativo = true;
+    veiculosApi
+      .obter(sessao.veiculoId)
+      .then((v) => ativo && setModelo([v.marca, v.modelo, v.cor].filter(Boolean).join(' · ')))
+      .catch(() => undefined);
+    return () => {
+      ativo = false;
+    };
+  }, [sessao.veiculoId]);
 
   const formaDe = (codigo: string) => formas.find((f) => f.codigo === codigo);
 
@@ -305,28 +348,45 @@ function Fechamento({
       <form className="fechamento" onSubmit={confirmar} ref={refForm}>
         <div className="fechamento__topo">
           <Placa placa={sessao.placa} grande />
-          <div>
-            <div>
-              Ticket <strong>nº {sessao.numero}</strong> · vaga <strong>{sessao.vaga ?? '—'}</strong>
-            </div>
-            <div className="mudo pequeno">
-              {sessao.categoria} · {sessao.modalidade === 'DIARIA' ? 'Diária' : 'Avulso'}
-            </div>
-          </div>
+          <div className="mudo pequeno">Ticket nº {sessao.numero}</div>
         </div>
+        <dl className="ficha-veiculo">
+          <div>
+            <dt>Categoria</dt>
+            <dd>{sessao.categoria}</dd>
+          </div>
+          <div>
+            <dt>Modelo</dt>
+            <dd>{modelo || <span className="mudo">—</span>}</dd>
+          </div>
+          <div>
+            <dt>Vaga</dt>
+            <dd>{sessao.vaga ?? '—'}</dd>
+          </div>
+          <div>
+            <dt>Entrada</dt>
+            <dd>{formatarDataHora(sessao.entradaEm)}</dd>
+          </div>
+          <div>
+            <dt>Permanência</dt>
+            <dd>{duracaoCurta(c.permanenciaMin)}</dd>
+          </div>
+          <div>
+            <dt>Cobrança</dt>
+            <dd>{sessao.modalidade === 'DIARIA' ? 'Diária' : 'Por tempo'}</dd>
+          </div>
+          <div className="ficha-veiculo__larga">
+            <dt>Tarifa aplicada</dt>
+            <dd>
+              {sessao.tarifaAplicada.tipo === 'ESPECIAL' && <strong>{sessao.tarifaAplicada.nome}: </strong>}
+              {c.tarifa}
+              {sessao.tarifaAplicada.tabelaVersao !== null && (
+                <span className="mudo"> (tabela v{sessao.tarifaAplicada.tabelaVersao}, da entrada)</span>
+              )}
+            </dd>
+          </div>
+        </dl>
         <dl className="lista-dados">
-          <dt>Entrada</dt>
-          <dd>{formatarDataHora(sessao.entradaEm)}</dd>
-          <dt>Permanência</dt>
-          <dd>{duracaoCurta(c.permanenciaMin)}</dd>
-          <dt>Tarifa</dt>
-          <dd>
-            {sessao.tarifaAplicada.tipo === 'ESPECIAL' && <strong>{sessao.tarifaAplicada.nome}: </strong>}
-            {c.tarifa}
-            {sessao.tarifaAplicada.tabelaVersao !== null && (
-              <span className="mudo"> (tabela v{sessao.tarifaAplicada.tabelaVersao}, da entrada)</span>
-            )}
-          </dd>
           {c.itens.length > 0 && (
             <>
               <dt>Cálculo</dt>

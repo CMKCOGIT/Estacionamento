@@ -195,6 +195,7 @@ export function Operacao() {
               podeReceber={temPermissao('pagamento.registrar') && operaCaixa}
               podeAjustar={temPermissao('sessao.ajustar_valor')}
               onAbrirCaixa={() => setPedirCaixa(true)}
+              estacionados={abertas.dados?.itens ?? []}
               onSaiu={(r) => {
                 setSaida(null);
                 setRecibo(r);

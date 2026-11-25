@@ -1,7 +1,13 @@
 import { Router, type Request } from 'express';
 import { z } from 'zod';
 import type { RowDataPacket } from 'mysql2/promise';
-import type { Lista, MovimentacaoHistorico, SessaoDetalhe } from '@estacionamento/shared';
+import type {
+  CaixaAtual,
+  Lista,
+  MovimentacaoHistorico,
+  ResultadoFechamentoCaixa,
+  SessaoDetalhe,
+} from '@estacionamento/shared';
 import { env } from '../../config/env.js';
 import { obterSiteAtual } from '../../config/site.js';
 import { pool } from '../../db/pool.js';
@@ -264,9 +270,20 @@ caixaRouter.get(
   },
 );
 
+/**
+ * Conferência às cegas: quem não supervisiona caixas (Operador) nunca recebe
+ * o dinheiro esperado, os totais por forma nem a diferença do fechamento.
+ */
+const veConferencia = (req: Request) =>
+  req.auth!.temPermissao('caixa.supervisionar') || req.auth!.temPermissao('relatorio.financeiro');
+const caixaParaQuemPede = (req: Request, c: CaixaAtual | null): CaixaAtual | null =>
+  c && !veConferencia(req)
+    ? { ...c, dinheiroEsperadoCentavos: null, recebidoPorForma: [], conferenciaOculta: true }
+    : c;
+
 caixaRouter.get('/atual', operaCaixa, async (req, res) => {
   res.set('Cache-Control', 'no-store');
-  res.json({ caixa: await caixaService.atual(req.auth!.id) });
+  res.json({ caixa: caixaParaQuemPede(req, await caixaService.atual(req.auth!.id)) });
 });
 
 caixaRouter.post('/abrir', operaCaixa, async (req, res) => {
@@ -274,12 +291,15 @@ caixaRouter.post('/abrir', operaCaixa, async (req, res) => {
     .object({ postoId: ulidSchema.nullish(), saldoInicialCentavos: centavos.default(0) })
     .parse(req.body);
   res.status(201).json(
-    await caixaService.abrir({
-      operadorId: req.auth!.id,
-      contexto: contextoAuditoria(req),
-      postoId,
-      saldoInicialCentavos,
-    }),
+    caixaParaQuemPede(
+      req,
+      await caixaService.abrir({
+        operadorId: req.auth!.id,
+        contexto: contextoAuditoria(req),
+        postoId,
+        saldoInicialCentavos,
+      }),
+    ),
   );
 });
 
@@ -292,11 +312,14 @@ caixaRouter.post('/movimentar', exigirPermissao('caixa.sangria'), async (req, re
     })
     .parse(req.body);
   res.json(
-    await caixaService.movimentar({
-      operadorId: req.auth!.id,
-      contexto: contextoAuditoria(req, d.descricao),
-      ...d,
-    }),
+    caixaParaQuemPede(
+      req,
+      await caixaService.movimentar({
+        operadorId: req.auth!.id,
+        contexto: contextoAuditoria(req, d.descricao),
+        ...d,
+      }),
+    ),
   );
 });
 
@@ -304,5 +327,16 @@ caixaRouter.post('/fechar', operaCaixa, async (req, res) => {
   const d = z
     .object({ saldoContadoCentavos: centavos, observacao: z.string().trim().max(500).nullish() })
     .parse(req.body);
-  res.json(await caixaService.fechar({ operadorId: req.auth!.id, contexto: contextoAuditoria(req), ...d }));
+  const r = await caixaService.fechar({ operadorId: req.auth!.id, contexto: contextoAuditoria(req), ...d });
+  // O resultado da conferência fica gravado; só gerente/administrador o vê
+  res.json(
+    veConferencia(req)
+      ? r
+      : ({
+          ...r,
+          esperadoCentavos: null,
+          diferencaCentavos: null,
+          conferenciaOculta: true,
+        } satisfies ResultadoFechamentoCaixa),
+  );
 });

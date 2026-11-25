@@ -1,4 +1,5 @@
 import type {
+  CaixaResumo,
   CaixaDetalhe,
   ListaMovimentacoes,
   ListaPagamentos,
@@ -18,6 +19,22 @@ const DIAS_MAXIMOS = 92;
 /** Quem vê o financeiro de todos (todos os caixas, pagamentos, resumo). */
 export const veTudo = (a: Autenticacao) =>
   a.temPermissao('relatorio.financeiro') || a.temPermissao('caixa.supervisionar');
+
+/** Conferência às cegas: o operador não vê esperado, diferença nem totais por forma. */
+export function semConferencia<T extends CaixaResumo>(c: T): T {
+  return {
+    ...c,
+    dinheiroEsperadoCentavos: null,
+    diferencaCentavos: null,
+    diferencaCorrigidaCentavos: null,
+    ajustesCentavos: 0,
+    quantidadeAjustes: 0,
+    recebidoCentavos: null,
+    estornadoCentavos: null,
+    porForma: [],
+    conferenciaOculta: true,
+  };
+}
 
 async function periodo(de?: string, ate?: string): Promise<{ de: string; ate: string }> {
   const hoje = await repo.hojeLocal();
@@ -81,15 +98,19 @@ export const financeiroService = {
     return repo.movimentacoes(site.id, { ...f, ...(await periodo(f.de, f.ate)) }, p);
   },
 
-  /** Caixas do período. Quem não supervisiona vê só os próprios. */
+  /**
+   * Caixas do período. Quem não supervisiona vê só os próprios e sem os
+   * valores da conferência (esperado, diferença, totais por forma).
+   */
   async caixas(auth: Autenticacao, f: { de?: string; ate?: string }) {
     const site = await obterSiteAtual();
     const p = await periodo(f.de, f.ate);
-    return repo.caixas(site.id, {
+    const itens = await repo.caixas(site.id, {
       ...p,
       operadorId: veTudo(auth) ? undefined : auth.id,
       incluirAbertos: p.ate >= (await repo.hojeLocal()),
     });
+    return veTudo(auth) ? itens : itens.map(semConferencia);
   },
 
   async caixa(auth: Autenticacao, id: string): Promise<CaixaDetalhe> {
@@ -97,6 +118,11 @@ export const financeiroService = {
     const cx = await repo.caixa(pool, site.id, id);
     if (!cx || (!veTudo(auth) && cx.operadorId !== auth.id))
       throw erros.naoEncontrado('Caixa não encontrado');
+    if (!veTudo(auth)) {
+      // Caixa aberto: os lançamentos somados dariam o esperado, então não vão
+      const movimentacoes = cx.status === 'ABERTO' ? [] : await repo.movimentacoesDoCaixa(pool, id);
+      return { ...semConferencia(cx), movimentacoes };
+    }
     return { ...cx, movimentacoes: await repo.movimentacoesDoCaixa(pool, id) };
   },
 

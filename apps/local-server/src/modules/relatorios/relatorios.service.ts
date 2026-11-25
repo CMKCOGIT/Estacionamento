@@ -276,7 +276,7 @@ export const relatoriosService = {
         sobraCentavos: dif.filter((d) => d > 0).reduce((t, d) => t + d, 0),
         faltaCentavos: -dif.filter((d) => d < 0).reduce((t, d) => t + d, 0),
         diferencaLiquidaCentavos: dif.reduce((t, d) => t + d, 0),
-        recebidoCentavos: itens.reduce((t, c) => t + c.recebidoCentavos, 0),
+        recebidoCentavos: itens.reduce((t, c) => t + (c.recebidoCentavos ?? 0), 0),
       },
     };
   },

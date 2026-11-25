@@ -9,6 +9,7 @@ import type {
   PedidoSaida,
   PreviaSaida,
   ReciboSaida,
+  ResultadoFechamentoCaixa,
   ResultadoEntrada,
   SessaoDetalhe,
   VagaLivre,
@@ -44,7 +45,7 @@ export const caixaApi = {
   abrir: (saldoInicialCentavos: number) =>
     api<CaixaAtual>('/caixa/abrir', { method: 'POST', corpo: { saldoInicialCentavos } }),
   fechar: (saldoContadoCentavos: number, observacao: string | null) =>
-    api<{ esperadoCentavos: number; contadoCentavos: number; diferencaCentavos: number }>('/caixa/fechar', {
+    api<ResultadoFechamentoCaixa>('/caixa/fechar', {
       method: 'POST',
       corpo: { saldoContadoCentavos, observacao },
     }),

@@ -1,6 +1,12 @@
 import type { RowDataPacket } from 'mysql2/promise';
 import { ulid } from 'ulid';
-import { formatarCentavos, type CaixaAtual, type FormaPagamento, type Posto } from '@estacionamento/shared';
+import {
+  formatarCentavos,
+  type CaixaAtual,
+  type ResultadoFechamentoCaixa,
+  type FormaPagamento,
+  type Posto,
+} from '@estacionamento/shared';
 import { obterSiteAtual } from '../../config/site.js';
 import { pool } from '../../db/pool.js';
 import { comTransacao, type ContextoAuditoria } from '../../db/transacao.js';
@@ -36,7 +42,11 @@ export const caixaService = {
     }));
   },
 
-  async atual(operadorId: string): Promise<CaixaAtual | null> {
+  /**
+   * Caixa aberto do operador. Quem não supervisiona caixas recebe os valores
+   * ocultos: a conferência do fechamento é às cegas.
+   */
+  async atual(operadorId: string, mostrarValores = true): Promise<CaixaAtual | null> {
     const cx = await repo.caixaAbertoDoOperador(pool, operadorId);
     if (!cx) return null;
     const [linhas] = await pool.query<RowDataPacket[]>(
@@ -51,12 +61,15 @@ export const caixaService = {
       posto: cx.posto,
       abertoEm: cx.abertoEm.toISOString(),
       saldoInicialCentavos: cx.saldoInicial,
-      dinheiroEsperadoCentavos: Number(dinheiro?.saldo_centavos ?? 0),
-      recebidoPorForma: linhas.map((l) => ({
-        forma: String(l.forma_codigo),
-        nome: String(l.nome),
-        centavos: Number(l.saldo_centavos),
-      })),
+      dinheiroEsperadoCentavos: mostrarValores ? Number(dinheiro?.saldo_centavos ?? 0) : null,
+      recebidoPorForma: mostrarValores
+        ? linhas.map((l) => ({
+            forma: String(l.forma_codigo),
+            nome: String(l.nome),
+            centavos: Number(l.saldo_centavos),
+          }))
+        : [],
+      conferenciaOculta: !mostrarValores,
     };
   },
 
@@ -106,7 +119,12 @@ export const caixaService = {
     return (await this.atual(o.operadorId))!;
   },
 
-  /** Fecha o próprio caixa com o dinheiro contado; a diferença fica registrada. */
+  /**
+   * Fecha o próprio caixa com o dinheiro contado (conferência às cegas: o
+   * operador não sabe o esperado). O servidor calcula e grava esperado e
+   * diferença; a observação é opcional, porque exigi-la só quando há
+   * diferença revelaria ao operador que a conta não bateu.
+   */
   async fechar(o: {
     operadorId: string;
     contexto: ContextoAuditoria;
@@ -115,7 +133,7 @@ export const caixaService = {
   }) {
     const cx = await repo.caixaAbertoDoOperador(pool, o.operadorId);
     if (!cx) throw erros.regraDeNegocio('Você não tem caixa aberto.');
-    return this.fecharCaixa({ ...o, caixaId: cx.id, fechadoPor: o.operadorId });
+    return this.fecharCaixa({ ...o, caixaId: cx.id, fechadoPor: o.operadorId, exigirJustificativa: false });
   },
 
   /**
@@ -129,13 +147,16 @@ export const caixaService = {
     contexto: ContextoAuditoria;
     saldoContadoCentavos: number;
     observacao?: string | null;
-  }) {
+    /** Supervisor (que vê o esperado) precisa explicar a diferença. */
+    exigirJustificativa?: boolean;
+  }): Promise<ResultadoFechamentoCaixa> {
     const site = await obterSiteAtual();
     return comTransacao(
       { ...o.contexto, motivo: o.observacao?.trim() || 'fechamento de caixa' },
       async (c) => {
         const [[cx]] = await c.query<RowDataPacket[]>(
-          'SELECT id, status FROM caixa_sessoes WHERE id = ? AND site_id = ? FOR UPDATE',
+          `SELECT cx.id, cx.status, cx.aberto_em, p.nome AS posto FROM caixa_sessoes cx
+             JOIN postos p ON p.id = cx.posto_id WHERE cx.id = ? AND cx.site_id = ? FOR UPDATE`,
           [o.caixaId, site.id],
         );
         if (!cx) throw erros.naoEncontrado('Caixa não encontrado');
@@ -146,7 +167,7 @@ export const caixaService = {
         );
         const esperado = Number(d?.saldo ?? 0);
         const diferenca = o.saldoContadoCentavos - esperado;
-        if (diferenca !== 0 && !o.observacao?.trim()) {
+        if (o.exigirJustificativa !== false && diferenca !== 0 && !o.observacao?.trim()) {
           throw erros.requisicaoInvalida(
             `Há diferença de ${formatarCentavos(diferenca)} no dinheiro. Explique na observação.`,
             [{ campo: 'observacao', mensagem: 'Obrigatória quando há diferença' }],
@@ -165,10 +186,18 @@ export const caixaService = {
             o.caixaId,
           ],
         );
+        const [[f]] = await c.query<RowDataPacket[]>('SELECT fechado_em FROM caixa_sessoes WHERE id = ?', [
+          o.caixaId,
+        ]);
         return {
+          caixaId: String(cx.id),
+          posto: String(cx.posto),
+          abertoEm: (cx.aberto_em as Date).toISOString(),
+          fechadoEm: (f!.fechado_em as Date).toISOString(),
           esperadoCentavos: esperado,
           contadoCentavos: o.saldoContadoCentavos,
           diferencaCentavos: diferenca,
+          conferenciaOculta: false,
         };
       },
     );

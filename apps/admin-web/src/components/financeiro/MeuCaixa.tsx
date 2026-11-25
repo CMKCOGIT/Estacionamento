@@ -62,8 +62,18 @@ export function MeuCaixa({ caixa, carregandoCaixa, pedirAbertura, onPedidoAtendi
         <section className="cartao">
           <h2>Caixa aberto</h2>
           <ResumoDoCaixa c={detalhe.dados} />
-          <h3 className="pequeno">Movimentações</h3>
-          <TabelaMovimentacoes itens={[...detalhe.dados.movimentacoes].reverse()} semCaixa />
+          {detalhe.dados.conferenciaOculta ? (
+            <p className="mudo pequeno">
+              Conferência às cegas: os valores recebidos e o dinheiro esperado na gaveta não aparecem para o
+              operador. No fechamento, conte o dinheiro e informe o total; o gerente vê o resultado da
+              conferência.
+            </p>
+          ) : (
+            <>
+              <h3 className="pequeno">Movimentações</h3>
+              <TabelaMovimentacoes itens={[...detalhe.dados.movimentacoes].reverse()} semCaixa />
+            </>
+          )}
         </section>
       )}
       {anteriores.dados && anteriores.dados.itens.some((c) => c.status === 'FECHADO') && (
@@ -75,7 +85,7 @@ export function MeuCaixa({ caixa, carregandoCaixa, pedirAbertura, onPedidoAtendi
               .map((c) => (
                 <li key={c.id}>
                   {c.posto} · {c.operador} · {formatarDataHora(c.abertoEm)} → {formatarDataHora(c.fechadoEm)}{' '}
-                  · recebido {formatarCentavos(c.recebidoCentavos)}
+                  {c.recebidoCentavos !== null && <> · recebido {formatarCentavos(c.recebidoCentavos)}</>}
                   {c.diferencaCentavos ? (
                     <span className="erro"> · diferença {formatarCentavos(c.diferencaCentavos)}</span>
                   ) : (

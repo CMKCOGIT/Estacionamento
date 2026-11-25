@@ -127,14 +127,17 @@ export interface CaixaResumo {
   fechadoEm: string | null;
   fechadoPor: string | null;
   saldoInicialCentavos: number;
-  /** Dinheiro que deve estar na gaveta (calculado agora, ou o do fechamento). */
-  dinheiroEsperadoCentavos: number;
+  /** Dinheiro que deve estar na gaveta (calculado agora, ou o do fechamento). null = oculto (conferência às cegas). */
+  dinheiroEsperadoCentavos: number | null;
   saldoContadoCentavos: number | null;
   diferencaCentavos: number | null;
   observacao: string | null;
   quantidadeRecebimentos: number;
-  recebidoCentavos: number;
-  estornadoCentavos: number;
+  /** null = oculto para o operador (conferência às cegas). */
+  recebidoCentavos: number | null;
+  estornadoCentavos: number | null;
+  /** true = valores de conferência ocultos para quem consulta (operador). */
+  conferenciaOculta?: boolean;
   sangriasCentavos: number;
   suprimentosCentavos: number;
   /** Correções feitas depois do fechamento (entradas − saídas). O fechamento original não muda. */

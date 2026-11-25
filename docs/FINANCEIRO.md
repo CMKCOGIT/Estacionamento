@@ -67,8 +67,14 @@ No banco, pagamentos e movimentações **não podem ser alterados nem excluídos
 | **Abrir** | `caixa.operar` | Informa o troco inicial. Usa o primeiro guichê livre (cria "Guichê 2"... se todos estiverem em uso). Cada operador tem no máximo um caixa aberto, e cada guichê também |
 | **Sangria** | `caixa.sangria` | Retira dinheiro da gaveta (ex.: depósito no cofre). Exige motivo e não pode passar do dinheiro do caixa |
 | **Suprimento** | `caixa.sangria` | Coloca troco na gaveta. Exige motivo |
-| **Fechar** o próprio | `caixa.operar` | Informa o dinheiro contado. Se houver diferença do esperado, a observação é obrigatória |
-| **Fechar o caixa de outro** (esqueceu aberto) | `caixa.supervisionar` | Mesmas regras. Fica registrado quem fechou |
+| **Fechar** o próprio | `caixa.operar` | **Conferência às cegas**: informa o total contado, confirma e só então o servidor compara com o esperado. A observação é opcional (exigi-la só quando há diferença revelaria que a conta não bateu). O valor informado não muda depois |
+| **Fechar o caixa de outro** (esqueceu aberto) | `caixa.supervisionar` | Vê o esperado; se houver diferença, a observação é obrigatória. Fica registrado quem fechou |
+
+### Conferência às cegas
+
+Quem **não** tem `caixa.supervisionar` nem `relatorio.financeiro` (o Operador) **não recebe do servidor**, nem antes nem depois do fechamento: o dinheiro esperado, os totais por forma, o total recebido, a diferença e, com o caixa aberto, a lista de lançamentos (que, somada, daria o esperado). Vale para `GET /caixa/atual`, `POST /caixa/abrir|movimentar|fechar` e `GET /financeiro/caixas[/:id]` (campo `conferenciaOculta: true`). Gerente e Administrador veem tudo.
+
+Ficam gravados em `caixa_sessoes`: valor informado (`saldo_contado_centavos`), esperado calculado (`saldo_esperado_centavos`), diferença, quem fechou (`fechado_por`), quando (`fechado_em`), o caixa (`id`, guichê) e o turno (`aberto_em` → `fechado_em`). Caixa fechado não muda; correção é uma movimentação `AJUSTE` autorizada (Financeiro → Caixa → Caixas anteriores → Corrigir).
 
 **Dinheiro esperado** = troco inicial + recebimentos em dinheiro + suprimentos − sangrias − estornos em dinheiro. Ele é calculado pelo banco (`vw_caixa_resumo`) a partir das movimentações.
 

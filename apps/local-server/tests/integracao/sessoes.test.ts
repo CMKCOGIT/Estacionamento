@@ -427,12 +427,8 @@ describe('política de encerramento do link do cliente', () => {
 });
 
 describe('caixa e permissões', () => {
-  it('fechar o caixa com diferença exige explicação', async () => {
+  it('fechar o próprio caixa com diferença registra a diferença (observação opcional: conferência às cegas)', async () => {
     const atual = (await admin.get('/api/v1/caixa/atual')).body.caixa;
-    await admin
-      .post('/api/v1/caixa/fechar')
-      .send({ saldoContadoCentavos: atual.dinheiroEsperadoCentavos - 100 })
-      .expect(400);
     const r = await admin
       .post('/api/v1/caixa/fechar')
       .send({ saldoContadoCentavos: atual.dinheiroEsperadoCentavos - 100, observacao: 'Faltou R$ 1,00' })

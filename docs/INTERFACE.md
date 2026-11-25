@@ -36,3 +36,14 @@ No topo de todas as páginas: data, hora e o usuário (com **Trocar senha** e **
 ## Tarifas
 
 Veja [TARIFAS.md](TARIFAS.md#cadastrar-editar-e-desativar-sempre-numa-nova-versão).
+
+## Entrada e saída
+
+Os dois módulos ficam lado a lado (empilhados abaixo de 900 px), com a mesma altura.
+
+- **Entrada:** placa em destaque (com "Estrangeira" ao lado), categoria/modelo/cor numa linha, vaga e cobrança lado a lado, tarifa e o resumo das condições numa caixa compacta. A disponibilidade de vagas da categoria aparece no cabeçalho.
+- **Saída:** busca por placa ou ticket. Sem nada buscado, mostra atalhos dos veículos estacionados mais recentes. Ao localizar: ficha com categoria, modelo, vaga, entrada, permanência, cobrança e tarifa aplicada, seguida do valor a pagar, pagamento e "Registrar saída".
+
+## Vagas: detalhes em modal
+
+Clicar numa vaga abre um modal sobre o mapa (fecha no X, em "Fechar", clicando fora ou com Esc). Seções: **Vaga** (identificação, categoria permitida, setor, situação), **Veículo estacionado** (placa, modelo e cor, entrada, tempo, tarifa aplicada, valor até agora, ticket) e **Bloqueio/Indisponibilidade** (motivo, desde quando, quem). Ações conforme a situação: Dar saída (ocupada), Alterar status e Editar dados da vaga. O sistema não tem reservas de vaga; esse estado não aparece.

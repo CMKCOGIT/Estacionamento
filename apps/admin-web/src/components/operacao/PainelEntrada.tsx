@@ -149,32 +149,50 @@ export function PainelEntrada({ categorias, rodada, onEntrou, onIrParaSaida }: P
   const jaDentro = veiculo?.estadiaAtual ?? null;
 
   return (
-    <form className="cartao painel-op" onSubmit={registrar} aria-labelledby="titulo-entrada">
-      <h2 id="titulo-entrada">Entrada</h2>
-      <label className="campo">
-        <span>Placa</span>
-        <input
-          value={placa}
-          onChange={(e) => {
-            setPlaca(e.target.value.toUpperCase());
-            setErro(null);
-          }}
-          placeholder="ABC1D23"
-          maxLength={12}
-          autoCapitalize="characters"
-          autoComplete="off"
-          spellCheck={false}
-          className="entrada-placa"
-          aria-describedby="info-veiculo"
-          aria-invalid={!!normalizada && !valida}
-          required
-          autoFocus
-        />
-      </label>
-      <label className="opcao opcao--compacta">
-        <input type="checkbox" checked={estrangeira} onChange={(e) => setEstrangeira(e.target.checked)} />
-        Placa estrangeira
-      </label>
+    <form
+      className="cartao painel-op painel-op--entrada"
+      onSubmit={registrar}
+      aria-labelledby="titulo-entrada"
+    >
+      <div className="painel-op__cabeca">
+        <h2 id="titulo-entrada">
+          <span className="painel-op__icone painel-op__icone--entrada" aria-hidden="true">
+            ↓
+          </span>
+          Entrada
+        </h2>
+        {vagas && categoria && (
+          <span className={`pilula ${lotado ? 'pilula--ocupada' : 'pilula--livre'}`} role="status">
+            {lotado ? `${categoria.nome}: lotado` : `${vagas.length} vaga(s) livre(s) · ${categoria.nome}`}
+          </span>
+        )}
+      </div>
+      <div className="placa-linha">
+        <label className="campo campo--crescer">
+          <span>Placa do veículo</span>
+          <input
+            value={placa}
+            onChange={(e) => {
+              setPlaca(e.target.value.toUpperCase());
+              setErro(null);
+            }}
+            placeholder="ABC1D23"
+            maxLength={12}
+            autoCapitalize="characters"
+            autoComplete="off"
+            spellCheck={false}
+            className="entrada-placa"
+            aria-describedby="info-veiculo"
+            aria-invalid={!!normalizada && !valida}
+            required
+            autoFocus
+          />
+        </label>
+        <label className="opcao opcao--compacta placa-linha__estrangeira">
+          <input type="checkbox" checked={estrangeira} onChange={(e) => setEstrangeira(e.target.checked)} />
+          Estrangeira
+        </label>
+      </div>
 
       <div id="info-veiculo" aria-live="polite">
         {normalizada && !valida && <p className="pequeno erro">Placa inválida (ABC1234 ou ABC1D23).</p>}
@@ -200,7 +218,7 @@ export function PainelEntrada({ categorias, rodada, onEntrou, onIrParaSaida }: P
       </div>
 
       {!veiculo && (
-        <div className="grade-campos">
+        <div className="grade-op grade-op--3">
           <label className="campo">
             <span>Categoria *</span>
             <select value={categoriaId} onChange={(e) => setCategoriaEscolhida(e.target.value)} required>
@@ -232,7 +250,7 @@ export function PainelEntrada({ categorias, rodada, onEntrou, onIrParaSaida }: P
         </div>
       )}
 
-      <div className="grade-campos">
+      <div className="grade-op grade-op--2">
         <label className="campo">
           <span>Vaga</span>
           <select value={vagaId} onChange={(e) => setVagaId(e.target.value)} disabled={lotado}>
@@ -273,11 +291,13 @@ export function PainelEntrada({ categorias, rodada, onEntrou, onIrParaSaida }: P
         </label>
       )}
       {tarifaUsada && (
-        <p className="pequeno mudo" role="status">
-          {tarifaUsada.tipo === 'ESPECIAL' && <strong>{tarifaUsada.nome}: </strong>}
-          {tarifaUsada.descricao}
-          {tarifas?.tabela && ` (tabela v${tarifas.tabela.versao})`}
-        </p>
+        <div className="resumo-tarifa" role="status">
+          <span className="resumo-tarifa__nome">
+            {tarifaUsada.nome}
+            {tarifas?.tabela && <span className="mudo"> · tabela v{tarifas.tabela.versao}</span>}
+          </span>
+          <span className="resumo-tarifa__regra">{tarifaUsada.descricao}</span>
+        </div>
       )}
       {semTarifa && categoria && (
         <p className="alerta alerta--erro">
@@ -285,11 +305,9 @@ export function PainelEntrada({ categorias, rodada, onEntrou, onIrParaSaida }: P
         </p>
       )}
       {semDiaria && <p className="pequeno erro">Esta tarifa não oferece diária.</p>}
-      {vagas && categoria && (
-        <p className={`pequeno ${lotado ? 'erro' : 'mudo'}`} role="status">
-          {lotado
-            ? `Lotado: não há vagas livres para ${categoria.nome}.`
-            : `${vagas.length} vaga(s) livre(s) para ${categoria.nome}.`}
+      {lotado && categoria && (
+        <p className="pequeno erro" role="status">
+          Lotado: não há vagas livres para {categoria.nome}.
         </p>
       )}
       {erro && (
@@ -299,7 +317,7 @@ export function PainelEntrada({ categorias, rodada, onEntrou, onIrParaSaida }: P
       )}
       <button
         type="submit"
-        className="botao botao--bloco"
+        className="botao botao--bloco botao--grande painel-op__acao"
         disabled={enviando || !valida || lotado || !!jaDentro || semTarifa || semDiaria}
       >
         {enviando ? 'Registrando…' : 'Registrar entrada'}

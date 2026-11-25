@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { centavosParaCampo, formatarCentavos, lerCentavos, type CaixaDetalhe } from '@estacionamento/shared';
+import { formatarCentavos, lerCentavos, type CaixaDetalhe } from '@estacionamento/shared';
 import { useCarregar } from '../../hooks/useCarregar';
 import { financeiroApi } from '../../services/financeiro';
 import { formatarDataHora } from '../../services/rotulos';
@@ -38,9 +38,10 @@ export function ResumoDoCaixa({ c }: { c: CaixaDetalhe | Omit<CaixaDetalhe, 'mov
         <dd>{formatarCentavos(c.saldoInicialCentavos)}</dd>
         <dt>Recebimentos</dt>
         <dd>
-          {c.quantidadeRecebimentos} · {formatarCentavos(c.recebidoCentavos)}
+          {c.quantidadeRecebimentos}
+          {c.recebidoCentavos !== null && ` · ${formatarCentavos(c.recebidoCentavos)}`}
         </dd>
-        {c.estornadoCentavos > 0 && (
+        {c.estornadoCentavos !== null && c.estornadoCentavos > 0 && (
           <>
             <dt>Estornos</dt>
             <dd>− {formatarCentavos(c.estornadoCentavos)}</dd>
@@ -54,16 +55,22 @@ export function ResumoDoCaixa({ c }: { c: CaixaDetalhe | Omit<CaixaDetalhe, 'mov
             </dd>
           </>
         )}
-        <dt>Dinheiro esperado</dt>
-        <dd>
-          <strong>{formatarCentavos(c.dinheiroEsperadoCentavos)}</strong>
-        </dd>
+        {c.dinheiroEsperadoCentavos !== null && (
+          <>
+            <dt>Dinheiro esperado</dt>
+            <dd>
+              <strong>{formatarCentavos(c.dinheiroEsperadoCentavos)}</strong>
+            </dd>
+          </>
+        )}
         {c.saldoContadoCentavos !== null && (
           <>
             <dt>Contado</dt>
             <dd>
               {formatarCentavos(c.saldoContadoCentavos)}
-              {c.diferencaCentavos ? (
+              {c.conferenciaOculta ? (
+                <span className="mudo"> (resultado da conferência disponível para o gerente)</span>
+              ) : c.diferencaCentavos ? (
                 <span className="erro">
                   {' '}
                   ({c.diferencaCentavos > 0 ? 'sobra' : 'falta'} de{' '}
@@ -185,7 +192,7 @@ export function DialogoCaixa({ caixaId, podeFechar, onFechar, onMudou }: Props) 
               type="button"
               className="botao botao--secundario"
               onClick={() => {
-                setContado(centavosParaCampo(c.dinheiroEsperadoCentavos));
+                setContado('');
                 setFechando(true);
               }}
             >

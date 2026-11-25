@@ -185,7 +185,7 @@ export function AbaResumo({ avisar }: { avisar: Avisar }) {
                               {c.status === 'ABERTO' ? 'Aberto' : 'Fechado'}
                             </span>
                           </td>
-                          <td className="numero">{formatarCentavos(c.recebidoCentavos)}</td>
+                          <td className="numero">{formatarCentavos(c.recebidoCentavos ?? 0)}</td>
                           <td className={`numero ${c.diferencaCentavos ? 'erro' : ''}`}>
                             {c.diferencaCentavos === null ? '—' : formatarCentavos(c.diferencaCentavos)}
                           </td>

@@ -130,7 +130,7 @@ export function CaixasAnteriores({
                     <div className="pequeno mudo">aberto {formatarDataHora(c.abertoEm)}</div>
                   </td>
                   <td className="sem-quebra">{c.fechadoEm ? formatarDataHora(c.fechadoEm) : '—'}</td>
-                  <td className="numero">{formatarCentavos(c.dinheiroEsperadoCentavos)}</td>
+                  <td className="numero">{formatarCentavos(c.dinheiroEsperadoCentavos ?? 0)}</td>
                   <td className="numero">
                     {c.saldoContadoCentavos === null ? '—' : formatarCentavos(c.saldoContadoCentavos)}
                   </td>

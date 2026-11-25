@@ -1,12 +1,6 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router';
-import {
-  formatarPlaca,
-  type Categoria,
-  type EstadoVaga,
-  type Vaga,
-  type VagaDetalhe,
-} from '@estacionamento/shared';
+import { formatarPlaca, type Categoria, type EstadoVaga, type Vaga } from '@estacionamento/shared';
 import { useAuth } from '../auth/contexto';
 import { Dialogo } from '../components/Dialogo';
 import {
@@ -14,11 +8,8 @@ import {
   IconeCadeado,
   IconeCarro,
   IconeFiltro,
-  IconeLapis,
   IconeMoto,
   IconeProibido,
-  IconeRelogio,
-  IconeSaida,
 } from '../components/Icones';
 import {
   DialogoCapacidade,
@@ -27,8 +18,8 @@ import {
   mensagemDeErro,
 } from '../components/vagas/Dialogos';
 import { duracaoCurta } from '../components/vagas/MapaVagas';
+import { ModalVaga } from '../components/vagas/ModalVaga';
 import { useAtualizacaoAutomatica } from '../hooks/useAtualizacaoAutomatica';
-import { formatarDataHora } from '../services/rotulos';
 import { vagasApi } from '../services/vagas';
 
 /** Situação mostrada na tela. REMOVIDA = desativada: aparece como "Indisponível". */
@@ -215,7 +206,7 @@ export function Vagas() {
         />
       </section>
 
-      <div className="vagas-corpo">
+      <div className="vagas-corpo vagas-corpo--modal">
         <section className="cartao vagas-mapa">
           <div className="vagas-mapa__barra">
             <label className="filtro-setor">
@@ -239,6 +230,17 @@ export function Vagas() {
               onChange={(e) => setBusca(e.target.value)}
               maxLength={20}
             />
+            <button
+              type="button"
+              className="botao botao--secundario botao--pequeno"
+              onClick={() => {
+                setMensagem(null);
+                lista.atualizarAgora();
+              }}
+              disabled={lista.atualizando}
+            >
+              <IconeAtualizar tamanho={16} /> {lista.atualizando ? 'Atualizando…' : 'Atualizar'}
+            </button>
             <ul className="legenda" aria-label="Legenda">
               {(['LIVRE', 'OCUPADA', 'BLOQUEADA', 'REMOVIDA'] as const).map((e) => (
                 <li key={e}>
@@ -292,21 +294,17 @@ export function Vagas() {
             })}
           </div>
         </section>
-
-        <PainelDetalhes
-          vaga={selecionada}
-          podeGerenciar={podeGerenciar}
-          podeSaida={podeSaida}
-          atualizando={lista.atualizando}
-          onSaida={() => setDialogo('saida')}
-          onStatus={() => setDialogo('status')}
-          onEditar={() => setDialogo('editar')}
-          onAtualizar={() => {
-            setMensagem(null);
-            lista.atualizarAgora();
-          }}
-        />
       </div>
+
+      <ModalVaga
+        vaga={selecionada}
+        podeGerenciar={podeGerenciar}
+        podeSaida={podeSaida}
+        onFechar={() => setSelecionadaId(null)}
+        onSaida={() => setDialogo('saida')}
+        onStatus={() => setDialogo('status')}
+        onEditar={() => setDialogo('editar')}
+      />
 
       {selecionada?.ocupacao && dialogo === 'saida' && (
         <Dialogo
@@ -397,175 +395,6 @@ function Indicador({
         )}
       </div>
     </div>
-  );
-}
-
-interface PainelProps {
-  vaga: Vaga | null;
-  podeGerenciar: boolean;
-  podeSaida: boolean;
-  atualizando: boolean;
-  onSaida: () => void;
-  onStatus: () => void;
-  onEditar: () => void;
-  onAtualizar: () => void;
-}
-
-function PainelDetalhes({
-  vaga,
-  podeGerenciar,
-  podeSaida,
-  atualizando,
-  onSaida,
-  onStatus,
-  onEditar,
-  onAtualizar,
-}: PainelProps) {
-  const [detalhe, setDetalhe] = useState<VagaDetalhe | null>(null);
-  useEffect(() => {
-    if (!vaga) return;
-    let ativo = true;
-    vagasApi
-      .obter(vaga.id)
-      .then((d) => ativo && setDetalhe(d))
-      .catch(() => undefined);
-    return () => {
-      ativo = false;
-    };
-  }, [vaga?.id, vaga?.estado, vaga]);
-
-  if (!vaga)
-    return (
-      <aside className="cartao vaga-detalhes vaga-detalhes--vazio" aria-label="Detalhes da vaga">
-        <h2>Detalhes da vaga</h2>
-        <p className="mudo">Clique numa vaga do mapa para ver o veículo, o horário de entrada e as ações.</p>
-        <button
-          type="button"
-          className="botao botao--secundario botao--largo"
-          onClick={onAtualizar}
-          disabled={atualizando}
-        >
-          <IconeAtualizar tamanho={18} /> Atualizar
-        </button>
-      </aside>
-    );
-
-  const s = SITUACAO[vaga.estado];
-  const usos = detalhe && detalhe.id === vaga.id ? detalhe.ultimosUsos : null;
-  return (
-    <aside className="cartao vaga-detalhes" aria-label={`Detalhes da vaga ${vaga.codigo}`}>
-      <h2>Detalhes da vaga</h2>
-      <div className="vaga-detalhes__destaque">
-        <span className="vaga-detalhes__codigo">{vaga.codigo}</span>
-        <span className={`pilula pilula--${s.classe}`}>{s.rotulo}</span>
-      </div>
-
-      <dl className="vaga-detalhes__linhas">
-        {vaga.ocupacao ? (
-          <>
-            <div>
-              <IconeCarro tamanho={20} />
-              <dt>Veículo</dt>
-              <dd>{formatarPlaca(vaga.ocupacao.placa)}</dd>
-            </div>
-            <div>
-              <IconeRelogio tamanho={20} />
-              <dt>Entrada</dt>
-              <dd>{formatarDataHora(vaga.ocupacao.entradaEm)}</dd>
-            </div>
-            <div>
-              <IconeRelogio tamanho={20} />
-              <dt>Tempo estacionado</dt>
-              <dd>{duracaoCurta(vaga.ocupacao.permanenciaMin)}</dd>
-            </div>
-          </>
-        ) : vaga.bloqueio ? (
-          <>
-            <div>
-              <IconeCadeado tamanho={20} />
-              <dt>Motivo do bloqueio</dt>
-              <dd>{vaga.bloqueio.motivo}</dd>
-            </div>
-            <div>
-              <IconeRelogio tamanho={20} />
-              <dt>Bloqueada em</dt>
-              <dd>
-                {formatarDataHora(vaga.bloqueio.em)}
-                {vaga.bloqueio.por && <span className="mudo"> · {vaga.bloqueio.por}</span>}
-              </dd>
-            </div>
-          </>
-        ) : (
-          <div>
-            <IconeCarro tamanho={20} />
-            <dt>Veículo</dt>
-            <dd className="mudo">{vaga.estado === 'REMOVIDA' ? 'Vaga desativada' : 'Nenhum veículo'}</dd>
-          </div>
-        )}
-        <div className="vaga-detalhes__secundaria">
-          <dt>Categoria · setor</dt>
-          <dd>
-            {vaga.categoria} · {vaga.setor ?? 'sem setor'}
-            {vaga.coberta && ' · coberta'}
-          </dd>
-        </div>
-        {vaga.observacao && (
-          <div className="vaga-detalhes__secundaria">
-            <dt>Observação</dt>
-            <dd>{vaga.observacao}</dd>
-          </div>
-        )}
-      </dl>
-
-      <div className="vaga-detalhes__acoes">
-        {podeSaida && (
-          <button
-            type="button"
-            className="botao botao--largo"
-            onClick={onSaida}
-            disabled={vaga.estado !== 'OCUPADA'}
-          >
-            <IconeSaida tamanho={18} /> Dar saída
-          </button>
-        )}
-        {podeGerenciar && (
-          <button type="button" className="botao botao--contorno botao--largo" onClick={onStatus}>
-            <IconeLapis tamanho={18} /> Alterar status
-          </button>
-        )}
-        <button
-          type="button"
-          className="botao botao--secundario botao--largo"
-          onClick={onAtualizar}
-          disabled={atualizando}
-        >
-          <IconeAtualizar tamanho={18} /> {atualizando ? 'Atualizando…' : 'Atualizar'}
-        </button>
-        {podeGerenciar && vaga.estado !== 'REMOVIDA' && (
-          <button type="button" className="botao-texto" onClick={onEditar}>
-            Editar dados da vaga
-          </button>
-        )}
-      </div>
-
-      <details className="vaga-detalhes__usos">
-        <summary>Últimos usos</summary>
-        {!usos && <p className="mudo">Carregando…</p>}
-        {usos && usos.length === 0 && <p className="mudo">Esta vaga ainda não recebeu veículos.</p>}
-        {usos && usos.length > 0 && (
-          <ul className="lista-simples">
-            {usos.map((u) => (
-              <li key={u.sessaoId}>
-                <code>{formatarPlaca(u.placa)}</code>{' '}
-                <span className="mudo">· {formatarDataHora(u.entradaEm)}</span>
-                {u.status === 'CANCELADA' && <span className="mudo"> · cancelado</span>}
-                {u.status === 'ABERTA' && <span className="mudo"> · ainda estacionado</span>}
-              </li>
-            ))}
-          </ul>
-        )}
-      </details>
-    </aside>
   );
 }
 

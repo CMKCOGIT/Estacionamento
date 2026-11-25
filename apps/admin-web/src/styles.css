@@ -1431,9 +1431,15 @@ a:has(> .placa) {
 }
 .grade-operacao {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 380px), 1fr));
-  gap: 1.25rem;
-  align-items: start;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+  /* As duas colunas com a mesma altura: a Saída não fica "pequena" ao lado da Entrada */
+  align-items: stretch;
+}
+@media (max-width: 900px) {
+  .grade-operacao {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 .grade-operacao__saida {
   scroll-margin-top: 1rem;
@@ -3343,4 +3349,285 @@ td .etiqueta--bloqueado {
 
 .grade-painel--uma {
   grid-template-columns: minmax(0, 1fr);
+}
+
+/* Vagas: detalhes em modal (o mapa ocupa a largura toda) */
+.vagas-corpo--modal {
+  grid-template-columns: minmax(0, 1fr);
+}
+.modal-vaga {
+  width: min(560px, calc(100vw - 24px));
+  padding: 0;
+}
+.modal-vaga::backdrop {
+  background: rgba(3, 8, 18, 0.65);
+  backdrop-filter: blur(2px);
+}
+.modal-vaga__conteudo {
+  display: grid;
+  gap: 14px;
+  padding: 20px 22px 18px;
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
+}
+.modal-vaga__cabeca {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.modal-vaga__cabeca h2 {
+  margin: 0;
+  font-size: 1.7rem;
+  line-height: 1.1;
+}
+.modal-vaga__rotulo {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--texto-mudo);
+}
+.modal-vaga__fechar {
+  margin-left: auto;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  border: 1px solid var(--borda);
+  background: var(--superficie-2);
+  color: var(--texto);
+  font-size: 1.4rem;
+  line-height: 1;
+  cursor: pointer;
+}
+.modal-vaga__fechar:hover {
+  border-color: var(--primaria);
+}
+.modal-vaga__secao {
+  border: 1px solid var(--borda);
+  border-radius: 12px;
+  padding: 12px 14px;
+  background: var(--superficie-2);
+}
+.modal-vaga__secao h3 {
+  margin: 0 0 8px;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--texto-mudo);
+}
+.modal-vaga__dados {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 16px;
+  margin: 0;
+}
+.modal-vaga__dados dt {
+  font-size: 0.8rem;
+  color: var(--texto-mudo);
+}
+.modal-vaga__dados dd {
+  margin: 2px 0 0;
+  overflow-wrap: anywhere;
+}
+.modal-vaga__usos summary {
+  cursor: pointer;
+  color: var(--primaria-forte);
+  font-size: 0.9rem;
+}
+.modal-vaga__acoes {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding-top: 4px;
+}
+.modal-vaga__acoes .botao {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.modal-vaga__fechar-rodape {
+  margin-left: auto;
+}
+@media (max-width: 480px) {
+  .modal-vaga__dados {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .modal-vaga__acoes .botao {
+    flex: 1 1 100%;
+    justify-content: center;
+  }
+  .modal-vaga__fechar-rodape {
+    margin-left: 0;
+  }
+}
+
+/* Entrada e Saída: cabeçalho, grades de campos e áreas compactas */
+.painel-op {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  height: 100%;
+  min-width: 0;
+}
+.painel-op .campo {
+  margin-bottom: 0;
+}
+.painel-op__cabeca {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--borda);
+}
+.painel-op__cabeca h2 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+}
+.painel-op__icone {
+  display: inline-grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  font-weight: 700;
+}
+.painel-op__icone--entrada {
+  background: color-mix(in srgb, var(--livre) 18%, transparent);
+  color: var(--livre);
+}
+.painel-op__icone--saida {
+  background: color-mix(in srgb, var(--primaria-forte) 20%, transparent);
+  color: var(--primaria-forte);
+}
+.placa-linha {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+}
+.placa-linha .entrada-placa {
+  font-size: 1.6rem;
+  padding-top: 0.55rem;
+  padding-bottom: 0.55rem;
+}
+.placa-linha__estrangeira {
+  white-space: nowrap;
+  padding-bottom: 0.7rem;
+}
+.grade-op {
+  display: grid;
+  gap: 0.6rem 0.75rem;
+}
+.grade-op--3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.grade-op--2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.resumo-tarifa {
+  display: grid;
+  gap: 2px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--borda);
+  background: var(--superficie-2);
+  font-size: 0.86rem;
+}
+.resumo-tarifa__nome {
+  font-weight: 600;
+}
+.resumo-tarifa__regra {
+  color: var(--texto-mudo);
+}
+.painel-op__acao {
+  margin-top: auto;
+}
+.painel-op .linha-busca .botao {
+  margin-bottom: 0;
+}
+.saida-vazia {
+  display: grid;
+  gap: 8px;
+  align-content: start;
+  flex: 1;
+  padding: 12px;
+  border: 1px dashed var(--borda);
+  border-radius: 12px;
+}
+.saida-vazia p {
+  margin: 0;
+}
+.saida-atalhos {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.saida-atalho {
+  width: 100%;
+  display: grid;
+  gap: 2px;
+  text-align: left;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--borda);
+  background: var(--superficie-2);
+  color: var(--texto);
+  cursor: pointer;
+  font: inherit;
+}
+.saida-atalho:hover,
+.saida-atalho:focus-visible {
+  border-color: var(--primaria);
+}
+.saida-atalho code {
+  font-size: 1rem;
+  letter-spacing: 0.05em;
+}
+.ficha-veiculo {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px 12px;
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--superficie-2);
+  border: 1px solid var(--borda);
+}
+.ficha-veiculo dt {
+  font-size: 0.75rem;
+  color: var(--texto-mudo);
+}
+.ficha-veiculo dd {
+  margin: 1px 0 0;
+  overflow-wrap: anywhere;
+}
+.ficha-veiculo__larga {
+  grid-column: 1 / -1;
+}
+@media (max-width: 1180px) and (min-width: 901px) {
+  .grade-op--3 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .grade-op--3 > :first-child {
+    grid-column: 1 / -1;
+  }
+  .ficha-veiculo {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 520px) {
+  .grade-op--3,
+  .grade-op--2,
+  .ficha-veiculo {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .placa-linha {
+    flex-wrap: wrap;
+  }
 }

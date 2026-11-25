@@ -419,8 +419,33 @@ describe('fechamento de caixa', () => {
       { forma: 'DINHEIRO', valorCentavos: null, valorRecebidoCentavos: 2000 },
       operador,
     ).expect(201);
-    const f = await operador.post('/api/v1/caixa/fechar').send({ saldoContadoCentavos: 3400 }).expect(200);
-    expect(f.body).toEqual({ esperadoCentavos: 3400, contadoCentavos: 3400, diferencaCentavos: 0 });
+    // Conferência às cegas: antes de fechar, o operador não recebe o esperado
+    const antes = (await operador.get('/api/v1/caixa/atual').expect(200)).body.caixa;
+    expect(antes).toMatchObject({
+      dinheiroEsperadoCentavos: null,
+      recebidoPorForma: [],
+      conferenciaOculta: true,
+    });
+    const f = await operador.post('/api/v1/caixa/fechar').send({ saldoContadoCentavos: 3300 }).expect(200);
+    // ...nem depois: esperado e diferença ficam só para quem supervisiona
+    expect(f.body).toMatchObject({
+      contadoCentavos: 3300,
+      esperadoCentavos: null,
+      diferencaCentavos: null,
+      conferenciaOculta: true,
+    });
+    const [[gravado]] = await pool.query<RowDataPacket[]>(
+      'SELECT saldo_esperado_centavos, saldo_contado_centavos, diferenca_centavos, fechado_por FROM caixa_sessoes WHERE id = ?',
+      [f.body.caixaId],
+    );
+    expect(gravado).toMatchObject({
+      saldo_esperado_centavos: 3400,
+      saldo_contado_centavos: 3300,
+      diferenca_centavos: -100,
+    });
+    // O gerente/administrador vê o resultado da conferência
+    const visto = (await admin.get(`/api/v1/financeiro/caixas/${f.body.caixaId}`).expect(200)).body;
+    expect(visto).toMatchObject({ dinheiroEsperadoCentavos: 3400, diferencaCentavos: -100 });
     const r = await receber(
       await ticketHa(80 * MIN + 20, operador),
       { forma: 'PIX', valorCentavos: null },
@@ -430,10 +455,17 @@ describe('fechamento de caixa', () => {
     const meus = (await operador.get('/api/v1/financeiro/caixas').expect(200)).body.itens;
     expect(meus[0]).toMatchObject({
       status: 'FECHADO',
-      saldoContadoCentavos: 3400,
-      diferencaCentavos: 0,
-      recebidoCentavos: 1400,
+      saldoContadoCentavos: 3300,
+      dinheiroEsperadoCentavos: null,
+      diferencaCentavos: null,
+      recebidoCentavos: null,
+      porForma: [],
+      conferenciaOculta: true,
     });
+    const detalhe = (await operador.get(`/api/v1/financeiro/caixas/${f.body.caixaId}`).expect(200)).body;
+    expect(detalhe).toMatchObject({ dinheiroEsperadoCentavos: null, diferencaCentavos: null });
+    // O valor informado não pode ser alterado depois (nem direto no banco pelo caminho do caixa)
+    await operador.post('/api/v1/caixa/fechar').send({ saldoContadoCentavos: 3400 }).expect(422);
   });
 
   it('supervisor fecha o caixa esquecido de outro operador, com a diferença explicada', async () => {
