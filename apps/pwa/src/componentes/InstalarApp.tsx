@@ -43,6 +43,10 @@ export function InstalarApp() {
               <li>
                 Toque em <b>Adicionar</b>.
               </li>
+              <li className="mudo">
+                No iPhone, o app instalado não recebe o ticket aberto no Safari: abra o app e toque em{' '}
+                <b>Ler QR Code do ticket</b>.
+              </li>
             </>
           ) : (
             <>

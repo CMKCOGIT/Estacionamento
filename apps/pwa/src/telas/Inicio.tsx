@@ -119,6 +119,9 @@ export function Inicio() {
         <section className="cartao dica-ticket">
           <h2>Já estacionou?</h2>
           <p>Leia o QR Code mostrado no caixa para acompanhar o tempo e o valor do seu ticket por aqui.</p>
+          <Link to="/ticket?ler=1" className="botao botao-ler">
+            Ler QR Code do ticket
+          </Link>
         </section>
       )}
     </>

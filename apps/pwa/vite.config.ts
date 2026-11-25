@@ -89,7 +89,7 @@ function arquivosDoPwa(csp: string): Plugin {
           '  Referrer-Policy: no-referrer',
           '  X-Content-Type-Options: nosniff',
           '  X-Frame-Options: DENY',
-          '  Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=()',
+          '  Permissions-Policy: camera=(self), microphone=(), geolocation=(), payment=()',
           '  Strict-Transport-Security: max-age=31536000; includeSubDomains',
           '/sw.js',
           '  Cache-Control: no-cache',
