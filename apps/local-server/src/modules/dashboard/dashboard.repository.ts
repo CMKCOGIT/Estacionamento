@@ -1,5 +1,5 @@
 import type { RowDataPacket } from 'mysql2/promise';
-import type { Modalidade, Movimento, RegraTarifa } from '@estacionamento/shared';
+import type { Modalidade, Movimento, MovimentoHora, RegraTarifa } from '@estacionamento/shared';
 import { env } from '../../config/env.js';
 import { pool } from '../../db/pool.js';
 import { COLUNAS_REGRA, regraDoTicket } from '../tarifas/regra.js';
@@ -269,23 +269,34 @@ export const dashboardRepository = {
     };
   },
 
-  /** Entradas e saídas de hoje, hora a hora (fuso do estacionamento). */
-  async movimentoPorHora(siteId: string): Promise<{ hora: number; entradas: number; saidas: number }[]> {
+  /** Entradas e saídas de hoje, hora a hora e por categoria (fuso do estacionamento). */
+  async movimentoPorHora(siteId: string): Promise<MovimentoHora[]> {
     const [ent] = await pool.query<RowDataPacket[]>(
-      `SELECT HOUR(CONVERT_TZ(entrada_em, '+00:00', '${FUSO}')) AS h, COUNT(*) AS n
-         FROM sessoes_estacionamento WHERE site_id = ? AND entrada_em >= ${INICIO_HOJE} GROUP BY h`,
+      `SELECT HOUR(CONVERT_TZ(s.entrada_em, '+00:00', '${FUSO}')) AS h, c.codigo, COUNT(*) AS n
+         FROM sessoes_estacionamento s JOIN categorias_veiculo c ON c.id = s.categoria_id
+        WHERE s.site_id = ? AND s.entrada_em >= ${INICIO_HOJE} GROUP BY h, c.codigo`,
       [siteId],
     );
     const [sai] = await pool.query<RowDataPacket[]>(
-      `SELECT HOUR(CONVERT_TZ(saida_em, '+00:00', '${FUSO}')) AS h, COUNT(*) AS n
-         FROM sessoes_estacionamento WHERE site_id = ? AND status = 'ENCERRADA' AND saida_em >= ${INICIO_HOJE} GROUP BY h`,
+      `SELECT HOUR(CONVERT_TZ(s.saida_em, '+00:00', '${FUSO}')) AS h, c.codigo, COUNT(*) AS n
+         FROM sessoes_estacionamento s JOIN categorias_veiculo c ON c.id = s.categoria_id
+        WHERE s.site_id = ? AND s.status = 'ENCERRADA' AND s.saida_em >= ${INICIO_HOJE} GROUP BY h, c.codigo`,
       [siteId],
     );
-    return Array.from({ length: 24 }, (_, hora) => ({
-      hora,
-      entradas: n(ent.find((l) => Number(l.h) === hora)?.n),
-      saidas: n(sai.find((l) => Number(l.h) === hora)?.n),
-    }));
+    return Array.from({ length: 24 }, (_, hora) => {
+      const categorias: MovimentoHora['categorias'] = {};
+      for (const [lista, campo] of [
+        [ent, 'entradas'],
+        [sai, 'saidas'],
+      ] as const) {
+        for (const l of lista.filter((x) => Number(x.h) === hora)) {
+          const c = (categorias[String(l.codigo)] ??= { entradas: 0, saidas: 0 });
+          c[campo] += n(l.n);
+        }
+      }
+      const soma = (k: 'entradas' | 'saidas') => Object.values(categorias).reduce((t, c) => t + c[k], 0);
+      return { hora, entradas: soma('entradas'), saidas: soma('saidas'), categorias };
+    });
   },
 
   /**

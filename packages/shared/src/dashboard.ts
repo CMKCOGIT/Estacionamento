@@ -10,6 +10,14 @@ export interface OcupacaoCategoria {
   bloqueadas: number;
 }
 
+export interface MovimentoHora {
+  hora: number;
+  entradas: number;
+  saidas: number;
+  /** Por código da categoria (ex.: CARRO, MOTO). */
+  categorias: Record<string, { entradas: number; saidas: number }>;
+}
+
 export interface PontoOcupacao {
   /** Instante (ISO) do ponto. */
   em: string;
@@ -64,8 +72,8 @@ export interface DashboardResposta {
       cancelamentos: number;
       permanenciaMediaMin: number | null;
     };
-    /** Entradas e saídas de hoje por hora (0–23, fuso do estacionamento). */
-    movimentoPorHora: { hora: number; entradas: number; saidas: number }[];
+    /** Entradas e saídas de hoje por hora (0–23, fuso do estacionamento), também por categoria. */
+    movimentoPorHora: MovimentoHora[];
     ultimosMovimentos: Movimento[];
   } | null;
   financeiro: {

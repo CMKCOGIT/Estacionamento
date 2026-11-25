@@ -5,13 +5,13 @@ import {
   formatarPlaca,
   type Alerta,
   type DashboardResposta,
+  type MovimentoHora,
   type NivelAlerta,
   type SituacaoSync,
 } from '@estacionamento/shared';
 import { useAuth } from '../auth/contexto';
-import { GraficoColunas } from '../components/graficos/GraficoColunas';
 import { GraficoFaturamento } from '../components/graficos/GraficoFaturamento';
-import { GraficoOcupacao } from '../components/graficos/GraficoOcupacao';
+import { GraficoMovimentoHora } from '../components/graficos/GraficoMovimentoHora';
 import { useAtualizacaoAutomatica } from '../hooks/useAtualizacaoAutomatica';
 import { api } from '../services/api';
 import { formatarDataHora } from '../services/rotulos';
@@ -104,9 +104,6 @@ export function Dashboard() {
               extra={`${porcento(operacao.vagas.ocupadas, operacao.vagas.total - operacao.vagas.bloqueadas)}% das vagas em uso`}
             />
             <Indicador rotulo="Vagas bloqueadas" valor={operacao.vagas.bloqueadas} extra="em manutenção" />
-            <Indicador rotulo="Veículos estacionados" valor={operacao.veiculosEstacionados} />
-            <Indicador rotulo="Entradas hoje" valor={operacao.hoje.entradas} />
-            <Indicador rotulo="Saídas hoje" valor={operacao.hoje.saidas} />
           </>
         )}
         {financeiro && (
@@ -135,75 +132,33 @@ export function Dashboard() {
       </section>
 
       {operacao && (
-        <section className="cartao">
-          <h2>Movimentação por horário (hoje)</h2>
-          <p className="mudo legenda-grafico">Entradas e saídas registradas em cada hora do dia.</p>
-          <GraficoColunas
-            formato="numero"
-            descricao="Entradas e saídas por hora hoje"
-            pontos={operacao.movimentoPorHora
-              .filter((h) => h.hora <= new Date().getHours())
-              .map((h) => ({
-                chave: String(h.hora),
-                eixo: [`${String(h.hora).padStart(2, '0')}h`],
-                valorCentavos: h.entradas + h.saidas,
-                titulo: `${String(h.hora).padStart(2, '0')}:00 – ${String(h.hora).padStart(2, '0')}:59`,
-                linhas: [`${h.entradas} entrada(s)`, `${h.saidas} saída(s)`],
-              }))}
+        <section className="cartao cartao--grafico-mov">
+          <div className="cartao__topo cartao__topo--quebra">
+            <h2>Movimentação por horário (hoje)</h2>
+            <dl className="resumo-mov">
+              <div>
+                <dt>Entradas</dt>
+                <dd>{operacao.hoje.entradas}</dd>
+              </div>
+              <div>
+                <dt>Saídas</dt>
+                <dd>{operacao.hoje.saidas}</dd>
+              </div>
+              <div>
+                <dt>Cancelamentos</dt>
+                <dd>{operacao.hoje.cancelamentos}</dd>
+              </div>
+              <div>
+                <dt>Permanência média</dt>
+                <dd>{duracao(operacao.hoje.permanenciaMediaMin)}</dd>
+              </div>
+            </dl>
+          </div>
+          <GraficoMovimentoHora
+            horas={horasDoDia(operacao.movimentoPorHora, dados.geradoEm)}
+            categorias={operacao.porCategoria.map((c) => ({ codigo: c.codigo, nome: c.nome }))}
           />
         </section>
-      )}
-
-      {operacao && (
-        <div className="grade-painel">
-          <section className="cartao cartao--largo">
-            <h2>Ocupação nas últimas 24 horas</h2>
-            <p className="mudo legenda-grafico">
-              Veículos estacionados a cada hora. A linha cinza é a capacidade atual.
-            </p>
-            <GraficoOcupacao
-              pontos={operacao.ocupacao24h}
-              capacidade={operacao.vagas.total - operacao.vagas.bloqueadas}
-            />
-          </section>
-
-          <section className="cartao">
-            <h2>Ocupação por categoria</h2>
-            {operacao.porCategoria.length === 0 && <p className="mudo">Nenhuma vaga cadastrada.</p>}
-            <ul className="medidores">
-              {operacao.porCategoria.map((c) => {
-                const uteis = c.total - c.bloqueadas;
-                const taxa = uteis > 0 ? c.ocupadas / uteis : 0;
-                const nivel =
-                  c.disponiveis === 0 && uteis > 0 ? 'critico' : taxa >= 0.8 ? 'atencao' : 'normal';
-                return (
-                  <li key={c.categoriaId}>
-                    <div className="medidor__titulo">
-                      <strong>{c.nome}</strong>
-                      <span>
-                        {c.ocupadas} de {uteis} · {Math.round(taxa * 100)}%
-                      </span>
-                    </div>
-                    <div
-                      className={`medidor medidor--${nivel}`}
-                      role="meter"
-                      aria-valuemin={0}
-                      aria-valuemax={uteis}
-                      aria-valuenow={c.ocupadas}
-                      aria-label={`${c.nome}: ${c.ocupadas} de ${uteis} vagas ocupadas`}
-                    >
-                      <span style={{ width: `${Math.min(taxa, 1) * 100}%` }} />
-                    </div>
-                    <div className="mudo medidor__detalhe">
-                      {c.disponiveis} livre{c.disponiveis === 1 ? '' : 's'}
-                      {c.bloqueadas > 0 && ` · ${c.bloqueadas} em manutenção`}
-                    </div>
-                  </li>
-                );
-              })}
-            </ul>
-          </section>
-        </div>
       )}
 
       {financeiro && (
@@ -328,32 +283,7 @@ export function Dashboard() {
           </section>
         )}
 
-        <div className="coluna-painel">
-          {operacao && (
-            <section className="cartao">
-              <h2>Resumo de hoje</h2>
-              <dl className="resumo">
-                <div>
-                  <dt>Entradas</dt>
-                  <dd>{operacao.hoje.entradas}</dd>
-                </div>
-                <div>
-                  <dt>Saídas</dt>
-                  <dd>{operacao.hoje.saidas}</dd>
-                </div>
-                <div>
-                  <dt>Cancelamentos</dt>
-                  <dd>{operacao.hoje.cancelamentos}</dd>
-                </div>
-                <div>
-                  <dt>Permanência média</dt>
-                  <dd>{duracao(operacao.hoje.permanenciaMediaMin)}</dd>
-                </div>
-              </dl>
-            </section>
-          )}
-          {sincronizacao && <CartaoSincronizacao s={sincronizacao} />}
-        </div>
+        <div className="coluna-painel">{sincronizacao && <CartaoSincronizacao s={sincronizacao} />}</div>
       </div>
 
       {!operacao && !financeiro && (
@@ -477,4 +407,23 @@ function CartaoSincronizacao({ s }: { s: NonNullable<DashboardResposta['sincroni
       </p>
     </section>
   );
+}
+
+/**
+ * Horas mostradas no gráfico: da primeira com movimento (no máximo a partir
+ * das 6h) até a hora atual. Madrugada vazia não ocupa espaço.
+ */
+function horasDoDia(horas: MovimentoHora[], geradoEm?: string): MovimentoHora[] {
+  // Hora atual no fuso do estacionamento (o mesmo das contagens do servidor)
+  const agora = Number(
+    new Date(geradoEm ?? Date.now()).toLocaleString('en-US', {
+      hour: 'numeric',
+      hourCycle: 'h23',
+      timeZone: 'America/Sao_Paulo',
+    }),
+  );
+  const comMovimento = horas.filter((h) => h.entradas || h.saidas).map((h) => h.hora);
+  const inicio = Math.min(6, ...comMovimento);
+  const fim = Math.max(agora, ...comMovimento);
+  return horas.filter((h) => h.hora >= inicio && h.hora <= fim);
 }
